@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Polecat Shell — demo</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="../tokens.css">
+<link rel="stylesheet" href="../shell.css">
+<script>
+// Pre-paint: honor ?palette=&mode= from the URL (the smoke test drives these),
+// falling back to the stored theme. Mirrors PREPAINT_SNIPPET's job.
+(function(){
+  var q = new URLSearchParams(location.search);
+  var p = q.get('palette'), m = q.get('mode');
+  if(p || m){ try{ localStorage.setItem('ps.demo.theme', (p||'polecat')+':'+(m||'dark')); }catch(e){} }
+  var t = 'polecat:dark';
+  try{ t = localStorage.getItem('ps.demo.theme') || t; }catch(e){}
+  var parts = t.split(':');
+  document.documentElement.setAttribute('data-palette', parts[0]);
+  document.documentElement.setAttribute('data-theme', parts[1]==='system' ? 'dark' : parts[1]);
+})();
+</script>
+</head>
+<body>
+<script type="module" src="demo.js"></script>
+</body>
+</html>
