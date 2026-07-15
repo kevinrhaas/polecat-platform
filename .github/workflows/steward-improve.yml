@@ -4,20 +4,28 @@ name: Steward improve
 # One unit of work per run, shipped via PR, merged only when smoke is green.
 #
 # Two modes:
-#   • Fleet mode (no `app` input): picks the app that most needs work.
-#   • Focus mode: dispatch with app=<name> (e.g. autoselector.polecat.live) —
-#     the deep-dive replacement for the old per-app hourly loops. For an
-#     hourly deep-dive, uncomment the schedule AND set FOCUS_APP below.
+#   • Fleet mode: picks the app that most needs work.
+#   • Focus mode: deep-dive on one app — the replacement for the old per-app
+#     hourly loops.
 #
-# PAUSED by default: the schedule is commented out; run on demand from the
-# Actions tab. Requires repo secrets:
+# SCHEDULING is controlled by repo VARIABLES (Settings → Secrets and variables
+# → Actions → Variables) — no commit needed to turn the loop on or off:
+#   STEWARD_FOCUS_APP   set to a repo name (e.g. manager.polecat.live) → every
+#                       scheduled run deep-dives that app. Clear it to stop.
+#   STEWARD_FLEET_MODE  set to 'on' → scheduled runs use fleet pick (suite-wide).
+#   Neither set → scheduled runs SKIP in seconds (no token spend). This is the
+#   default OFF state; the cron below firing is not by itself spend.
+# Manual dispatch always runs: the `app` input (which overrides the variable)
+# for a one-off focus run, or empty for a one-off fleet pick.
+#
+# Requires repo secrets:
 #   CLAUDE_CODE_OAUTH_TOKEN  (from `claude setup-token`)
 #   STEWARD_PAT              (classic PAT, repo scope on kevinrhaas/* — used
 #                             for cross-repo clone/push/PR)
 
 on:
-  # schedule:
-  #   - cron: '9 */2 * * *'     # every 2h, off the :00 rush — uncomment to enable
+  schedule:
+    - cron: '9 */2 * * *'     # every 2h, off the :00 rush (gated by the variables above)
   workflow_dispatch:
     inputs:
       app:
@@ -26,7 +34,7 @@ on:
         default: ''
 
 env:
-  FOCUS_APP: ${{ github.event.inputs.app }}   # set a default here for scheduled deep-dives
+  FOCUS_APP: ${{ github.event.inputs.app || vars.STEWARD_FOCUS_APP }}
 
 permissions:
   contents: read
@@ -37,6 +45,9 @@ concurrency:
 
 jobs:
   improve:
+    # Scheduled runs only proceed when a variable turns the loop on; dispatches
+    # always run. Keeps the default state OFF with zero token cost.
+    if: github.event_name == 'workflow_dispatch' || vars.STEWARD_FOCUS_APP != '' || vars.STEWARD_FLEET_MODE == 'on'
     runs-on: ubuntu-latest
     timeout-minutes: 55
     steps:
