@@ -7,10 +7,12 @@
 - [x] Pilot: games.polecat.live home on the shell (`neon` palette)
 
 ## Next
-- [ ] Create GitHub repo + first PR; Pages on; apex handoff (DOMAINS.md § handoff)
+- [x] Create GitHub repo + first PR; Pages on; apex handoff (DOMAINS.md § handoff)
+      — polecat.live serves the launcher as of 2026-07-15 (domain reassigned
+      automatically on deploy; same-account transfer)
 - [ ] Steward routines: fleet-improve, fleet-sweep-ux, fleet-sweep-tech, shell-release
       (AUTOMATION.md) — cadence + budget confirmed with Kevin before enabling
-- [ ] Migrate relay → jobtracker → manager → autoselector (MIGRATION.md)
+- [ ] Migrate jobtracker → manager → autoselector (MIGRATION.md; relay deliberately last)
 - [ ] Supabase project: Google/Apple/email providers; launcher sign-in live;
       account menu in the shell topbar
 - [ ] Fleet catalog: per-app og images + consistent single-color app glyphs
