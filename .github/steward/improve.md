@@ -42,10 +42,12 @@ HARD RULES:
   at 390x780 AND desktop, zero pageerrors. Playwright + chromium (and webkit
   where the app's smoke needs it) are pre-installed by the workflow.
 - Open a PR (what/why/verification) with `gh pr create`, and merge it yourself
-  with `gh pr merge --squash` ONLY when verification is fully green — merge is
-  ship (each app's deploy.yml publishes on merge). Ambiguous, architecturally
-  significant, or not fully verified → leave the PR OPEN with an explanation
-  for Kevin instead.
+  with `gh pr merge --squash` when verification is fully green — merging your
+  green PR is REQUIRED (Kevin never manually merges automation output; a
+  janitor also sweeps green steward PRs every 2h). Merge is ship (each app's
+  deploy.yml publishes on merge). Ambiguous, architecturally significant, or
+  not fully verified → leave the PR OPEN with the `hold` label and an
+  explanation for Kevin instead; `hold` keeps the janitor away.
 - One unit of work only. Update the app's ROADMAP/queue file in the same PR.
   No model identifiers in repo artifacts. Do all work synchronously and finish
   by printing a summary: app picked, why, what shipped, verification run, and

@@ -26,6 +26,7 @@ below.)
 | `steward-focus.yml` | hourly tick (Claude-free) | **The multi-app focus roster.** Reads `.github/steward/focus.json` and dispatches one focus improve run per enabled app whose `everyHours` cadence matches the hour. Different apps run in parallel (per-app concurrency groups, separate repos); the same app never overlaps itself. Enable/disable apps and set cadence by editing focus.json — GitHub UI, any session, or (roadmap) the Manager console; effective next tick, no workflow edits. |
 | `steward-sweep-ux.yml` | daily 06:00 UTC | Read-only user walk of every live site → one prioritized findings issue per app. |
 | `steward-sweep-tech.yml` | daily 09:00 UTC | Read-only audit: pageerrors, changelog contract, vendor sha256 drift, SW caches, CI health, hygiene, secrets → one issue per app. |
+| `steward-janitor.yml` | every 2h (Claude-free) | **The no-manual-merges guarantee.** Sweeps all fleet repos for open `steward/*` / `chore/polecat-shell-*` PRs, re-runs each app's own smoke gate against the branch, merges the green ones, comments once on the red ones. Never touches drafts or PRs labeled `hold` — that label is Kevin's park-for-review switch. |
 | `steward-shell-release.yml` | dispatch only | Bump lib/VERSION + manifest + tag, vendoring PRs to every app, merge the green ones. |
 
 Secrets required on THIS repo: `CLAUDE_CODE_OAUTH_TOKEN` (from `claude setup-token`)
