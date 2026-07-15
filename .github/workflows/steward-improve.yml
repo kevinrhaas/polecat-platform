@@ -1,4 +1,7 @@
 name: Steward improve
+# Annotate each run with the app it targets (shows in the Actions list and in
+# Manager's Fleet Ops panel). Mirrors the FOCUS_APP env resolution below.
+run-name: "Steward improve — ${{ github.event.inputs.app || vars.STEWARD_FOCUS_APP || 'jobtracker.polecat.live' }}"
 
 # The fleet improvement loop (see .github/steward/improve.md + docs/AUTOMATION.md).
 # One unit of work per run, shipped via PR, merged only when smoke is green.
