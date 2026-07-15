@@ -41,9 +41,15 @@ jobs:
         run: node scripts/gen-manifest.mjs
       - name: Open PRs
         env:
-          GH_TOKEN: ${{ secrets.SYNC_SHELL_PAT }}
+          # STEWARD_PAT is the repo's standard cross-repo PAT (docs/AUTOMATION.md);
+          # SYNC_SHELL_PAT is honored if separately configured.
+          GH_TOKEN: ${{ secrets.SYNC_SHELL_PAT || secrets.STEWARD_PAT }}
         run: |
           set -e
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::No cross-repo token: set STEWARD_PAT (or SYNC_SHELL_PAT) in repo secrets."
+            exit 1
+          fi
           # Where each repo keeps its vendored shell. Default: repo root.
           # Monorepo spokes map to their app subdirectory here.
           vendor_dir() {
