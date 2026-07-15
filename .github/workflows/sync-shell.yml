@@ -5,6 +5,10 @@ name: Sync shell to app repos
 # Nothing auto-merges: the fleet steward reviews each PR after that app's
 # smoke test passes. Requires a SYNC_SHELL_PAT secret (repo scope on the
 # kevinrhaas app repos) because GITHUB_TOKEN can't reach sibling repos.
+#
+# Most apps vendor at the repo root (vendor/polecat-shell/). Monorepo spokes
+# vendor under their app subdirectory — declared in the vendor_dir() map
+# below (solution-engineering hosts modelserver at model-server/).
 on:
   workflow_dispatch:
     inputs:
@@ -24,7 +28,7 @@ env:
   ALL_APPS: >-
     games.polecat.live relay.polecat.live jobtracker.polecat.live
     manager.polecat.live autoselector.polecat.live analytics.polecat.live
-    polecat-app
+    polecat-app solution-engineering
 
 jobs:
   sync:
@@ -40,6 +44,14 @@ jobs:
           GH_TOKEN: ${{ secrets.SYNC_SHELL_PAT }}
         run: |
           set -e
+          # Where each repo keeps its vendored shell. Default: repo root.
+          # Monorepo spokes map to their app subdirectory here.
+          vendor_dir() {
+            case "$1" in
+              solution-engineering) echo "model-server/static/vendor/polecat-shell" ;;
+              *)                    echo "vendor/polecat-shell" ;;
+            esac
+          }
           VERSION="$(cat lib/VERSION)"
           APPS="${{ github.event.inputs.apps }}"
           [ "$APPS" = "all" ] && APPS="$ALL_APPS"
@@ -47,12 +59,13 @@ jobs:
             echo "=== $APP ==="
             git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/kevinrhaas/${APP}.git" /tmp/app
             cd /tmp/app
+            VENDOR="$(vendor_dir "$APP")"
             BRANCH="chore/polecat-shell-v${VERSION}"
             git checkout -b "$BRANCH"
-            rm -rf vendor/polecat-shell
-            mkdir -p vendor/polecat-shell
-            rsync -a --exclude 'demo/' "$GITHUB_WORKSPACE/lib/" vendor/polecat-shell/
-            git add vendor/polecat-shell
+            rm -rf "$VENDOR"
+            mkdir -p "$VENDOR"
+            rsync -a --exclude 'demo/' "$GITHUB_WORKSPACE/lib/" "$VENDOR/"
+            git add "$VENDOR"
             if git diff --cached --quiet; then
               echo "already at v${VERSION}, skipping"; cd -; rm -rf /tmp/app; continue
             fi
@@ -61,7 +74,7 @@ jobs:
             git commit -m "chore: polecat-shell v${VERSION}"
             git push -u origin "$BRANCH" --force
             gh pr create --title "chore: polecat-shell v${VERSION}" \
-              --body "Vendored shell update from polecat-platform@${{ github.event.inputs.ref }}. Review after this app's smoke passes. vendor/polecat-shell/ is read-only in app repos — see docs/SHELL-API.md in polecat-platform." \
+              --body "Vendored shell update from polecat-platform@${{ github.event.inputs.ref }} into ${VENDOR}/. Review after this app's smoke passes. The vendored shell is read-only in app repos — see docs/SHELL-API.md in polecat-platform." \
               --head "$BRANCH" || echo "PR may already exist"
             cd -; rm -rf /tmp/app
           done

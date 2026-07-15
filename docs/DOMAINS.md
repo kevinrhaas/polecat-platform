@@ -13,9 +13,11 @@
 | autoselector.polecat.live | autoselector.polecat.live | AutoSelector |
 | relay.polecat.live | relay.polecat.live | Relay (P2P tables + chat) |
 | games.polecat.live | games.polecat.live | Arcade |
+| modelserver.polecat.live | solution-engineering (`model-server/`) | Self-hosted model server — OCI VM + Caddy, NOT Pages (A record → VM IP; cert via Caddy/SERVER_DOMAIN) |
 
 Subdomain naming stays `<app>.polecat.live` — memorable, standard (Google-style
-product.domain), and each maps 1:1 to a repo + Pages site.
+product.domain), and each maps 1:1 to a repo + Pages site (modelserver is the
+one non-Pages exception above).
 
 ## GoDaddy DNS (current pattern, keep)
 
