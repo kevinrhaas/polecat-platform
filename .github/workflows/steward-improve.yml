@@ -46,8 +46,11 @@ env:
 permissions:
   contents: read
 
+# Per-app concurrency: focus runs on DIFFERENT apps proceed in parallel
+# (separate repos — no contention); runs on the SAME app queue behind each
+# other; the scheduled fleet/variable-driven run has its own lane.
 concurrency:
-  group: steward-improve
+  group: steward-improve-${{ github.event.inputs.app || vars.STEWARD_FOCUS_APP || 'fleet' }}
   cancel-in-progress: false
 
 jobs:
