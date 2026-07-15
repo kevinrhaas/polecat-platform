@@ -1,4 +1,4 @@
-# Polecat Shell — API Reference (v0.1.0)
+# Polecat Shell — API Reference (v0.2.0)
 
 Plain ES modules, no dependencies, no build. Import from `vendor/polecat-shell/`.
 Every module that persists anything takes a `storageKey` — apps keep their historical
@@ -67,7 +67,11 @@ initShell({
   onNav(key), isAdmin?(), uiMode?(),
   rail: { storageKey, resizable? },
   topbar: { left?[], center?[], right?[] },   // slot arrays of nodes/builders
-}) -> { setActive, setBadge, setOpen, els }
+}) -> { setActive, setBadge(key, n, tone?), setOpen, els }
+// setBadge tone (v0.2.0, optional): themes the count badge — 'danger' ships
+// in shell.css (Manager's needs-attention red); apps may style their own
+// `tone-<name>` classes. Rail brand + collapse toggle also gained
+// :focus-visible rings in v0.2.0 (previously app-skinned).
 
 rightPanel({ title, body, onClose }) -> { close }   // slide-in panel (What's-New,
                                                     // notifications, change log)
