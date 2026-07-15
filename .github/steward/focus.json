@@ -6,7 +6,7 @@
       "everyHours": 1
     },
     "jobtracker.polecat.live": {
-      "enabled": true,
+      "enabled": false,
       "everyHours": 2
     },
     "manager.polecat.live": {

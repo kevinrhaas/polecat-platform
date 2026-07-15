@@ -77,8 +77,9 @@ the design ports back one-to-one if the infrastructure matures (the prompts in
 Hourly × 8 repos was paused for token cost. The steward improve loop is now driven
 entirely by `.github/steward/focus.json` (2026-07-15): each app opts in with
 `enabled` + an `everyHours` cadence, and `steward-focus.yml` dispatches only the
-apps due that hour. Currently enabled: jobtracker.polecat.live (`everyHours: 2`) and
-autoselector.polecat.live (`everyHours: 1`, a temporary burst). Scheduled spend is
+apps due that hour. Currently enabled: autoselector.polecat.live (`everyHours: 1`,
+a temporary burst); jobtracker.polecat.live was paused 2026-07-15 at Kevin's request
+(migration + first ROADMAP unit shipped — flip its `enabled` back to resume). Scheduled spend is
 therefore whatever the roster enables + the two daily sweeps; start/stop/retarget any
 app by editing focus.json (no commit to a workflow, effective next tick). Manual
 `app=<repo>` dispatches and one-off fleet-pick runs remain free to start on demand.
