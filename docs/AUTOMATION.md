@@ -22,7 +22,7 @@ below.)
 
 | Workflow | Schedule | Job |
 |---|---|---|
-| `steward-improve.yml` | commented out (dispatch; suggested `9 */2 * * *`) | ONE unit of work on the app that most needs it — shell PRs first, then the MIGRATION.md queue, then stalest-release playbook work. **Focus mode:** dispatch with `app=<repo>` for a deep-dive on one app (this replaces per-app loops). |
+| `steward-improve.yml` | `9 */2 * * *` (every 2h; enabled 2026-07-15, currently defaulting to FOCUS_APP=jobtracker.polecat.live) | ONE unit of work on the app that most needs it — shell PRs first, then the MIGRATION.md queue, then stalest-release playbook work. **Focus mode:** dispatch with `app=<repo>` for a deep-dive on one app (this replaces per-app loops); scheduled runs use the workflow's FOCUS_APP default when one is set. |
 | `steward-sweep-ux.yml` | daily 06:00 UTC | Read-only user walk of every live site → one prioritized findings issue per app. |
 | `steward-sweep-tech.yml` | daily 09:00 UTC | Read-only audit: pageerrors, changelog contract, vendor sha256 drift, SW caches, CI health, hygiene, secrets → one issue per app. |
 | `steward-shell-release.yml` | dispatch only | Bump lib/VERSION + manifest + tag, vendoring PRs to every app, merge the green ones. |
@@ -72,6 +72,8 @@ the design ports back one-to-one if the infrastructure matures (the prompts in
 
 ## Cost posture
 
-Hourly × 8 repos was paused for token cost. The steward improve loop stays OFF until
-Kevin uncomments its cron; the daily sweeps are the only scheduled spend. Focus
-bursts are free to start (dispatch) and stop (they don't recur).
+Hourly × 8 repos was paused for token cost. The steward improve loop was switched ON
+2026-07-15 (Kevin's go-ahead): every 2h, focused on jobtracker.polecat.live. Scheduled
+spend is therefore the improve loop + the two daily sweeps; re-comment the improve
+cron to pause it. Focus bursts remain free to start (dispatch) and stop (they don't
+recur).
