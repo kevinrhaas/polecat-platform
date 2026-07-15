@@ -22,7 +22,7 @@ below.)
 
 | Workflow | Schedule | Job |
 |---|---|---|
-| `steward-improve.yml` | `9 */2 * * *` (every 2h; enabled 2026-07-15) | ONE unit of work on the app that most needs it — shell PRs first, then the MIGRATION.md queue, then stalest-release playbook work. **Focus mode:** dispatch with `app=<repo>` for a deep-dive on one app (this replaces per-app loops). **Which app the scheduled runs target is a repo-variable flip, not a commit:** `STEWARD_FOCUS_APP=<repo>` retargets the loop, `STEWARD_FOCUS_APP=fleet` forces the suite-wide pick, unset falls back to the workflow's in-file default (currently `jobtracker.polecat.live`). Pause by disabling the workflow in the Actions UI. |
+| `steward-improve.yml` | dispatch-only (no schedule) | ONE unit of work on the app that most needs it — shell PRs first, then the MIGRATION.md queue, then stalest-release playbook work. Invoked by `steward-focus.yml` per `focus.json` with an explicit `app=<repo>` (focus mode); a manual dispatch with an empty `app` runs the suite-wide fleet pick. **All scheduling lives in `focus.json`** — the `STEWARD_FOCUS_APP` variable was retired (2026-07-15). |
 | `steward-focus.yml` | hourly tick (Claude-free) | **The multi-app focus roster.** Reads `.github/steward/focus.json` and dispatches one focus improve run per enabled app whose `everyHours` cadence matches the hour. Different apps run in parallel (per-app concurrency groups, separate repos); the same app never overlaps itself. Enable/disable apps and set cadence by editing focus.json — GitHub UI, any session, or (roadmap) the Manager console; effective next tick, no workflow edits. |
 | `steward-sweep-ux.yml` | daily 06:00 UTC | Read-only user walk of every live site → one prioritized findings issue per app. |
 | `steward-sweep-tech.yml` | daily 09:00 UTC | Read-only audit: pageerrors, changelog contract, vendor sha256 drift, SW caches, CI health, hygiene, secrets → one issue per app. |
@@ -74,10 +74,11 @@ the design ports back one-to-one if the infrastructure matures (the prompts in
 
 ## Cost posture
 
-Hourly × 8 repos was paused for token cost. The steward improve loop was switched ON
-2026-07-15 (Kevin's go-ahead): every 2h, focused per app — defaulting to
-jobtracker.polecat.live, retargetable any time via the `STEWARD_FOCUS_APP` repo
-variable (`fleet` = suite-wide) with no commit. Scheduled spend is therefore the
-improve loop + the two daily sweeps; pause the loop by disabling the workflow in the
-Actions UI (or re-comment its cron). Focus bursts remain free to start (dispatch) and
-stop (they don't recur).
+Hourly × 8 repos was paused for token cost. The steward improve loop is now driven
+entirely by `.github/steward/focus.json` (2026-07-15): each app opts in with
+`enabled` + an `everyHours` cadence, and `steward-focus.yml` dispatches only the
+apps due that hour. Currently enabled: jobtracker.polecat.live (`everyHours: 2`) and
+autoselector.polecat.live (`everyHours: 1`, a temporary burst). Scheduled spend is
+therefore whatever the roster enables + the two daily sweeps; start/stop/retarget any
+app by editing focus.json (no commit to a workflow, effective next tick). Manual
+`app=<repo>` dispatches and one-off fleet-pick runs remain free to start on demand.
