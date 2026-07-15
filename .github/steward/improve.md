@@ -15,9 +15,9 @@ the picking logic. Otherwise pick, in priority order:
 1. An open `chore: polecat-shell vX.Y.Z` PR on any app repo → verify (run that
    app's smoke) and merge if green. That is the unit.
 2. The next unmigrated app in the docs/MIGRATION.md queue that is NOT marked
-   ASSIGNED to a dedicated session (currently polecat-app and the polecat repo
-   are ASSIGNED — skip them and their open PRs entirely; the live queue for
-   you: jobtracker → manager → autoselector → analytics → relay) → advance its
+   ASSIGNED to a dedicated session (currently polecat-app, the polecat repo
+   AND analytics are ASSIGNED — skip them and their open PRs entirely; the
+   live queue for you: jobtracker → manager → autoselector → relay) → advance its
    shell migration per docs/SHELL-API.md § Migrating an app, one coherent
    slice per run, WIP notes in the PR. NEVER execute the
    app→chat.polecat.live domain rename (DOMAINS.md gated sequence) without
