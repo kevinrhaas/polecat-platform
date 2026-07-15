@@ -21,7 +21,22 @@ pause/retarget, coordinated):
 > `Polecat fleet-improve (every 2h)` · `Polecat fleet-sweep-ux (Mon 9am CT)` ·
 > `Polecat fleet-sweep-tech (Thu 9am CT)` · `Polecat shell-release (on demand)`.
 > Manage them from any Claude Code session (list/pause/fire/delete triggers) or ask
-> the steward. The old per-app routine "Dashboard Studio — hourly self-improvement"
+> the steward.
+>
+> **Per-app focus loops (created DISABLED — enable to deep-dive):** each app also has
+> an hourly "<App> hourly improve (enable to focus)" routine carrying its own playbook
+> (ROADMAP/BUILD_LOOP/STATUS) plus the fleet ship rules. Turn one on to pour hourly
+> work into a single app ("enable the games loop"), fire it once for a single burst,
+> and disable it when the deep-dive ends. They stack safely with fleet-improve because
+> everything ships via PR.
+>
+> **How a run ships (the whole process):** routine does the work on a `steward/*`
+> branch → stamps changelog timestamps with the repo's own tool → runs the repo's
+> smoke gate → opens a PR → **merges it itself when green** → the merge triggers
+> `deploy.yml` → GitHub Pages publishes. No human step, no separate publish command:
+> merge IS ship. The only PRs that wait for Kevin are ones a routine wasn't confident
+> about (left open with an explanation) — approve those by merging on GitHub or by
+> telling any session "merge PR #N", and the deploy still fires automatically. The old per-app routine "Dashboard Studio — hourly self-improvement"
 > (pushed straight to analytics main) is superseded and should stay disabled; delete
 > it once analytics migrates. Cadence changes are one `update_trigger` call.
 - **One steward session** owns the fleet. Its routines:
