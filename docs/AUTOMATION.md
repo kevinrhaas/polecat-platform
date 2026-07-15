@@ -15,6 +15,15 @@
 
 **Claude Code Remote routines drive the agentic work** (centrally controlled, easy to
 pause/retarget, coordinated):
+
+> **LIVE since 2026-07-15** — four routines exist (fresh session per run, PR-based,
+> merge-only-when-smoke-green):
+> `Polecat fleet-improve (every 2h)` · `Polecat fleet-sweep-ux (Mon 9am CT)` ·
+> `Polecat fleet-sweep-tech (Thu 9am CT)` · `Polecat shell-release (on demand)`.
+> Manage them from any Claude Code session (list/pause/fire/delete triggers) or ask
+> the steward. The old per-app routine "Dashboard Studio — hourly self-improvement"
+> (pushed straight to analytics main) is superseded and should stay disabled; delete
+> it once analytics migrates. Cadence changes are one `update_trigger` call.
 - **One steward session** owns the fleet. Its routines:
   - `fleet-improve` (e.g. hourly or every 2h, budget-aware): pick ONE app by need
     (manager health data tells it which), do one playbook unit of work on a branch,
