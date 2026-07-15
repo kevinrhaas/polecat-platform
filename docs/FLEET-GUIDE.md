@@ -5,11 +5,16 @@ Read this first; it links to everything else.*
 
 ## The three rules that changed
 
-1. **Never push to main.** Work on a `steward/<topic>` branch → open a PR →
-   merge it yourself ONLY when your app's smoke gate is green. **Merge is
-   ship** — every repo's `deploy.yml` publishes on merge, and Guard-main
-   auto-revert is the backstop. Not confident? Leave the PR open with an
-   explanation for Kevin.
+1. **Never push to main — but finishing MEANS merging.** Work on a
+   `steward/<topic>` branch → open a PR → run your app's smoke gate → **merge
+   your own PR when it's green**. That last step is required, not optional:
+   Kevin does not manually merge automation output. **Merge is ship** — every
+   repo's `deploy.yml` publishes on merge, and Guard-main auto-revert is the
+   backstop. A janitor workflow also sweeps every 2h and merges any green
+   `steward/*` / `chore/polecat-shell-*` PR that got left behind, so a green
+   PR ships either way. Genuinely risky or architectural work is the ONE
+   exception: leave the PR open **with the `hold` label** (the janitor never
+   touches `hold` or draft PRs) and explain what Kevin should look at.
 2. **`vendor/polecat-shell/` is read-only.** It's the shared UI library,
    vendored from this repo with sha256 manifests (sweeps detect edits). Shell
    changes go to `polecat-platform/lib/` (+ VERSION bump + gen-manifest) and

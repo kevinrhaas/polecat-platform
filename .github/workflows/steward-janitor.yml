@@ -1,0 +1,143 @@
+name: Steward janitor
+
+# The no-manual-merges guarantee. Every 2 hours this deterministic, Claude-free
+# job sweeps all fleet repos for open automation PRs (branches steward/* or
+# chore/polecat-shell-*), re-runs each app's own smoke gate against the PR
+# branch, and merges the green ones. Red PRs get one explanatory comment and
+# stay open. Draft PRs and PRs labeled `hold` are never touched — the `hold`
+# label is Kevin's "I want to look at this myself" switch.
+#
+# This backstops the normal flow (agents merge their own green PRs): a run
+# that died before merging, or a PR left open out of caution that actually
+# passes, still ships without a human. Requires STEWARD_PAT.
+
+on:
+  schedule:
+    - cron: '33 */2 * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: steward-janitor
+  cancel-in-progress: false
+
+env:
+  FLEET: >-
+    games.polecat.live jobtracker.polecat.live manager.polecat.live
+    analytics.polecat.live autoselector.polecat.live relay.polecat.live
+    polecat-app polecat polecat-platform
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - name: Check secret
+        env:
+          P: ${{ secrets.STEWARD_PAT }}
+        run: '[ -n "$P" ] || { echo "::error::STEWARD_PAT secret is missing"; exit 1; }'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Prepare Playwright (shared by all gates)
+        run: |
+          mkdir -p /tmp/pwhome && cd /tmp/pwhome
+          npm init -y >/dev/null
+          npm install --no-save playwright >/dev/null
+          npx playwright install --with-deps chromium webkit >/dev/null 2>&1 || npx playwright install chromium webkit
+
+      - name: Write generic smoke (fallback gate)
+        run: |
+          cat > /tmp/generic-smoke.mjs <<'EOF'
+          // Generic janitor gate: serve the repo root, load "/" at mobile +
+          // desktop, zero pageerrors/console errors. Used when a repo has no
+          // smoke script of its own. Repo path = argv[2].
+          import http from 'node:http';
+          import { readFile } from 'node:fs/promises';
+          import { extname, join } from 'node:path';
+          const ROOT = process.argv[2];
+          const MIME = { '.html':'text/html', '.js':'text/javascript', '.css':'text/css', '.svg':'image/svg+xml', '.json':'application/json', '.png':'image/png', '.webmanifest':'application/manifest+json' };
+          const server = http.createServer(async (req, res) => {
+            try { let p = decodeURIComponent(req.url.split('?')[0]); if (p.endsWith('/')) p += 'index.html';
+              const data = await readFile(join(ROOT, p.replace(/^\//, '')));
+              res.writeHead(200, { 'content-type': MIME[extname(p)] || 'application/octet-stream' }); res.end(data);
+            } catch { res.writeHead(404); res.end(); } });
+          await new Promise(r => server.listen(4477, r));
+          const { chromium } = await import('playwright');
+          const b = await chromium.launch();
+          let bad = [];
+          for (const vp of [{ width: 390, height: 780 }, { width: 1280, height: 800 }]) {
+            const page = await b.newPage({ viewport: vp });
+            page.on('pageerror', e => bad.push(vp.width + 'px pageerror: ' + e));
+            page.on('console', m => { if (m.type() === 'error' && !/Failed to load resource|favicon|fonts\./i.test(m.text())) bad.push(vp.width + 'px console: ' + m.text()); });
+            await page.goto('http://localhost:4477/', { waitUntil: 'domcontentloaded', timeout: 20000 });
+            await page.waitForTimeout(1500);
+            await page.close();
+          }
+          await b.close(); server.close();
+          if (bad.length) { console.error(bad.join('\n')); process.exit(1); }
+          console.log('generic smoke green');
+          process.exit(0);
+          EOF
+          node --check /tmp/generic-smoke.mjs
+
+      - name: Sweep and merge green automation PRs
+        env:
+          GH_TOKEN: ${{ secrets.STEWARD_PAT }}
+          NODE_PATH: /tmp/pwhome/node_modules
+        run: |
+          git config --global url."https://x-access-token:${GH_TOKEN}@github.com/kevinrhaas/".insteadOf "https://github.com/kevinrhaas/"
+          MERGED=0; FAILED=0; SKIPPED=0
+          for REPO in $FLEET; do
+            PRS=$(gh pr list -R "kevinrhaas/$REPO" --state open \
+              --json number,headRefName,isDraft,labels \
+              --jq '.[] | select(.isDraft|not)
+                        | select([.labels[].name] | index("hold") | not)
+                        | select(.headRefName | test("^(steward/|chore/polecat-shell)"))
+                        | .number' || true)
+            [ -z "$PRS" ] && continue
+            for N in $PRS; do
+              BR=$(gh pr view "$N" -R "kevinrhaas/$REPO" --json headRefName --jq .headRefName)
+              echo "=== $REPO#$N ($BR) ==="
+              DIR=$(mktemp -d)
+              if ! git clone --depth 1 -b "$BR" "https://github.com/kevinrhaas/$REPO" "$DIR" 2>/dev/null; then
+                echo "clone failed; skipping"; SKIPPED=$((SKIPPED+1)); continue
+              fi
+              cd "$DIR"
+              ln -s /tmp/pwhome/node_modules node_modules 2>/dev/null || true
+              set +e
+              if [ -f .github/smoke-test.mjs ]; then
+                GATE=".github/smoke-test.mjs"; node .github/smoke-test.mjs > /tmp/gate.log 2>&1
+              elif [ -f tests/run.js ]; then
+                GATE="tests/run.js"; npm --prefix tests install --silent >/dev/null 2>&1; node tests/run.js > /tmp/gate.log 2>&1
+              elif [ -f scripts/smoke-test.mjs ]; then
+                GATE="scripts/smoke-test.mjs"; node scripts/smoke-test.mjs > /tmp/gate.log 2>&1
+              else
+                GATE="generic (serve / at 390px+1280px, zero pageerrors)"
+                node /tmp/generic-smoke.mjs "$DIR" > /tmp/gate.log 2>&1
+              fi
+              RC=$?
+              set -e
+              cd /; rm -rf "$DIR"
+              if [ $RC -eq 0 ]; then
+                echo "GREEN ($GATE) → merging"
+                if gh pr merge "$N" -R "kevinrhaas/$REPO" --squash; then MERGED=$((MERGED+1)); else echo "merge failed (conflict?)"; SKIPPED=$((SKIPPED+1)); fi
+              else
+                FAILED=$((FAILED+1))
+                echo "RED ($GATE)"
+                if ! gh pr view "$N" -R "kevinrhaas/$REPO" --json comments --jq '.comments[].body' | grep -q "Steward janitor: smoke gate FAILED"; then
+                  TAIL=$(tail -c 1500 /tmp/gate.log)
+                  gh pr comment "$N" -R "kevinrhaas/$REPO" --body "Steward janitor: smoke gate FAILED (\`$GATE\`) — leaving this PR open. Add the \`hold\` label to keep the janitor away while investigating. Log tail:
+
+          \`\`\`
+          $TAIL
+          \`\`\`" || true
+                fi
+              fi
+            done
+          done
+          echo "janitor done: merged=$MERGED red=$FAILED skipped=$SKIPPED"
