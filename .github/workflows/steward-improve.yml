@@ -1,0 +1,83 @@
+name: Steward improve
+
+# The fleet improvement loop (see .github/steward/improve.md + docs/AUTOMATION.md).
+# One unit of work per run, shipped via PR, merged only when smoke is green.
+#
+# Two modes:
+#   • Fleet mode (no `app` input): picks the app that most needs work.
+#   • Focus mode: dispatch with app=<name> (e.g. autoselector.polecat.live) —
+#     the deep-dive replacement for the old per-app hourly loops. For an
+#     hourly deep-dive, uncomment the schedule AND set FOCUS_APP below.
+#
+# PAUSED by default: the schedule is commented out; run on demand from the
+# Actions tab. Requires repo secrets:
+#   CLAUDE_CODE_OAUTH_TOKEN  (from `claude setup-token`)
+#   STEWARD_PAT              (classic PAT, repo scope on kevinrhaas/* — used
+#                             for cross-repo clone/push/PR)
+
+on:
+  # schedule:
+  #   - cron: '9 */2 * * *'     # every 2h, off the :00 rush — uncomment to enable
+  workflow_dispatch:
+    inputs:
+      app:
+        description: 'Focus on one app (repo name, e.g. autoselector.polecat.live). Empty = fleet pick.'
+        required: false
+        default: ''
+
+env:
+  FOCUS_APP: ${{ github.event.inputs.app }}   # set a default here for scheduled deep-dives
+
+permissions:
+  contents: read
+
+concurrency:
+  group: steward-improve
+  cancel-in-progress: false
+
+jobs:
+  improve:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - name: Check secrets
+        env:
+          T: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          P: ${{ secrets.STEWARD_PAT }}
+        run: |
+          [ -n "$T" ] || { echo "::error::CLAUDE_CODE_OAUTH_TOKEN secret is missing"; exit 1; }
+          [ -n "$P" ] || { echo "::error::STEWARD_PAT secret is missing"; exit 1; }
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Authenticate git + gh for all kevinrhaas repos
+        env:
+          STEWARD_PAT: ${{ secrets.STEWARD_PAT }}
+        run: |
+          git config --global url."https://x-access-token:${STEWARD_PAT}@github.com/kevinrhaas/".insteadOf "https://github.com/kevinrhaas/"
+          git config --global user.name  "polecat-steward"
+          git config --global user.email "steward@polecat.live"
+          echo "GH_TOKEN=${STEWARD_PAT}" >> "$GITHUB_ENV"
+
+      - name: Install Claude Code + browsers
+        run: |
+          npm install -g @anthropic-ai/claude-code
+          npm install -D playwright
+          # webkit too: several app smoke tests (jobtracker) run the iOS engine
+          npx playwright install --with-deps chromium webkit
+
+      - name: Run steward
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: |
+          PROMPT="$(cat .github/steward/improve.md)
+          ---
+          FOCUS_APP: ${FOCUS_APP:-'(none — fleet pick)'}"
+          claude -p "$PROMPT" \
+            --dangerously-skip-permissions \
+            --max-turns 150 \
+            --allowedTools "Bash,Edit,Write,Read,Glob,Grep"

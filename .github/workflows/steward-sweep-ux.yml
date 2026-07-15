@@ -1,0 +1,56 @@
+name: Steward sweep (UX)
+
+# Daily read-only UX walk of every live site → one findings issue per app.
+# Prompt: .github/steward/sweep-ux.md. Requires CLAUDE_CODE_OAUTH_TOKEN +
+# STEWARD_PAT secrets (PAT is for `gh issue create` on the app repos).
+
+on:
+  schedule:
+    - cron: '0 6 * * *'      # daily 06:00 UTC (Kevin's cadence)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: steward-sweep-ux
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check secrets
+        env:
+          T: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          P: ${{ secrets.STEWARD_PAT }}
+        run: |
+          [ -n "$T" ] || { echo "::error::CLAUDE_CODE_OAUTH_TOKEN secret is missing"; exit 1; }
+          [ -n "$P" ] || { echo "::error::STEWARD_PAT secret is missing"; exit 1; }
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Authenticate gh
+        env:
+          STEWARD_PAT: ${{ secrets.STEWARD_PAT }}
+        run: echo "GH_TOKEN=${STEWARD_PAT}" >> "$GITHUB_ENV"
+
+      - name: Install Claude Code + browser
+        run: |
+          npm install -g @anthropic-ai/claude-code
+          npm install -D playwright
+          npx playwright install --with-deps chromium
+
+      - name: Run sweep
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: |
+          claude -p "$(cat .github/steward/sweep-ux.md)" \
+            --dangerously-skip-permissions \
+            --max-turns 120 \
+            --allowedTools "Bash,Read,Glob,Grep,Write"
