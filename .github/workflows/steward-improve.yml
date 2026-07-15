@@ -8,15 +8,20 @@ name: Steward improve
 #   • Focus mode: deep-dive on one app — the replacement for the old per-app
 #     hourly loops.
 #
-# SCHEDULING is controlled by repo VARIABLES (Settings → Secrets and variables
-# → Actions → Variables) — no commit needed to turn the loop on or off:
-#   STEWARD_FOCUS_APP   set to a repo name (e.g. manager.polecat.live) → every
-#                       scheduled run deep-dives that app. Clear it to stop.
-#   STEWARD_FLEET_MODE  set to 'on' → scheduled runs use fleet pick (suite-wide).
-#   Neither set → scheduled runs SKIP in seconds (no token spend). This is the
-#   default OFF state; the cron below firing is not by itself spend.
-# Manual dispatch always runs: the `app` input (which overrides the variable)
-# for a one-off focus run, or empty for a one-off fleet pick.
+# ENABLED (2026-07-15): scheduled every 2h in FOCUS mode; the in-file default
+# below is jobtracker.polecat.live (the next app in the MIGRATION.md queue) —
+# the platform-way replacement for the old per-app hourly loops.
+#
+# WHICH APP the scheduled runs work on is switchable WITHOUT a commit via the
+# STEWARD_FOCUS_APP repo variable (Settings → Secrets and variables → Actions
+# → Variables). Precedence, first non-empty wins:
+#   1. the `app` dispatch input        (one-off runs from the Actions tab)
+#   2. STEWARD_FOCUS_APP repo variable ('manager.polecat.live' → that app;
+#                                       the special value 'fleet' → suite-wide
+#                                       fleet pick; unset → fall through)
+#   3. the in-file default             (currently jobtracker.polecat.live)
+# To PAUSE the loop: disable this workflow in the Actions UI (one click, no
+# commit) or re-comment the schedule below.
 #
 # Requires repo secrets:
 #   CLAUDE_CODE_OAUTH_TOKEN  (from `claude setup-token`)
@@ -25,7 +30,7 @@ name: Steward improve
 
 on:
   schedule:
-    - cron: '9 */2 * * *'     # every 2h, off the :00 rush (gated by the variables above)
+    - cron: '9 */2 * * *'     # every 2h, off the :00 rush — comment out to pause
   workflow_dispatch:
     inputs:
       app:
@@ -34,7 +39,9 @@ on:
         default: ''
 
 env:
-  FOCUS_APP: ${{ github.event.inputs.app || vars.STEWARD_FOCUS_APP }}
+  # dispatch input → STEWARD_FOCUS_APP variable ('fleet' = suite-wide pick) →
+  # in-file default. Change the variable, not this file, to retarget the loop.
+  FOCUS_APP: ${{ github.event.inputs.app || vars.STEWARD_FOCUS_APP || 'jobtracker.polecat.live' }}
 
 permissions:
   contents: read
@@ -45,9 +52,6 @@ concurrency:
 
 jobs:
   improve:
-    # Scheduled runs only proceed when a variable turns the loop on; dispatches
-    # always run. Keeps the default state OFF with zero token cost.
-    if: github.event_name == 'workflow_dispatch' || vars.STEWARD_FOCUS_APP != '' || vars.STEWARD_FLEET_MODE == 'on'
     runs-on: ubuntu-latest
     timeout-minutes: 55
     steps:
@@ -85,6 +89,9 @@ jobs:
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
         run: |
+          # the STEWARD_FOCUS_APP variable's special value 'fleet' forces the
+          # suite-wide pick even while an in-file focus default is set
+          [ "$FOCUS_APP" = "fleet" ] && FOCUS_APP=""
           PROMPT="$(cat .github/steward/improve.md)
           ---
           FOCUS_APP: ${FOCUS_APP:-'(none — fleet pick)'}"
