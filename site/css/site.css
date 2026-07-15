@@ -124,3 +124,20 @@ section.wrap { padding-top: 80px; padding-bottom: 80px; }
   .hero { padding: 46px 16px 56px; }
   section.wrap, .band { padding-top: 56px; padding-bottom: 56px; }
 }
+
+/* dialog primitives — the vendored shell ui.js builds .modal-back/.modal for
+   the Sign-in panel (auth-ui.js), but this page doesn't load shell.css (its
+   .btn would fight the marketing buttons), so the modal family is styled
+   here on the marketing tokens. Keep in sync with vendor ui.js class names. */
+.modal-back { position: fixed; inset: 0; background: rgba(5, 4, 10, .65); backdrop-filter: blur(5px); z-index: 100; display: grid; place-items: center; padding: 20px; opacity: 0; transition: opacity .2s; }
+.modal-back.in { opacity: 1; }
+.modal { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); box-shadow: 0 24px 70px rgba(0,0,0,.55); width: min(480px, 100%); max-height: 88vh; display: flex; flex-direction: column; transform: translateY(12px) scale(.98); transition: transform .2s; }
+.modal-back.in .modal { transform: none; }
+.modal-head { display: flex; align-items: center; gap: 10px; padding: 16px 20px; border-bottom: 1px solid var(--border); }
+.modal-title { display: flex; align-items: center; gap: 9px; font-weight: 800; font-size: 17px; flex: 1; }
+.modal-body { padding: 20px; overflow-y: auto; flex: 1; font-size: 14.5px; color: var(--text-2); line-height: 1.6; }
+.modal-body b { color: var(--text); }
+.modal-foot { display: flex; gap: 10px; justify-content: flex-end; padding: 14px 20px; border-top: 1px solid var(--border); flex-wrap: wrap; }
+.modal .btn.icon { padding: 6px 10px; font-size: 18px; line-height: 1; color: var(--text-2); background: none; border-color: transparent; box-shadow: none; }
+.modal .btn.icon:hover { color: var(--text); transform: none; }
+@media (max-width: 520px) { .modal-back { padding: 12px; } }
