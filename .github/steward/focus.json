@@ -18,7 +18,7 @@
       "everyHours": 1
     },
     "autoselector.polecat.live": {
-      "enabled": false,
+      "enabled": true,
       "everyHours": 1
     },
     "relay.polecat.live": {
