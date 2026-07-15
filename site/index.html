@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Polecat — a suite of joyful, open web apps</title>
+<meta name="description" content="Polecat is a family of fast, joyful, open-source web apps — chat with AI consensus, dashboards, trackers, games, and more. Free, local-first, no sign-up required.">
+<link rel="icon" href="assets/polecat.svg" type="image/svg+xml">
+<meta property="og:title" content="Polecat — a suite of joyful, open web apps">
+<meta property="og:description" content="Chat, Analytics, JobTracker, AutoSelector, Relay, Games — fast, open-source, local-first apps that respect you.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://polecat.live/">
+<link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+
+<nav class="nav">
+  <a class="brand" href="/">
+    <img class="brand-mark" src="assets/polecat.svg" width="26" height="26" alt="">
+    <span>Pole<span class="grad">cat</span></span>
+  </a>
+  <div class="nav-links">
+    <a href="#apps">Apps</a>
+    <a href="#principles">Principles</a>
+    <a href="https://github.com/kevinrhaas" rel="noopener">Open source</a>
+    <button class="btn btn-ghost" id="signInBtn" type="button">Sign in</button>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="hero-glow" aria-hidden="true"></div>
+  <img class="hero-mascot" src="assets/polecat.svg" width="96" height="96" alt="">
+  <h1>Little apps.<br><span class="grad">Big joy.</span></h1>
+  <p class="hero-sub">Polecat is a family of fast, delightful web apps — AI consensus chat,
+  dashboards, trackers, a neon arcade — all open source, all local-first, all free to use
+  without an account.</p>
+  <div class="hero-cta">
+    <a class="btn btn-primary btn-lg" href="#apps">Explore the apps</a>
+    <a class="btn btn-ghost btn-lg" href="https://app.polecat.live">Try the chat →</a>
+  </div>
+  <p class="hero-note">No sign-up. Your data stays in your browser unless you say otherwise.</p>
+</header>
+
+<main>
+  <section id="apps" class="wrap">
+    <div class="section-head center">
+      <div class="kicker">The suite</div>
+      <h2>Pick an app, start in seconds</h2>
+      <p class="lead narrow" style="margin-inline:auto">Every tile is live — versions and
+      ship dates come straight from each app's changelog.</p>
+    </div>
+    <div class="apps-grid" id="appsGrid" aria-busy="true"></div>
+  </section>
+
+  <section id="principles" class="band">
+    <div class="wrap">
+      <div class="section-head center">
+        <div class="kicker">How these are built</div>
+        <h2>Principles over promises</h2>
+      </div>
+      <div class="principles">
+        <div class="prin reveal">
+          <div class="prin-ic" aria-hidden="true">⚡</div>
+          <b>Instant &amp; light</b>
+          <span>Plain HTML, CSS and JavaScript. No build step, no trackers, nothing between
+          you and the app.</span>
+        </div>
+        <div class="prin reveal">
+          <div class="prin-ic" aria-hidden="true">🔒</div>
+          <b>Local-first</b>
+          <span>Everything works without an account. Your data lives in your browser;
+          connecting a backend is always your choice.</span>
+        </div>
+        <div class="prin reveal">
+          <div class="prin-ic" aria-hidden="true">🌱</div>
+          <b>Open source, GPL-3</b>
+          <span>Every app, and the platform behind them, is free software. Self-host the
+          whole suite, backend included.</span>
+        </div>
+        <div class="prin reveal">
+          <div class="prin-ic" aria-hidden="true">✨</div>
+          <b>Joy is a feature</b>
+          <span>Elegant, playful, mobile-first. Ships almost daily — every app tells you
+          what's new, honestly.</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="cta-final">
+    <h2>Ready when you are</h2>
+    <div class="hero-cta">
+      <a class="btn btn-primary btn-lg" href="#apps">Open an app</a>
+    </div>
+  </section>
+</main>
+
+<footer class="foot">
+  <div class="foot-brand">Pole<span class="grad">cat</span></div>
+  <div class="foot-links">
+    <a href="#apps">Apps</a>
+    <a href="https://github.com/kevinrhaas" rel="noopener">GitHub</a>
+    <a href="#" id="whatsNewLink">What's new</a>
+  </div>
+  <div class="foot-meta">© 2026 Polecat.live · GPL-3.0 · made with joy</div>
+</footer>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,126 @@
+/* polecat.live — the suite front door.
+   Builds on the craft of the original polecat marketing site (dark, warm
+   amber brand, soft glows) but speaks for the whole fleet. Static, no fonts
+   loaded — system stack keeps first paint instant. */
+
+:root {
+  --bg: #0b0a10; --bg-2: #110f18; --surface: #16131f; --surface-2: #1d1928;
+  --border: #2c2738; --text: #f1edf7; --text-2: #a59fb8; --text-3: #6b6480;
+  --brand-a: #9C6B3F; --brand-b: #e08a45; --blush: #F4A6A6; --cream: #F5E9D6;
+  --ok: #34d399; --warn: #f0a830;
+  --r: 16px; --r-sm: 10px; --maxw: 1080px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; overflow-x: hidden; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  background: var(--bg); color: var(--text); line-height: 1.6;
+  -webkit-font-smoothing: antialiased; overflow-x: hidden;
+}
+a { color: inherit; }
+a:focus-visible, button:focus-visible { outline: 2px solid var(--brand-b); outline-offset: 2px; border-radius: 4px; }
+.grad { background: linear-gradient(110deg, var(--brand-a), var(--brand-b) 45%, var(--blush)); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+.wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 22px; }
+.narrow { max-width: 720px; }
+.center { text-align: center; }
+h1 { font-size: clamp(34px, 6vw, 60px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.05; }
+h2 { font-size: clamp(24px, 4vw, 36px); font-weight: 800; letter-spacing: -.8px; line-height: 1.15; }
+.lead { font-size: clamp(15px, 2vw, 18px); color: var(--text-2); margin-top: 12px; }
+.kicker { font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 1.5px; color: var(--brand-b); margin-bottom: 8px; }
+section[id] { scroll-margin-top: 76px; }
+section.wrap { padding-top: 80px; padding-bottom: 80px; }
+.band { background: var(--bg-2); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); padding: 80px 0; }
+.section-head { margin-bottom: 40px; }
+
+/* buttons */
+.btn { display: inline-flex; align-items: center; gap: 6px; border-radius: 100px; font-family: inherit; font-weight: 700; font-size: 14px; padding: 10px 18px; cursor: pointer; text-decoration: none; transition: transform .12s, opacity .12s; border: 1px solid transparent; white-space: nowrap; }
+.btn-primary { background: linear-gradient(110deg, var(--brand-a), var(--brand-b)); color: #fff; box-shadow: 0 6px 22px rgba(224,138,69,.28); }
+.btn-primary:hover { transform: translateY(-2px); }
+.btn-ghost { background: none; border-color: var(--border); color: var(--text-2); }
+.btn-ghost:hover { color: var(--text); border-color: var(--text-3); }
+.btn-lg { font-size: 16px; padding: 13px 26px; }
+
+/* nav */
+.nav { position: sticky; top: 0; z-index: 50; display: flex; align-items: center; justify-content: space-between; padding: 12px 22px; background: rgba(11,10,16,.78); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); }
+.brand { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 17px; letter-spacing: -.4px; text-decoration: none; }
+.nav-links { display: flex; align-items: center; gap: 22px; font-size: 14px; }
+.nav-links a { color: var(--text-2); text-decoration: none; transition: color .12s; }
+.nav-links a:hover { color: var(--text); }
+@media (max-width: 640px) { .nav-links a:not(.btn) { display: none; } }
+
+/* hero */
+.hero { text-align: center; padding: 70px 22px 80px; max-width: 860px; margin: 0 auto; position: relative; }
+.hero-glow { position: absolute; top: -10%; left: 50%; transform: translateX(-50%); width: 680px; height: 480px; background: radial-gradient(closest-side, rgba(176,112,240,.16), rgba(224,138,69,.10), transparent 70%); pointer-events: none; z-index: -1; }
+.hero-mascot { filter: drop-shadow(0 12px 34px rgba(156,107,63,.4)); animation: float 4.5s ease-in-out infinite; }
+@keyframes float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+.hero h1 { margin: 14px 0 6px; }
+.hero-sub { font-size: clamp(15px, 2.2vw, 19px); color: var(--text-2); max-width: 640px; margin: 16px auto 0; }
+.hero-cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-top: 30px; }
+.hero-note { font-size: 13px; color: var(--text-2); margin-top: 18px; }
+
+/* app grid — the launcher */
+.apps-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+@media (max-width: 900px) { .apps-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 560px) { .apps-grid { grid-template-columns: 1fr; } }
+.app-card {
+  position: relative; display: flex; flex-direction: column; gap: 10px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r);
+  padding: 22px; text-decoration: none; overflow: hidden;
+  transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease;
+}
+.app-card::after { /* accent wash that breathes in on hover */
+  content: ''; position: absolute; inset: 0; pointer-events: none; opacity: 0;
+  background: radial-gradient(120% 90% at 20% 0%, color-mix(in srgb, var(--c) 14%, transparent), transparent 60%);
+  transition: opacity .2s ease;
+}
+.app-card:hover { transform: translateY(-3px); border-color: color-mix(in srgb, var(--c) 45%, var(--border)); box-shadow: 0 14px 38px rgba(0,0,0,.35); }
+.app-card:hover::after { opacity: 1; }
+.app-top { display: flex; align-items: center; gap: 12px; }
+.app-glyph {
+  width: 44px; height: 44px; border-radius: 12px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--c); background: color-mix(in srgb, var(--c) 13%, transparent);
+  border: 1px solid color-mix(in srgb, var(--c) 30%, transparent);
+}
+.app-glyph svg { display: block; }
+.app-name { font-size: 17px; font-weight: 800; letter-spacing: -.3px; }
+.app-host { font-size: 12px; color: var(--text-3); }
+.app-tagline { font-size: 14px; color: var(--text-2); flex: 1; }
+.app-status { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-3); min-height: 18px; }
+.app-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 6px color-mix(in srgb, var(--ok) 60%, transparent); flex-shrink: 0; }
+.app-dot.soon { background: var(--text-3); box-shadow: none; }
+.app-open { position: absolute; top: 18px; right: 18px; color: var(--text-3); opacity: 0; transform: translateX(-4px); transition: opacity .16s, transform .16s; }
+.app-card:hover .app-open { opacity: 1; transform: none; color: var(--c); }
+
+/* principles */
+.principles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+@media (max-width: 900px) { .principles { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 560px) { .principles { grid-template-columns: 1fr; } }
+.prin { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 20px; font-size: 14px; color: var(--text-2); display: flex; flex-direction: column; gap: 6px; }
+.prin b { color: var(--text); font-size: 15px; }
+.prin-ic { font-size: 20px; }
+
+/* final cta + footer */
+.cta-final { text-align: center; padding: 90px 22px; }
+.cta-final h2 { margin-bottom: 24px; }
+.foot { display: flex; align-items: center; justify-content: space-between; padding: 26px 22px; border-top: 1px solid var(--border); max-width: var(--maxw); margin: 0 auto; flex-wrap: wrap; gap: 12px; }
+.foot-brand { font-weight: 800; }
+.foot-links { display: flex; gap: 20px; font-size: 14px; }
+.foot-links a { color: var(--text-2); text-decoration: none; }
+.foot-links a:hover { color: var(--text); }
+.foot-meta { width: 100%; text-align: center; font-size: 12px; color: var(--text-3); order: 3; }
+
+/* reveal + motion hygiene */
+.reveal { opacity: 0; transform: translateY(18px); transition: opacity .6s ease, transform .6s ease; }
+.reveal.in { opacity: 1; transform: none; }
+@media (prefers-reduced-motion: reduce) {
+  .reveal { opacity: 1; transform: none; }
+  .hero-mascot { animation: none; }
+  .app-card, .app-card:hover { transform: none; }
+}
+
+@media (max-width: 520px) {
+  .nav { padding: 10px 14px; }
+  .hero { padding: 46px 16px 56px; }
+  section.wrap, .band { padding-top: 56px; padding-bottom: 56px; }
+}

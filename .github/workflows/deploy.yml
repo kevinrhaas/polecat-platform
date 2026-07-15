@@ -1,0 +1,40 @@
+name: Deploy to GitHub Pages
+
+# Static site — no build step. The SINGLE deploy authority for polecat.live.
+# Publishes site/ (which carries its own vendored copy of the shell).
+# Smoke stays advisory — never hard-gate deploy on CI (fleet rule; see
+# docs/AUTOMATION.md). auto-revert.yml heals a broken main instead.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Sanity-check JS
+        run: |
+          set -e
+          for f in $(git ls-files 'site/*.js' 'lib/*.js' 'lib/**/*.js'); do
+            node --input-type=module --check < "$f" || { echo "SYNTAX FAIL: $f"; exit 1; }
+          done
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -1,0 +1,67 @@
+name: Sync shell to app repos
+
+# Opens a "chore: polecat-shell vX.Y.Z" PR against each requested app repo,
+# replacing its vendor/polecat-shell/ with this repo's lib/ (minus demo/).
+# Nothing auto-merges: the fleet steward reviews each PR after that app's
+# smoke test passes. Requires a SYNC_SHELL_PAT secret (repo scope on the
+# kevinrhaas app repos) because GITHUB_TOKEN can't reach sibling repos.
+on:
+  workflow_dispatch:
+    inputs:
+      apps:
+        description: 'Space-separated repo names (e.g. "games.polecat.live relay.polecat.live"), or "all"'
+        required: true
+        default: all
+      ref:
+        description: 'Platform ref to sync from'
+        required: false
+        default: main
+
+permissions:
+  contents: read
+
+env:
+  ALL_APPS: >-
+    games.polecat.live relay.polecat.live jobtracker.polecat.live
+    manager.polecat.live autoselector.polecat.live analytics.polecat.live
+    polecat-app
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref }}
+      - name: Fresh manifest
+        run: node scripts/gen-manifest.mjs
+      - name: Open PRs
+        env:
+          GH_TOKEN: ${{ secrets.SYNC_SHELL_PAT }}
+        run: |
+          set -e
+          VERSION="$(cat lib/VERSION)"
+          APPS="${{ github.event.inputs.apps }}"
+          [ "$APPS" = "all" ] && APPS="$ALL_APPS"
+          for APP in $APPS; do
+            echo "=== $APP ==="
+            git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/kevinrhaas/${APP}.git" /tmp/app
+            cd /tmp/app
+            BRANCH="chore/polecat-shell-v${VERSION}"
+            git checkout -b "$BRANCH"
+            rm -rf vendor/polecat-shell
+            mkdir -p vendor/polecat-shell
+            rsync -a --exclude 'demo/' "$GITHUB_WORKSPACE/lib/" vendor/polecat-shell/
+            git add vendor/polecat-shell
+            if git diff --cached --quiet; then
+              echo "already at v${VERSION}, skipping"; cd -; rm -rf /tmp/app; continue
+            fi
+            git config user.name "polecat-platform"
+            git config user.email "ci@polecat.live"
+            git commit -m "chore: polecat-shell v${VERSION}"
+            git push -u origin "$BRANCH" --force
+            gh pr create --title "chore: polecat-shell v${VERSION}" \
+              --body "Vendored shell update from polecat-platform@${{ github.event.inputs.ref }}. Review after this app's smoke passes. vendor/polecat-shell/ is read-only in app repos — see docs/SHELL-API.md in polecat-platform." \
+              --head "$BRANCH" || echo "PR may already exist"
+            cd -; rm -rf /tmp/app
+          done
