@@ -13,6 +13,10 @@
 - [x] Steward routines: fleet-improve (every 2h), fleet-sweep-ux (Mon), fleet-sweep-tech
       (Thu), shell-release (on demand) — LIVE 2026-07-15 (AUTOMATION.md)
 - [ ] Migrate jobtracker → manager → autoselector (MIGRATION.md; relay deliberately last)
+- [ ] Fleet Ops in the Manager console: manage the steward from manager.polecat.live —
+      toggle focus.json apps/cadence and dispatch/observe steward runs via the GitHub
+      API (contents + actions) using a vault credential; surface run history, open
+      steward PRs, and sweep issues per app on the project pages
 - [ ] Supabase project: Google/Apple/email providers; launcher sign-in live;
       account menu in the shell topbar
 - [ ] Fleet catalog: per-app og images + consistent single-color app glyphs
