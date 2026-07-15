@@ -6,18 +6,20 @@ name: Steward improve
 # Two modes:
 #   • Fleet mode (no `app` input): picks the app that most needs work.
 #   • Focus mode: dispatch with app=<name> (e.g. autoselector.polecat.live) —
-#     the deep-dive replacement for the old per-app hourly loops. For an
-#     hourly deep-dive, uncomment the schedule AND set FOCUS_APP below.
+#     the deep-dive replacement for the old per-app hourly loops.
 #
-# PAUSED by default: the schedule is commented out; run on demand from the
-# Actions tab. Requires repo secrets:
+# ACTIVE: scheduled every 2h in focus mode on relay.polecat.live (Kevin's
+# go-ahead, 2026-07-15). To pause, comment the schedule out again; to refocus
+# or return to fleet mode, edit the FOCUS_APP default below. Manual dispatch
+# with an explicit `app` input always overrides the default. Requires repo
+# secrets:
 #   CLAUDE_CODE_OAUTH_TOKEN  (from `claude setup-token`)
 #   STEWARD_PAT              (classic PAT, repo scope on kevinrhaas/* — used
 #                             for cross-repo clone/push/PR)
 
 on:
-  # schedule:
-  #   - cron: '9 */2 * * *'     # every 2h, off the :00 rush — uncomment to enable
+  schedule:
+    - cron: '9 */2 * * *'       # every 2h, off the :00 rush
   workflow_dispatch:
     inputs:
       app:
@@ -26,7 +28,7 @@ on:
         default: ''
 
 env:
-  FOCUS_APP: ${{ github.event.inputs.app }}   # set a default here for scheduled deep-dives
+  FOCUS_APP: ${{ github.event.inputs.app || 'relay.polecat.live' }}   # scheduled deep-dives focus relay (Kevin, 2026-07-15)
 
 permissions:
   contents: read
