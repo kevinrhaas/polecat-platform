@@ -36,6 +36,7 @@ sha256 hashes let fleet sweeps detect illegal local edits.
 ## Repo map
 
 ```
+docs/FLEET-GUIDE.md ← START HERE if you work on any fleet app
 lib/                Polecat Shell (see docs/SHELL-API.md)
 lib/demo/           kitchen-sink demo page — the shell's own smoke-test target
 site/               polecat.live marketing + launcher
