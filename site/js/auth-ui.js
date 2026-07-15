@@ -7,7 +7,7 @@
 
 import '../vendor/polecat-shell/auth/null.js';
 import { activeAuth } from '../vendor/polecat-shell/auth/schema.js';
-import { modal } from '../vendor/polecat-shell/ui.js';
+import { modal, el } from '../vendor/polecat-shell/ui.js';
 
 export function initAuthUi(btn){
   if(!btn) return;
@@ -15,16 +15,17 @@ export function initAuthUi(btn){
     const auth = activeAuth();
     const user = await auth.getUser();
     if(user){ /* account menu arrives with the Supabase phase */ return; }
+    // modal() body takes NODES (strings render as literal text), so build DOM.
     modal({
       title: 'Accounts are coming soon',
-      body: `
-        <p style="margin-bottom:10px">Everything on Polecat works <b>without</b> an
-        account — your data lives in this browser.</p>
-        <p style="margin-bottom:10px">Signing in (Google, Apple, or email) will add:
-        one profile across every app, synced workspaces, and sharing.</p>
-        <p style="color:var(--text-2,inherit);font-size:13px">Self-hosters: the suite is
-        GPL-3 and the backend seam is open — point any app at your own Supabase.
-        See the platform docs on GitHub.</p>`,
+      body: el('div', {}, [
+        el('p', { style: 'margin-bottom:10px', html:
+          'Everything on Polecat works <b>without</b> an account — your data lives in this browser.' }),
+        el('p', { style: 'margin-bottom:10px', html:
+          'Signing in (Google, Apple, or email) will add: one profile across every app, synced workspaces, and sharing.' }),
+        el('p', { style: 'font-size:13px', html:
+          'Self-hosters: the suite is GPL-3 and the backend seam is open — point any app at your own Supabase. See the <a href="https://github.com/kevinrhaas/polecat-platform" rel="noopener">platform docs on GitHub</a>.' }),
+      ]),
     });
   });
 }

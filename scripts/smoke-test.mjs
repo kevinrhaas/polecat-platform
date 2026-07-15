@@ -82,6 +82,20 @@ async function checkPage(browser, vp, url, asserts, label){
           await page.waitForSelector('.app-card', { timeout: 12000 });
           const n = await page.locator('.app-card').count();
           if(n < 5) throw new Error(`launcher grid rendered only ${n} cards`);
+          // Sign in must open a VISIBLE dialog (regression: the modal once
+          // rendered unstyled because this page doesn't load shell.css)
+          await page.locator('#signInBtn').click();
+          await page.waitForSelector('.modal-back.in .modal', { timeout: 5000 });
+          await page.waitForTimeout(300); // let the 200ms fade-in settle
+          const visible = await page.evaluate(() => {
+            const m = document.querySelector('.modal');
+            if(!m) return false;
+            const r = m.getBoundingClientRect();
+            const cs = getComputedStyle(m.closest('.modal-back'));
+            return r.width > 200 && r.height > 100 && cs.position === 'fixed' && +cs.opacity > .9;
+          });
+          if(!visible) throw new Error('sign-in modal is not visibly styled');
+          await page.keyboard.press('Escape');
         }, `${bname}:launcher`);
 
         // 2) shell demo, every palette × both modes
