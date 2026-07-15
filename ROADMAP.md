@@ -10,8 +10,8 @@
 - [x] Create GitHub repo + first PR; Pages on; apex handoff (DOMAINS.md § handoff)
       — polecat.live serves the launcher as of 2026-07-15 (domain reassigned
       automatically on deploy; same-account transfer)
-- [ ] Steward routines: fleet-improve, fleet-sweep-ux, fleet-sweep-tech, shell-release
-      (AUTOMATION.md) — cadence + budget confirmed with Kevin before enabling
+- [x] Steward routines: fleet-improve (every 2h), fleet-sweep-ux (Mon), fleet-sweep-tech
+      (Thu), shell-release (on demand) — LIVE 2026-07-15 (AUTOMATION.md)
 - [ ] Migrate jobtracker → manager → autoselector (MIGRATION.md; relay deliberately last)
 - [ ] Supabase project: Google/Apple/email providers; launcher sign-in live;
       account menu in the shell topbar
