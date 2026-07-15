@@ -1,30 +1,22 @@
 name: Steward improve
 # Annotate each run with the app it targets (shows in the Actions list and in
 # Manager's Fleet Ops panel). Mirrors the FOCUS_APP env resolution below.
-run-name: "Steward improve — ${{ github.event.inputs.app || vars.STEWARD_FOCUS_APP || 'jobtracker.polecat.live' }}"
+run-name: "Steward improve — ${{ github.event.inputs.app || 'fleet pick' }}"
 
 # The fleet improvement loop (see .github/steward/improve.md + docs/AUTOMATION.md).
 # One unit of work per run, shipped via PR, merged only when smoke is green.
 #
-# Two modes:
-#   • Fleet mode: picks the app that most needs work.
-#   • Focus mode: deep-dive on one app — the replacement for the old per-app
-#     hourly loops.
+# DISPATCH-ONLY. Scheduling lives entirely in .github/steward/focus.json, read
+# hourly by steward-focus.yml, which dispatches this workflow with an explicit
+# `app=<repo>` per enabled app. There is no schedule here and no
+# STEWARD_FOCUS_APP variable anymore — focus.json is the single source of truth
+# for which apps run and how often (edit it to start/stop/retarget an app;
+# effective on the next hourly tick, no workflow edit).
 #
-# ENABLED (2026-07-15): scheduled every 2h in FOCUS mode; the in-file default
-# below is jobtracker.polecat.live (the next app in the MIGRATION.md queue) —
-# the platform-way replacement for the old per-app hourly loops.
-#
-# WHICH APP the scheduled runs work on is switchable WITHOUT a commit via the
-# STEWARD_FOCUS_APP repo variable (Settings → Secrets and variables → Actions
-# → Variables). Precedence, first non-empty wins:
-#   1. the `app` dispatch input        (one-off runs from the Actions tab)
-#   2. STEWARD_FOCUS_APP repo variable ('manager.polecat.live' → that app;
-#                                       the special value 'fleet' → suite-wide
-#                                       fleet pick; unset → fall through)
-#   3. the in-file default             (currently jobtracker.polecat.live)
-# To PAUSE the loop: disable this workflow in the Actions UI (one click, no
-# commit) or re-comment the schedule below.
+# Two modes, chosen by the `app` dispatch input:
+#   • Focus mode: `app=<repo>` → deep-dive on that one app (how focus.json runs).
+#   • Fleet mode: empty `app` → the steward picks the app that most needs work.
+# To PAUSE an app's recurring runs: set its "enabled": false in focus.json.
 #
 # Requires repo secrets:
 #   CLAUDE_CODE_OAUTH_TOKEN  (from `claude setup-token`)
@@ -32,8 +24,8 @@ run-name: "Steward improve — ${{ github.event.inputs.app || vars.STEWARD_FOCUS
 #                             for cross-repo clone/push/PR)
 
 on:
-  schedule:
-    - cron: '9 */2 * * *'     # every 2h, off the :00 rush — comment out to pause
+  # No schedule — steward-focus.yml (driven by focus.json) dispatches this per
+  # enabled app, and it can be run manually from the Actions tab.
   workflow_dispatch:
     inputs:
       app:
@@ -42,9 +34,10 @@ on:
         default: ''
 
 env:
-  # dispatch input → STEWARD_FOCUS_APP variable ('fleet' = suite-wide pick) →
-  # in-file default. Change the variable, not this file, to retarget the loop.
-  FOCUS_APP: ${{ github.event.inputs.app || vars.STEWARD_FOCUS_APP || 'jobtracker.polecat.live' }}
+  # The app to work on comes from the dispatch input (focus.json passes it per
+  # enabled app). Empty — a manual dispatch with no app, or the literal
+  # 'fleet' — means the suite-wide fleet pick.
+  FOCUS_APP: ${{ github.event.inputs.app }}
 
 permissions:
   contents: read
@@ -53,7 +46,7 @@ permissions:
 # (separate repos — no contention); runs on the SAME app queue behind each
 # other; the scheduled fleet/variable-driven run has its own lane.
 concurrency:
-  group: steward-improve-${{ github.event.inputs.app || vars.STEWARD_FOCUS_APP || 'fleet' }}
+  group: steward-improve-${{ github.event.inputs.app || 'fleet' }}
   cancel-in-progress: false
 
 jobs:
@@ -95,8 +88,7 @@ jobs:
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
         run: |
-          # the STEWARD_FOCUS_APP variable's special value 'fleet' forces the
-          # suite-wide pick even while an in-file focus default is set
+          # an explicit 'fleet' input (or an empty app) means the suite-wide pick
           [ "$FOCUS_APP" = "fleet" ] && FOCUS_APP=""
           PROMPT="$(cat .github/steward/improve.md)
           ---
