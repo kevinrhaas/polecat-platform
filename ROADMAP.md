@@ -17,6 +17,13 @@
       account menu in the shell topbar
 - [ ] Fleet catalog: per-app og images + consistent single-color app glyphs
 
+- [ ] Automation cleanup (once the steward has ~3 weeks of solid runs): delete the
+      dispatch-only fallback loops (`self-improve.yml` in jobtracker/manager/relay/
+      autoselector/polecat-app, games `build-game.yml`) and the superseded
+      "Dashboard Studio hourly self-improvement" routine (delete at analytics
+      migration at the latest). Routines think, Actions ship — deploy/ci/auto-revert
+      workflows stay forever.
+
 ## Later
 - [ ] Shell v2 views: in-grid editing, column drag/resize, bulk bar, CSV/XLS export
       (extract from jobtracker once storage contracts are stable)
