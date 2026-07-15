@@ -9,15 +9,20 @@ name: Steward improve
 #     the deep-dive replacement for the old per-app hourly loops. For an
 #     hourly deep-dive, uncomment the schedule AND set FOCUS_APP below.
 #
-# PAUSED by default: the schedule is commented out; run on demand from the
-# Actions tab. Requires repo secrets:
+# ENABLED (2026-07-15): scheduled every 2h in FOCUS mode on
+# jobtracker.polecat.live (the next app in the MIGRATION.md queue) — this is
+# the platform-way replacement for jobtracker's old per-repo hourly loop,
+# which is now a dispatch-only fallback. To pause, re-comment the schedule;
+# to return to fleet mode, remove the FOCUS_APP default below. Dispatching
+# with app=<repo> still overrides the default for one-off deep-dives.
+# Requires repo secrets:
 #   CLAUDE_CODE_OAUTH_TOKEN  (from `claude setup-token`)
 #   STEWARD_PAT              (classic PAT, repo scope on kevinrhaas/* — used
 #                             for cross-repo clone/push/PR)
 
 on:
-  # schedule:
-  #   - cron: '9 */2 * * *'     # every 2h, off the :00 rush — uncomment to enable
+  schedule:
+    - cron: '9 */2 * * *'     # every 2h, off the :00 rush — comment out to pause
   workflow_dispatch:
     inputs:
       app:
@@ -26,7 +31,9 @@ on:
         default: ''
 
 env:
-  FOCUS_APP: ${{ github.event.inputs.app }}   # set a default here for scheduled deep-dives
+  # Scheduled runs (no input) deep-dive on jobtracker; a dispatch app=<repo>
+  # input overrides. Remove the default to restore fleet-pick mode.
+  FOCUS_APP: ${{ github.event.inputs.app || 'jobtracker.polecat.live' }}
 
 permissions:
   contents: read
