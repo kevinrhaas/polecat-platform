@@ -1,0 +1,59 @@
+name: Steward sweep (tech)
+
+# Daily read-only technical audit (errors, changelog contract, vendor drift,
+# SW caches, CI health, hygiene, secrets) → one findings issue per app.
+# Prompt: .github/steward/sweep-tech.md. Requires CLAUDE_CODE_OAUTH_TOKEN +
+# STEWARD_PAT secrets.
+
+on:
+  schedule:
+    - cron: '0 9 * * *'      # daily 09:00 UTC (Kevin's cadence)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: steward-sweep-tech
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check secrets
+        env:
+          T: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          P: ${{ secrets.STEWARD_PAT }}
+        run: |
+          [ -n "$T" ] || { echo "::error::CLAUDE_CODE_OAUTH_TOKEN secret is missing"; exit 1; }
+          [ -n "$P" ] || { echo "::error::STEWARD_PAT secret is missing"; exit 1; }
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Authenticate git + gh
+        env:
+          STEWARD_PAT: ${{ secrets.STEWARD_PAT }}
+        run: |
+          git config --global url."https://x-access-token:${STEWARD_PAT}@github.com/kevinrhaas/".insteadOf "https://github.com/kevinrhaas/"
+          echo "GH_TOKEN=${STEWARD_PAT}" >> "$GITHUB_ENV"
+
+      - name: Install Claude Code + browser
+        run: |
+          npm install -g @anthropic-ai/claude-code
+          npm install -D playwright
+          npx playwright install --with-deps chromium
+
+      - name: Run sweep
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: |
+          claude -p "$(cat .github/steward/sweep-tech.md)" \
+            --dangerously-skip-permissions \
+            --max-turns 120 \
+            --allowedTools "Bash,Read,Glob,Grep,Write"
