@@ -1,4 +1,4 @@
-# Polecat Shell — API Reference (v0.2.0)
+# Polecat Shell — API Reference (v0.3.0)
 
 Plain ES modules, no dependencies, no build. Import from `vendor/polecat-shell/`.
 Every module that persists anything takes a `storageKey` — apps keep their historical
@@ -43,8 +43,13 @@ PREPAINT_SNIPPET                                      // inline <head> script te
 
 DOM toolkit + feedback primitives (from the fleet's shared `ui.js`):
 `$ $$ el(tag,props,children) field escapeHtml uuid` ·
-`toast(title,{body,kind,ms})` · `modal({title,icon,body,foot,wide,onClose})` ·
-`sheet({title,body,side})` · `anchoredPopover(anchor,panel,{position,onClose})` ·
+`toast(title,{body,kind,ms,action})` — `action:{label,fn}` (v0.3.0) renders an
+inline action button (the "Undo" toast pattern) ·
+`modal({title,icon,body,foot,wide,onClose}) -> {root,back,body,hide}` — full
+dialog a11y (focus trap, stacked-Escape, focus restore); `body`/`foot` accept
+DOM nodes, arrays, or (v0.3.0) HTML strings ·
+`sheet({title,body,side})` (same body/foot contract) ·
+`anchoredPopover(anchor,panel,{position,onClose})` ·
 `confirmDialog({title,message,okText,danger})` · `promptDialog({...})` ·
 `celebrate(n)` (reduced-motion aware) · `avatarColor initials` ·
 `fmtDate fmtDateTime relTime isoDate` · `copy download debounce`.
