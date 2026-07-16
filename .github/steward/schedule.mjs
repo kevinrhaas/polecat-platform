@@ -52,17 +52,21 @@ export function nextRunAt(lane, from = new Date(), tickMinute = 3){
 }
 
 // ---- CLI (used by steward-focus.yml; handy for humans too) -----------------
-//   due   → app names due at THIS tick, one per line
-//   next  → "app<TAB>iso-or-never" for every lane, for eyeballing schedules
+//   due       → app lane names due at THIS tick, one per line
+//   due-jobs  → platform job names due at THIS tick (focus.json `jobs`)
+//   next      → "name<TAB>iso-or-never" for every app lane AND job
 const cmd = process.argv[2];
 if(cmd){
   const f = JSON.parse(readFileSync(new URL('./focus.json', import.meta.url), 'utf8'));
   const now = new Date();
   if(cmd === 'due'){
     for(const [app, lane] of Object.entries(f.apps || {})) if(isDueAt(lane, now)) console.log(app);
+  }else if(cmd === 'due-jobs'){
+    for(const [job, lane] of Object.entries(f.jobs || {})) if(isDueAt(lane, now)) console.log(job);
   }else if(cmd === 'next'){
     for(const [app, lane] of Object.entries(f.apps || {})) console.log(`${app}\t${nextRunAt(lane, now)?.toISOString() || 'never'}`);
+    for(const [job, lane] of Object.entries(f.jobs || {})) console.log(`job:${job}\t${nextRunAt(lane, now)?.toISOString() || 'never'}`);
   }else{
-    console.error('usage: schedule.mjs due|next'); process.exit(2);
+    console.error('usage: schedule.mjs due|due-jobs|next'); process.exit(2);
   }
 }
