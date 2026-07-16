@@ -11,8 +11,11 @@ name: Steward focus scheduler
 # focus.json — from the GitHub UI, any Claude session, or (roadmap) the
 # Manager console. No workflow edits, takes effect next tick.
 #
-# Requires the STEWARD_PAT secret (GITHUB_TOKEN-initiated dispatches don't
-# start workflow runs, so the PAT does the dispatching).
+# Dispatches with the built-in GITHUB_TOKEN (`actions: write` below):
+# workflow_dispatch and repository_dispatch are GitHub's documented exceptions
+# to the "GITHUB_TOKEN events don't start workflow runs" rule, and a same-repo
+# dispatch needs no PAT at all. (The old STEWARD_PAT dispatching 403'd the
+# first time the roster actually enabled an app — 2026-07-16.)
 
 on:
   schedule:
@@ -21,6 +24,7 @@ on:
 
 permissions:
   contents: read
+  actions: write   # lets GITHUB_TOKEN dispatch steward-improve on this repo
 
 concurrency:
   group: steward-focus
@@ -35,9 +39,8 @@ jobs:
 
       - name: Dispatch focus runs per roster
         env:
-          GH_TOKEN: ${{ secrets.STEWARD_PAT }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          [ -n "$GH_TOKEN" ] || { echo "::error::STEWARD_PAT secret is missing"; exit 1; }
           HOUR=$(date -u +%-H)
           COUNT=0
           for APP in $(node -e "
