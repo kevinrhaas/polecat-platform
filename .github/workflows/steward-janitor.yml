@@ -52,7 +52,12 @@ jobs:
 
       - name: Write generic smoke (fallback gate)
         run: |
-          cat > /tmp/generic-smoke.mjs <<'EOF'
+          # Lives in /tmp/pwhome ON PURPOSE: ESM resolves import('playwright')
+          # from the importing file's directory (NODE_PATH is ignored), so the
+          # script must sit next to /tmp/pwhome/node_modules. From /tmp it
+          # failed with ERR_MODULE_NOT_FOUND and red-flagged every generic-gate
+          # PR (first seen on games.polecat.live#2).
+          cat > /tmp/pwhome/generic-smoke.mjs <<'EOF'
           // Generic janitor gate: serve the repo root, load "/" at mobile +
           // desktop, zero pageerrors/console errors. Used when a repo has no
           // smoke script of its own. Repo path = argv[2].
@@ -83,7 +88,7 @@ jobs:
           console.log('generic smoke green');
           process.exit(0);
           EOF
-          node --check /tmp/generic-smoke.mjs
+          node --check /tmp/pwhome/generic-smoke.mjs
 
       - name: Sweep and merge green automation PRs
         env:
@@ -118,7 +123,7 @@ jobs:
                 GATE="scripts/smoke-test.mjs"; node scripts/smoke-test.mjs > /tmp/gate.log 2>&1
               else
                 GATE="generic (serve / at 390px+1280px, zero pageerrors)"
-                node /tmp/generic-smoke.mjs "$DIR" > /tmp/gate.log 2>&1
+                node /tmp/pwhome/generic-smoke.mjs "$DIR" > /tmp/gate.log 2>&1
               fi
               RC=$?
               set -e
