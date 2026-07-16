@@ -1,4 +1,4 @@
-# Polecat Shell — API Reference (v0.3.0)
+# Polecat Shell — API Reference (v0.4.0)
 
 Plain ES modules, no dependencies, no build. Import from `vendor/polecat-shell/`.
 Every module that persists anything takes a `storageKey` — apps keep their historical
@@ -59,7 +59,9 @@ DOM nodes, arrays, or (v0.3.0) HTML strings ·
 Single-color inline-SVG registry (24×24 viewBox, `stroke: currentColor`).
 `icon(name, size=20) -> svg string` · `registerIcons(map)` for app families ·
 `iconNames()`. Never ship multi-color or filled icon sets — theming comes free from
-currentColor.
+currentColor. The base set includes the chrome/media controls `back`,
+`fullscreen`, `sound`, `muted` (v0.4.0 — promoted from Games' game-chrome, so
+apps no longer need to `registerIcons()` them locally).
 
 ## shell.js
 
