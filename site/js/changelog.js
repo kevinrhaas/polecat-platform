@@ -3,6 +3,11 @@
 // no // inside item text. Empty ts is stamped by CI at publish time.
 
 export const CHANGELOG = [
+  { v: 8, title: 'Analytics is just Analytics now', kind: 'improvement', ts: '',
+    items: [
+      'The Analytics app card drops the old "Dashboard Studio" tagline -- it\'s simply Analytics: connect your data, build dashboards, share anywhere.',
+      'The launcher\'s vendored shell synced to v0.1.1 to carry the new catalog.',
+    ] },
   { v: 7, title: 'A proper front-door address', kind: 'improvement', ts: '2026-07-16T17:56:47Z',
     items: [
       'The Email button now reaches kevin.haas@polecat.live.',
