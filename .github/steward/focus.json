@@ -14,7 +14,7 @@
       "everyHours": 1
     },
     "analytics.polecat.live": {
-      "enabled": false,
+      "enabled": true,
       "everyHours": 1
     },
     "autoselector.polecat.live": {
