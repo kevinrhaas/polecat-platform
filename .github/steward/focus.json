@@ -1,5 +1,5 @@
 {
-  "_doc": "Focus roster for steward-focus.yml (hourly scheduler). Set enabled:true to give an app its own recurring improve runs; everyHours controls cadence (1 = every hour, 2 = every other hour...). Different apps run in parallel (separate repos, per-app concurrency groups); the same app never overlaps itself. Edit this file from the GitHub UI, any Claude session, or (eventually) the Manager console \u2014 changes take effect on the next hourly tick, no workflow edits needed.",
+  "_doc": "Focus roster for steward-focus.yml (hourly scheduler). Set enabled:true to give an app its own recurring improve runs; everyHours controls cadence (1 = every hour, 2 = every other hour...). Different apps run in parallel (separate repos, per-app concurrency groups); the same app never overlaps itself. Edit this file from the GitHub UI, any Claude session, or (eventually) the Manager console — changes take effect on the next hourly tick, no workflow edits needed.",
   "apps": {
     "games.polecat.live": {
       "enabled": false,
@@ -18,7 +18,7 @@
       "everyHours": 1
     },
     "autoselector.polecat.live": {
-      "enabled": true,
+      "enabled": false,
       "everyHours": 1
     },
     "relay.polecat.live": {
