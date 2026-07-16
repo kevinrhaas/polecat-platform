@@ -3,6 +3,10 @@
 // no // inside item text. Empty ts is stamped by CI at publish time.
 
 export const CHANGELOG = [
+  { v: 4, title: 'New hero headline — built to fit', kind: 'improvement', ts: '2026-07-16T16:37:29Z',
+    items: [
+      'The front door now opens with "Data, analytics & apps — built to fit." — the page title and social cards match.',
+    ] },
   { v: 3, title: 'Copy tune-up — the work speaks, not the headcount', kind: 'improvement', ts: '2026-07-16T16:15:29Z',
     items: [
       'The consulting card once headlined by a product is now "Data, end to end" — open-source depth (Pentaho full-platform, Mondrian, and the wider OSS data stack) moves into the body where it belongs.',
