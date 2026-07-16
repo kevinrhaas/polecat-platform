@@ -3,13 +3,16 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Polecat — a suite of joyful, open web apps</title>
-<meta name="description" content="Polecat is a family of fast, joyful, open-source web apps — chat with AI consensus, dashboards, trackers, games, and more. Free, local-first, no sign-up required.">
+<title>Polecat — data, analytics & applications. An open-source collective of one.</title>
+<meta name="description" content="Polecat builds open-source data, analytics, and application software for targeted problems — and offers the thirty years of enterprise data expertise behind it. One human, a fleet of AI agents, everything shipped in the open.">
 <link rel="icon" href="assets/polecat.svg" type="image/svg+xml">
-<meta property="og:title" content="Polecat — a suite of joyful, open web apps">
-<meta property="og:description" content="Chat, Analytics, JobTracker, AutoSelector, Relay, Games — fast, open-source, local-first apps that respect you.">
+<meta property="og:title" content="Polecat — an open-source collective of one">
+<meta property="og:description" content="Data, analytics, and applications for targeted problems, built at agent scale and shipped in the open. Plus the enterprise data consulting behind it.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://polecat.live/">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"Person","name":"Kevin R. Haas","url":"https://polecat.live/","sameAs":["https://www.linkedin.com/in/kevinrhaas/","https://github.com/kevinrhaas"],"jobTitle":"Independent Data, Analytics & AI Consultant","address":{"@type":"PostalAddress","addressLocality":"Chicago","addressRegion":"IL"},"alumniOf":["Northwestern University","University of Florida"],"knowsAbout":["Enterprise data integration","Pentaho","Analytics and business intelligence","Cloud data platforms","Artificial intelligence","Solution architecture"]}
+</script>
 <link rel="stylesheet" href="css/site.css">
 </head>
 <body>
@@ -21,8 +24,9 @@
   </a>
   <div class="nav-links">
     <a href="#apps">Apps</a>
-    <a href="#principles">Principles</a>
-    <a href="https://github.com/kevinrhaas" rel="noopener">Open source</a>
+    <a href="#method">How we build</a>
+    <a href="#work">What I do</a>
+    <a href="#about">About</a>
     <button class="btn btn-ghost" id="signInBtn" type="button">Sign in</button>
   </div>
 </nav>
@@ -30,67 +34,194 @@
 <header class="hero">
   <div class="hero-glow" aria-hidden="true"></div>
   <img class="hero-mascot" src="assets/polecat.svg" width="96" height="96" alt="">
-  <h1>Little apps.<br><span class="grad">Big joy.</span></h1>
-  <p class="hero-sub">Polecat is a family of fast, delightful web apps — AI consensus chat,
-  dashboards, trackers, a neon arcade — all open source, all local-first, all free to use
-  without an account.</p>
+  <h1>An open-source<br><span class="grad">collective of one.</span></h1>
+  <p class="hero-sub">Polecat builds data, analytics, and application software for targeted
+  problems — designed by thirty years of enterprise data experience, built by a fleet of
+  AI agents that ship and test around the clock. All the output of a team. None of the
+  meetings.</p>
   <div class="hero-cta">
-    <a class="btn btn-primary btn-lg" href="#apps">Explore the apps</a>
-    <a class="btn btn-ghost btn-lg" href="https://app.polecat.live">Try the chat →</a>
+    <a class="btn btn-primary btn-lg" href="#apps">See what we've shipped</a>
+    <a class="btn btn-ghost btn-lg" href="#work">Work with me →</a>
   </div>
-  <p class="hero-note">No sign-up. Your data stays in your browser unless you say otherwise.</p>
+  <p class="hero-note">Everything here is open source (GPL-3), local-first, and free to
+  use without an account. Yes, really.</p>
 </header>
 
 <main>
+  <section id="idea" class="band">
+    <div class="wrap">
+      <div class="section-head center">
+        <div class="kicker">The idea</div>
+        <h2>Most organizations don't need another platform.<br>They need their actual problems solved.</h2>
+      </div>
+      <div class="idea-cols">
+        <p>Enterprise software is priced for armies — armies to build it, armies to sell
+        it, armies to sit through the rollout. So targeted problems go unsolved, because
+        no one can justify the overhead for a tool that does one thing well.</p>
+        <p>Polecat works from the other direction. One accountable human sets the
+        architecture, the standards, and the taste; AI agents do the building, testing,
+        and shipping — continuously, in public, with every change gated and reversible.
+        That changes the cost of software so much that "a precise tool for your exact
+        problem" becomes the cheap option, not the extravagant one.</p>
+        <p>The goal is simple: elevate how organizations work, operate, and analyze —
+        by streamlining and simplifying, not by adding another layer. Fewer moving
+        parts, clearer data, tools people actually enjoy using.</p>
+      </div>
+      <div class="stats-band" id="statsBand">
+        <div class="stat"><b data-stat="apps">7</b><span>live apps</span></div>
+        <div class="stat"><b data-stat="releases">900+</b><span>releases shipped</span></div>
+        <div class="stat"><b>100%</b><span>open source</span></div>
+        <div class="stat"><b>1</b><span>human</span></div>
+      </div>
+    </div>
+  </section>
+
   <section id="apps" class="wrap">
     <div class="section-head center">
-      <div class="kicker">The suite</div>
-      <h2>Pick an app, start in seconds</h2>
-      <p class="lead narrow" style="margin-inline:auto">Every tile is live — versions and
-      ship dates come straight from each app's changelog.</p>
+      <div class="kicker">Proof, not promises</div>
+      <h2>The apps</h2>
+      <p class="lead narrow" style="margin-inline:auto">Every tile is live and free —
+      versions and ship dates come straight from each app's changelog. This is what
+      agent-scale development looks like in production.</p>
     </div>
     <div class="apps-grid" id="appsGrid" aria-busy="true"></div>
   </section>
 
-  <section id="principles" class="band">
+  <section id="method" class="band">
     <div class="wrap">
       <div class="section-head center">
-        <div class="kicker">How these are built</div>
-        <h2>Principles over promises</h2>
+        <div class="kicker">How we build</div>
+        <h2>A factory with one foreman</h2>
       </div>
-      <div class="principles">
-        <div class="prin reveal">
-          <div class="prin-ic" aria-hidden="true">⚡</div>
-          <b>Instant &amp; light</b>
-          <span>Plain HTML, CSS and JavaScript. No build step, no trackers, nothing between
-          you and the app.</span>
+      <div class="method-grid">
+        <div class="method reveal">
+          <b>A shared platform, not eight snowflakes</b>
+          <span>Every app runs on one open shell library — design tokens, navigation,
+          theming, changelogs — vendored with integrity hashes. Improve it once, the
+          whole fleet gets better.</span>
         </div>
-        <div class="prin reveal">
-          <div class="prin-ic" aria-hidden="true">🔒</div>
-          <b>Local-first</b>
-          <span>Everything works without an account. Your data lives in your browser;
-          connecting a backend is always your choice.</span>
+        <div class="method reveal">
+          <b>Agents build; gates decide</b>
+          <span>AI agents work in branches and open pull requests. Nothing ships until
+          the app's own test gate passes on mobile and desktop — and if something bad
+          ever lands, the site auto-reverts itself within a minute.</span>
         </div>
-        <div class="prin reveal">
-          <div class="prin-ic" aria-hidden="true">🌱</div>
-          <b>Open source, GPL-3</b>
-          <span>Every app, and the platform behind them, is free software. Self-host the
-          whole suite, backend included.</span>
+        <div class="method reveal">
+          <b>Shipped daily, in public</b>
+          <span>Every change lands with an honest changelog entry, every repo is public,
+          and every app tells you exactly what's new. Software you can watch being
+          made.</span>
         </div>
-        <div class="prin reveal">
-          <div class="prin-ic" aria-hidden="true">✨</div>
-          <b>Joy is a feature</b>
-          <span>Elegant, playful, mobile-first. Ships almost daily — every app tells you
-          what's new, honestly.</span>
+        <div class="method reveal">
+          <b>Local-first, yours-first</b>
+          <span>Apps work fully without an account; your data lives in your browser
+          unless you connect a backend — including your own, because it's all GPL-3
+          and self-hostable end to end.</span>
         </div>
+      </div>
+      <p class="method-foot center">The same factory is available for <em>your</em>
+      targeted problem. That's the pitch, and the site you're reading is the proof.</p>
+    </div>
+  </section>
+
+  <section id="work" class="wrap">
+    <div class="section-head center">
+      <div class="kicker">What I do</div>
+      <h2>Independent data, analytics & AI consulting</h2>
+      <p class="lead narrow" style="margin-inline:auto">I help organizations design,
+      modernize, and improve data platforms, analytics environments, and AI-enabled
+      solutions — moving fluidly from executive strategy to architecture to hands-on
+      implementation and delivery. You don't have to choose between a strategist who
+      can't build and a builder who can't see the business.</p>
+    </div>
+    <div class="xp-grid">
+      <div class="xp reveal">
+        <b>Data integration & pipelines</b>
+        <span>Enterprise-scale ETL/ELT design and optimization, metadata-driven
+        frameworks, migrations off legacy platforms (Informatica and friends), data
+        quality, lineage, and the unglamorous performance work that makes it all hold.</span>
+      </div>
+      <div class="xp reveal">
+        <b>Pentaho, end to end</b>
+        <span>Rare full-platform depth: Data Integration, Server and clustering,
+        Analyzer/Mondrian, Data Catalog, Quality, and Optimizer — deployments, upgrades,
+        security, containerized and cloud environments. I've also built generative-AI
+        extensions for the platform itself.</span>
+      </div>
+      <div class="xp reveal">
+        <b>Cloud & modern data platforms</b>
+        <span>AWS, Azure, and GCP architecture; Kubernetes and containers; Snowflake,
+        Databricks, BigQuery, Redshift; hybrid and multi-cloud designs; migrations
+        sized honestly, with cost and operability treated as features.</span>
+      </div>
+      <div class="xp reveal">
+        <b>Analytics & BI</b>
+        <span>Semantic models, dimensional modeling, governed metrics, embedded and OEM
+        analytics, dashboard modernization — turning business questions into data
+        products people actually use.</span>
+      </div>
+      <div class="xp reveal">
+        <b>AI & intelligent automation</b>
+        <span>Generative AI for real data workflows: document AI, vector search and
+        matching, prompt and evaluation frameworks, and agent-driven development —
+        practiced daily, not read about. This entire site is the demo.</span>
+      </div>
+      <div class="xp reveal">
+        <b>Architecture, strategy & delivery</b>
+        <span>Assessments, modernization roadmaps, proofs of concept, build-vs-buy calls
+        with no software quota behind them — plus the delivery leadership to land it:
+        SOWs, estimation, escalations, and teams that ship.</span>
+      </div>
+    </div>
+    <div class="adv reveal">
+      <div class="kicker">Why this works</div>
+      <p>The unusual part isn't any single skill — it's operating credibly at four
+      levels that rarely live in one consultant:</p>
+      <div class="adv-row">
+        <span class="adv-pill">Executive strategy</span>
+        <span class="adv-pill">Enterprise architecture</span>
+        <span class="adv-pill">Hands-on implementation</span>
+        <span class="adv-pill">Delivery leadership</span>
+      </div>
+      <p class="muted-line">Assess → strategize → roadmap → prototype → implement →
+      troubleshoot → enable your team to run it. Start anywhere in that chain; I've
+      done every link of it for thirty years.</p>
+    </div>
+  </section>
+
+  <section id="about" class="band">
+    <div class="wrap about-wrap">
+      <div class="section-head">
+        <div class="kicker">About</div>
+        <h2>Kevin R. Haas</h2>
+      </div>
+      <div class="about-cols">
+        <p>I've spent thirty years in enterprise data — from building predictive models
+        in the '90s, through senior partner at Inquidia Consulting and director roles at
+        FICO, to leading Pentaho Professional Services globally at Hitachi Vantara:
+        large-scale data and analytics delivery, cloud migrations, GenAI product
+        extensions, and the escalations nobody else wanted. Northwestern and Florida
+        before that. Chicago throughout.</p>
+        <p>Polecat is what happens when all of that meets agent-scale development: an
+        independent practice and an open-source software collective — of one — building
+        the kind of precise, joyful tools I always wished enterprises could afford.
+        The agents don't sleep. I occasionally do.</p>
+      </div>
+      <div class="about-links">
+        <a class="btn btn-primary" href="https://www.linkedin.com/in/kevinrhaas/" rel="noopener">Connect on LinkedIn</a>
+        <a class="btn btn-ghost" href="https://github.com/kevinrhaas" rel="noopener">GitHub</a>
+        <a class="btn btn-ghost" href="mailto:kevinroberthaas@gmail.com">Email</a>
       </div>
     </div>
   </section>
 
   <section class="cta-final">
-    <h2>Ready when you are</h2>
+    <h2>Have a targeted problem?</h2>
+    <p class="lead" style="margin-bottom:24px">Bring it. The first conversation is free,
+    direct, and jargon-proof.</p>
     <div class="hero-cta">
-      <a class="btn btn-primary btn-lg" href="#apps">Open an app</a>
+      <a class="btn btn-primary btn-lg" href="https://www.linkedin.com/in/kevinrhaas/" rel="noopener">Let's talk</a>
+      <a class="btn btn-ghost btn-lg" href="https://games.polecat.live">Or just play the arcade →</a>
     </div>
   </section>
 </main>
@@ -99,10 +230,12 @@
   <div class="foot-brand">Pole<span class="grad">cat</span></div>
   <div class="foot-links">
     <a href="#apps">Apps</a>
+    <a href="#work">Consulting</a>
     <a href="https://github.com/kevinrhaas" rel="noopener">GitHub</a>
+    <a href="https://www.linkedin.com/in/kevinrhaas/" rel="noopener">LinkedIn</a>
     <a href="#" id="whatsNewLink">What's new</a>
   </div>
-  <div class="foot-meta">© 2026 Polecat.live · GPL-3.0 · made with joy</div>
+  <div class="foot-meta">© 2026 Polecat.live · GPL-3.0 · a collective of one, made with joy</div>
 </footer>
 
 <script type="module" src="js/main.js"></script>
