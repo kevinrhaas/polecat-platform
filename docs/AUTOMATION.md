@@ -24,9 +24,15 @@ below.)
 |---|---|---|
 | `steward-improve.yml` | dispatch-only (no schedule) | ONE unit of work on the app that most needs it — shell PRs first, then the MIGRATION.md queue, then stalest-release playbook work. Invoked by `steward-focus.yml` per `focus.json` with an explicit `app=<repo>` (focus mode); a manual dispatch with an empty `app` runs the suite-wide fleet pick. **All scheduling lives in `focus.json`** — the `STEWARD_FOCUS_APP` variable was retired (2026-07-15). |
 | `steward-focus.yml` | hourly tick at :03 UTC (Claude-free) | **The multi-app focus roster.** Reads `.github/steward/focus.json` through `.github/steward/schedule.mjs` (the canonical evaluator) and dispatches one focus improve run per lane due this hour. Lane schedule fields: `enabled`, `everyHours`, `offset` (align which hours the cadence lands on), `window` (UTC hour window, wraps midnight), `startAt` (sleep until), `until` (expire at — "run every X until Y"). Different apps run in parallel; the same app never overlaps itself. Edit lanes from Manager's Fleet Ops panel, the GitHub UI, or any session — effective next tick, no workflow edits. Preview with `node .github/steward/schedule.mjs next`. |
-| `steward-sweep-ux.yml` | daily 06:00 UTC | Read-only user walk of every live site → one prioritized findings issue per app. |
-| `steward-sweep-tech.yml` | daily 09:00 UTC | Read-only audit: pageerrors, changelog contract, vendor sha256 drift, SW caches, CI health, hygiene, secrets → one issue per app. |
-| `steward-janitor.yml` | every 2h (Claude-free) | **The no-manual-merges guarantee.** Sweeps all fleet repos for open `steward/*` / `chore/polecat-shell-*` PRs, re-runs each app's own smoke gate against the branch, merges the green ones, comments once on the red ones. Never touches drafts or PRs labeled `hold` — that label is Kevin's park-for-review switch. |
+| `steward-sweep-ux.yml` | roster job `sweep-ux` (default daily, 06 UTC) | Read-only user walk of every live site → one prioritized findings issue per app. |
+| `steward-sweep-tech.yml` | roster job `sweep-tech` (default daily, 09 UTC) | Read-only audit: pageerrors, changelog contract, vendor sha256 drift, SW caches, CI health, hygiene, secrets → one issue per app. |
+| `steward-janitor.yml` | roster job `janitor` (default every 2h; Claude-free) | **The no-manual-merges guarantee.** Sweeps all fleet repos for open `steward/*` / `chore/polecat-shell-*` PRs, re-runs each app's own smoke gate against the branch, merges the green ones, comments once on the red ones. Never touches drafts or PRs labeled `hold` — that label is Kevin's park-for-review switch. |
+
+The sweeps' and janitor's standalone crons are retired (2026-07-16): **focus.json is
+the single scheduler** — its `jobs` section (`fleet-improve`, `sweep-ux`,
+`sweep-tech`, `janitor`) uses the same lane fields as app lanes (cadence, offset,
+window, startAt, until) and is edited the same ways, including Manager's Fleet Ops
+panel. `fleet-improve` schedules the suite-wide steward pick (off by default).
 | `steward-shell-release.yml` | dispatch only | Bump lib/VERSION + manifest + tag, vendoring PRs to every app, merge the green ones. |
 
 Secrets required on THIS repo: `CLAUDE_CODE_OAUTH_TOKEN` (from `claude setup-token`)

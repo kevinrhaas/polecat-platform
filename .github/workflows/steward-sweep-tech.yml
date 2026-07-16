@@ -6,8 +6,9 @@ name: Steward sweep (tech)
 # STEWARD_PAT secrets.
 
 on:
-  schedule:
-    - cron: '0 9 * * *'      # daily 09:00 UTC (Kevin's cadence)
+  # No cron — scheduled by the focus roster (.github/steward/focus.json
+  # `jobs.sweep-tech`, dispatched by steward-focus.yml's hourly tick). Adjust
+  # cadence/window there — from Manager's Fleet Ops panel or the GitHub UI.
   workflow_dispatch:
 
 permissions:

@@ -50,5 +50,21 @@ jobs:
             gh workflow run steward-improve.yml -R kevinrhaas/polecat-platform -f app="${APP}"
             COUNT=$((COUNT+1))
           done
-          echo "Dispatched ${COUNT} focus run(s) for UTC hour ${HOUR}."
-          [ "$COUNT" -eq 0 ] && echo "(roster has no app enabled for this hour — nothing to do)" || true
+          # Platform-level jobs (focus.json `jobs`) ride the same tick and the
+          # same lane schema: fleet-improve → suite-wide steward pick;
+          # sweep-ux / sweep-tech / janitor → their workflows (their own crons
+          # are retired — this roster is the single scheduler).
+          for JOB in $(node .github/steward/schedule.mjs due-jobs); do
+            case "$JOB" in
+              fleet-improve) WF="steward-improve.yml"; ARGS="-f app=fleet" ;;
+              sweep-ux)      WF="steward-sweep-ux.yml"; ARGS="" ;;
+              sweep-tech)    WF="steward-sweep-tech.yml"; ARGS="" ;;
+              janitor)       WF="steward-janitor.yml"; ARGS="" ;;
+              *) echo "::warning::unknown roster job '$JOB' — skipping"; continue ;;
+            esac
+            echo "→ dispatching job ${JOB} (${WF})"
+            gh workflow run "$WF" -R kevinrhaas/polecat-platform $ARGS
+            COUNT=$((COUNT+1))
+          done
+          echo "Dispatched ${COUNT} run(s) for UTC hour $(date -u +%-H)."
+          [ "$COUNT" -eq 0 ] && echo "(nothing on the roster is due this hour)" || true
