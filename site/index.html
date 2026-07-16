@@ -16,6 +16,8 @@
 <link rel="stylesheet" href="css/site.css">
 </head>
 <body>
+<div class="grain" aria-hidden="true"></div>
+<div class="scroll-progress" aria-hidden="true"></div>
 
 <nav class="nav">
   <a class="brand" href="/">
@@ -34,7 +36,7 @@
 <header class="hero">
   <div class="hero-glow" aria-hidden="true"></div>
   <img class="hero-mascot" src="assets/polecat.svg" width="96" height="96" alt="">
-  <h1>Data, analytics &amp; apps —<br><span class="grad">built to fit.</span></h1>
+  <h1>Data, analytics &amp; apps<br><span class="grad">— built to fit.</span></h1>
   <p class="hero-sub">Polecat builds data, analytics, and application software for targeted
   problems — designed by thirty years of enterprise data experience, built by a fleet of
   AI agents that ship and test around the clock. All the output of a team. None of the
@@ -45,7 +47,15 @@
   </div>
   <p class="hero-note">Everything here is open source (GPL-3), local-first, and free to
   use without an account. Yes, really.</p>
+  <a class="scroll-cue" href="#idea" aria-label="Scroll to the idea">scroll<span aria-hidden="true">↓</span></a>
 </header>
+
+<div class="ticker" aria-hidden="true">
+  <div class="ticker-track">
+    <span>Pentaho</span><span>Snowflake</span><span>Databricks</span><span>BigQuery</span><span>Redshift</span><span>Kubernetes</span><span>AWS</span><span>Azure</span><span>GCP</span><span>GenAI</span><span>Vector search</span><span>ETL &amp; ELT</span><span>Mondrian</span><span>Dimensional modeling</span><span>Document AI</span><span>Agent-driven development</span><span>Open source</span>
+    <span>Pentaho</span><span>Snowflake</span><span>Databricks</span><span>BigQuery</span><span>Redshift</span><span>Kubernetes</span><span>AWS</span><span>Azure</span><span>GCP</span><span>GenAI</span><span>Vector search</span><span>ETL &amp; ELT</span><span>Mondrian</span><span>Dimensional modeling</span><span>Document AI</span><span>Agent-driven development</span><span>Open source</span>
+  </div>
+</div>
 
 <main>
   <section id="idea" class="band">
@@ -96,24 +106,28 @@
       </div>
       <div class="method-grid">
         <div class="method reveal">
+          <i class="mnum">01</i>
           <b>A shared platform, not eight snowflakes</b>
           <span>Every app runs on one open shell library — design tokens, navigation,
           theming, changelogs — vendored with integrity hashes. Improve it once, the
           whole fleet gets better.</span>
         </div>
         <div class="method reveal">
+          <i class="mnum">02</i>
           <b>Agents build; gates decide</b>
           <span>AI agents work in branches and open pull requests. Nothing ships until
           the app's own test gate passes on mobile and desktop — and if something bad
           ever lands, the site auto-reverts itself within a minute.</span>
         </div>
         <div class="method reveal">
+          <i class="mnum">03</i>
           <b>Shipped daily, in public</b>
           <span>Every change lands with an honest changelog entry, every repo is public,
           and every app tells you exactly what's new. Software you can watch being
           made.</span>
         </div>
         <div class="method reveal">
+          <i class="mnum">04</i>
           <b>Local-first, yours-first</b>
           <span>Apps work fully without an account; your data lives in your browser
           unless you connect a backend — including your own, because it's all GPL-3
