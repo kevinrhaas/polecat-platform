@@ -3,6 +3,12 @@
 // no // inside item text. Empty ts is stamped by CI at publish time.
 
 export const CHANGELOG = [
+  { v: 3, title: 'Copy tune-up — the work speaks, not the headcount', kind: 'improvement', ts: '2026-07-16T16:15:29Z',
+    items: [
+      'The consulting card once headlined by a product is now "Data, end to end" — open-source depth (Pentaho full-platform, Mondrian, and the wider OSS data stack) moves into the body where it belongs.',
+      'Dialed back the one-person emphasis across the sales sections; the collective-of-one brand line stays where it earns its keep.',
+      'The stats band now counts the meetings held: zero.',
+    ] },
   { v: 2, title: 'The collective of one — the front door grows up', kind: 'feature', ts: '2026-07-16T15:46:04Z',
     items: [
       'polecat.live now tells the whole story: open-source software for targeted problems, built at agent scale by a collective of one — plus the thirty years of enterprise data, analytics, and AI consulting behind it.',
