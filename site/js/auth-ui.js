@@ -24,7 +24,7 @@ export function initAuthUi(btn){
         el('p', { style: 'margin-bottom:10px', html:
           'Signing in (Google, Apple, or email) will add: one profile across every app, synced workspaces, and sharing.' }),
         el('p', { style: 'font-size:13px', html:
-          'Self-hosters: the suite is GPL-3 and the backend seam is open — point any app at your own Supabase. See the <a href="https://github.com/kevinrhaas/polecat-platform" rel="noopener">platform docs on GitHub</a>.' }),
+          'Self-hosters: the suite is GPL-3 and the backend seam is open — you can point any app at your own backend.' }),
       ]),
     });
   });
