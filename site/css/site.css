@@ -251,10 +251,13 @@ body::after  { background: radial-gradient(circle, var(--brand-b), transparent 6
 .hero .hero-note { animation-delay: .38s; }
 .hero .scroll-cue { animation-delay: .55s; }
 
-/* hero: pointer spotlight (JS sets --mx/--my; pointer:fine only) */
-.hero::before { content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none; opacity: 0; transition: opacity .4s ease;
-  background: radial-gradient(340px circle at var(--mx, 50%) var(--my, 40%), rgba(224,138,69,.13), rgba(176,112,240,.07) 45%, transparent 70%); }
-.hero.lit::before { opacity: 1; }
+/* page-wide pointer spotlight (JS sets --mx/--my; pointer:fine only).
+   Fixed + viewport-spanning (never clips against a content box) and blended
+   additively above section backgrounds, so it follows the cursor across the
+   whole page without washing out text. Sits under the nav/grain. */
+.spotlight { position: fixed; inset: 0; z-index: 45; pointer-events: none; opacity: 0; transition: opacity .5s ease; mix-blend-mode: screen;
+  background: radial-gradient(380px circle at var(--mx, 50%) var(--my, 40%), rgba(224,138,69,.11), rgba(176,112,240,.06) 45%, transparent 70%); }
+.spotlight.on { opacity: 1; }
 
 /* mascot: playful wiggle when you poke it */
 .hero-mascot:hover { animation: riseIn .7s cubic-bezier(.22,.8,.3,1) both, wiggle .6s ease-in-out; }
