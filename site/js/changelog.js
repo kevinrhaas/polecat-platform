@@ -3,6 +3,10 @@
 // no // inside item text. Empty ts is stamped by CI at publish time.
 
 export const CHANGELOG = [
+  { v: 7, title: 'A proper front-door address', kind: 'improvement', ts: '2026-07-16T17:56:47Z',
+    items: [
+      'The Email button now reaches kevin.haas@polecat.live.',
+    ] },
   { v: 6, title: 'The spotlight goes everywhere', kind: 'fix', ts: '2026-07-16T17:12:37Z',
     items: [
       'The pointer spotlight now follows you across the whole page, blended so it lights the backdrop without washing out text.',
