@@ -3,6 +3,10 @@
 // no // inside item text. Empty ts is stamped by CI at publish time.
 
 export const CHANGELOG = [
+  { v: 8, title: 'Biography, in the right order', kind: 'improvement', ts: '2026-07-16T20:09:18Z',
+    items: [
+      'About now tells it the way it happened: Florida, then Northwestern, then Chicago ever since.',
+    ] },
   { v: 7, title: 'A proper front-door address', kind: 'improvement', ts: '2026-07-16T17:56:47Z',
     items: [
       'The Email button now reaches kevin.haas@polecat.live.',
