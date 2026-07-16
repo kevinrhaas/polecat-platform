@@ -3,7 +3,14 @@
 // no // inside item text. Empty ts is stamped by CI at publish time.
 
 export const CHANGELOG = [
-  { v: 1, title: 'The suite front door', kind: 'feature', ts: '',
+  { v: 2, title: 'The collective of one — the front door grows up', kind: 'feature', ts: '2026-07-16T15:46:04Z',
+    items: [
+      'polecat.live now tells the whole story: open-source software for targeted problems, built at agent scale by a collective of one — plus the thirty years of enterprise data, analytics, and AI consulting behind it.',
+      'New sections: The Idea (why targeted beats platform), How We Build (the PR-gated agent factory), What I Do (six consulting practice areas and the four-level advantage), and About Kevin, with LinkedIn and GitHub links.',
+      'Live stats band — app count and total releases shipped are summed from the fleet\u2019s own changelogs.',
+      'Chat is now simply one app among equals on the launcher grid.',
+    ] },
+  { v: 1, title: 'The suite front door', kind: 'feature', ts: '2026-07-16T15:46:04Z',
     items: [
       'polecat.live becomes the home of the whole suite: a marketing front door plus a live app launcher.',
       'Launcher grid renders every public app from the fleet catalog with live version and ship-time status ingested from each app’s changelog — fully offline-safe.',
