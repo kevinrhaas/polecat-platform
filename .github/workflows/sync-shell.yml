@@ -79,8 +79,28 @@ jobs:
             git config user.email "ci@polecat.live"
             git commit -m "chore: polecat-shell v${VERSION}"
             git push -u origin "$BRANCH" --force
-            gh pr create --title "chore: polecat-shell v${VERSION}" \
+            # Create the PR, but never swallow a real failure: a rate-limited
+            # `gh pr create` once left branches pushed with NO PRs while the
+            # job reported success. Retry once, then verify a PR actually
+            # exists for the branch; a pushed-but-PR-less app fails the job.
+            if ! gh pr create --title "chore: polecat-shell v${VERSION}" \
               --body "Vendored shell update from polecat-platform@${{ github.event.inputs.ref }} into ${VENDOR}/. Review after this app's smoke passes. The vendored shell is read-only in app repos — see docs/SHELL-API.md in polecat-platform." \
-              --head "$BRANCH" || echo "PR may already exist"
+              --head "$BRANCH"; then
+              echo "pr create failed — retrying in 30s"
+              sleep 30
+              gh pr create --title "chore: polecat-shell v${VERSION}" \
+                --body "Vendored shell update from polecat-platform@${{ github.event.inputs.ref }} into ${VENDOR}/. Review after this app's smoke passes. The vendored shell is read-only in app repos — see docs/SHELL-API.md in polecat-platform." \
+                --head "$BRANCH" || true
+              if [ -z "$(gh pr list --head "$BRANCH" --state open --json number --jq '.[].number' 2>/dev/null)" ]; then
+                echo "::error::${APP}: branch ${BRANCH} pushed but no open PR exists — open it manually or re-dispatch."
+                FAILED="${FAILED} ${APP}"
+              else
+                echo "PR exists for ${BRANCH}."
+              fi
+            fi
             cd -; rm -rf /tmp/app
           done
+          if [ -n "${FAILED:-}" ]; then
+            echo "::error::PR creation incomplete for:${FAILED}"
+            exit 1
+          fi
