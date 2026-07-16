@@ -40,7 +40,7 @@
   },
   "jobs": {
     "fleet-improve": {
-      "enabled": false,
+      "enabled": true,
       "everyHours": 2
     },
     "sweep-ux": {
