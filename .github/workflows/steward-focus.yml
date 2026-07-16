@@ -41,14 +41,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          HOUR=$(date -u +%-H)
           COUNT=0
-          for APP in $(node -e "
-            const f = require('./.github/steward/focus.json');
-            const hour = ${HOUR};
-            for (const [app, c] of Object.entries(f.apps || {})) {
-              if (c.enabled && hour % Math.max(1, c.everyHours || 1) === 0) console.log(app);
-            }"); do
+          # schedule.mjs is the canonical lane evaluator (cadence, offset,
+          # window, startAt, until — see its header). `due` prints the apps
+          # whose lanes fire this hour.
+          for APP in $(node .github/steward/schedule.mjs due); do
             echo "→ dispatching focus run for ${APP}"
             gh workflow run steward-improve.yml -R kevinrhaas/polecat-platform -f app="${APP}"
             COUNT=$((COUNT+1))
