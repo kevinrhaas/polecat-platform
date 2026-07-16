@@ -118,16 +118,16 @@ if (!noMotion) {
 }
 
 if (!noMotion && finePointer) {
-  // hero spotlight follows the pointer
-  const hero = document.querySelector('.hero');
-  if (hero) {
-    hero.addEventListener('pointermove', (e) => {
-      const r = hero.getBoundingClientRect();
-      hero.style.setProperty('--mx', ((e.clientX - r.left) / r.width * 100) + '%');
-      hero.style.setProperty('--my', ((e.clientY - r.top) / r.height * 100) + '%');
-      hero.classList.add('lit');
-    });
-    hero.addEventListener('pointerleave', () => hero.classList.remove('lit'));
+  // page-wide spotlight follows the pointer (layer is fixed + viewport-
+  // spanning; coordinates are viewport-relative — see .spotlight in site.css)
+  const spot = document.querySelector('.spotlight');
+  if (spot) {
+    document.addEventListener('pointermove', (e) => {
+      spot.style.setProperty('--mx', (e.clientX / innerWidth * 100) + '%');
+      spot.style.setProperty('--my', (e.clientY / innerHeight * 100) + '%');
+      spot.classList.add('on');
+    }, { passive: true });
+    document.documentElement.addEventListener('pointerleave', () => spot.classList.remove('on'));
   }
 
   // app cards: gentle 3D tilt toward the pointer

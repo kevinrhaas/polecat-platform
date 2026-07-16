@@ -3,6 +3,11 @@
 // no // inside item text. Empty ts is stamped by CI at publish time.
 
 export const CHANGELOG = [
+  { v: 6, title: 'The spotlight goes everywhere', kind: 'fix', ts: '2026-07-16T17:12:37Z',
+    items: [
+      'The pointer spotlight now follows you across the whole page, blended so it lights the backdrop without washing out text.',
+      'Fixed the hard vertical seam on wide screens — the glow was clipping against the hero content box.',
+    ] },
   { v: 5, title: 'The front door gets sexier — glamour layer v2', kind: 'feature', ts: '2026-07-16T16:42:45Z',
     items: [
       'The hero now enters in a staggered rise, carries a pointer-following spotlight, and the mascot wiggles when poked.',
