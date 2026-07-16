@@ -1,5 +1,5 @@
 {
-  "_doc": "Focus roster for steward-focus.yml (hourly scheduler). Set enabled:true to give an app its own recurring improve runs; everyHours controls cadence (1 = every hour, 2 = every other hour...). Different apps run in parallel (separate repos, per-app concurrency groups); the same app never overlaps itself. Edit this file from the GitHub UI, any Claude session, or (eventually) the Manager console — changes take effect on the next hourly tick, no workflow edits needed.",
+  "_doc": "Focus roster for steward-focus.yml (hourly scheduler, tick at :03 UTC). Lane fields beyond enabled/everyHours (all optional): offset (which hours the cadence lands on — hourUTC % everyHours === offset, so 'align next run to 21:00' is offset = 21 % everyHours), window ([startUTC,endUTC) hour window, wraps midnight), startAt (ISO — lane sleeps until then), until (ISO — lane expires then; 'run every X until Y'). Evaluated by .github/steward/schedule.mjs (the canonical logic — `node .github/steward/schedule.mjs next` previews every lane). Edit this file from the GitHub UI, any Claude session, or Manager's Fleet Ops panel — changes take effect on the next hourly tick, no workflow edits needed. Different apps run in parallel; the same app never overlaps itself.",
   "apps": {
     "games.polecat.live": {
       "enabled": false,
