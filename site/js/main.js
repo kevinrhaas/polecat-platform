@@ -96,6 +96,59 @@ if(band && !matchMedia('(prefers-reduced-motion: reduce)').matches){
 
 initAuthUi(document.getElementById('signInBtn'));
 
+// ── glamour v2: scroll progress, hero spotlight, card tilt ──────────────────
+// All motion-gated: nothing runs for reduced-motion users, and the pointer
+// effects only bind on fine pointers (no jitter on touch).
+const noMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const finePointer = matchMedia('(pointer: fine)').matches;
+
+if (!noMotion) {
+  // scroll progress thread (rAF-throttled; CSS reads --scroll)
+  const bar = document.querySelector('.scroll-progress');
+  if (bar) {
+    let ticking = false;
+    const paint = () => {
+      const max = document.documentElement.scrollHeight - innerHeight;
+      bar.style.setProperty('--scroll', max > 0 ? Math.min(1, scrollY / max) : 0);
+      ticking = false;
+    };
+    addEventListener('scroll', () => { if (!ticking) { ticking = true; requestAnimationFrame(paint); } }, { passive: true });
+    paint();
+  }
+}
+
+if (!noMotion && finePointer) {
+  // hero spotlight follows the pointer
+  const hero = document.querySelector('.hero');
+  if (hero) {
+    hero.addEventListener('pointermove', (e) => {
+      const r = hero.getBoundingClientRect();
+      hero.style.setProperty('--mx', ((e.clientX - r.left) / r.width * 100) + '%');
+      hero.style.setProperty('--my', ((e.clientY - r.top) / r.height * 100) + '%');
+      hero.classList.add('lit');
+    });
+    hero.addEventListener('pointerleave', () => hero.classList.remove('lit'));
+  }
+
+  // app cards: gentle 3D tilt toward the pointer
+  grid.addEventListener('pointermove', (e) => {
+    const card = e.target.closest('.app-card');
+    if (!card) return;
+    const r = card.getBoundingClientRect();
+    const px = (e.clientX - r.left) / r.width - .5;   // -0.5 … 0.5
+    const py = (e.clientY - r.top) / r.height - .5;
+    card.style.setProperty('--ry', (px * 7).toFixed(2) + 'deg');
+    card.style.setProperty('--rx', (py * -7).toFixed(2) + 'deg');
+  });
+  grid.addEventListener('pointerout', (e) => {
+    const card = e.target.closest('.app-card');
+    if (card && !card.contains(e.relatedTarget)) {
+      card.style.setProperty('--rx', '0deg');
+      card.style.setProperty('--ry', '0deg');
+    }
+  });
+}
+
 // "What's new" in the footer just links to the newest entry's app for now —
 // the launcher's own changelog ships alongside (js/changelog.js).
 document.getElementById('whatsNewLink').addEventListener('click', async (e) => {
