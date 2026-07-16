@@ -1,4 +1,4 @@
-# Polecat Shell — API Reference (v0.2.0)
+# Polecat Shell — API Reference (v0.2.1)
 
 Plain ES modules, no dependencies, no build. Import from `vendor/polecat-shell/`.
 Every module that persists anything takes a `storageKey` — apps keep their historical
@@ -79,7 +79,10 @@ appSwitcher(catalog, { current }) -> node           // waffle menu for the topba
 ```
 
 Rail behavior: collapse to icons, drag-to-resize, mobile drawer + backdrop, state
-persisted under the app's keys. Sections filter by `minMode`/`admin`.
+persisted under the app's keys. Sections filter by `minMode`/`admin`. The drawer
+never pops open over content: it boots closed on mobile, AND an open desktop rail
+auto-closes (without persisting) when the viewport crosses into drawer range
+mid-session — window shrink or phone rotation (v0.2.1).
 
 ## whatsnew.js
 
