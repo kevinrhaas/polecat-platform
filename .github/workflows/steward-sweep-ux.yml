@@ -69,7 +69,12 @@ jobs:
           RELAY_ADMIN_TOKEN: ${{ secrets.RELAY_ADMIN_TOKEN }}
           MODELSERVER_ADMIN_TOKEN: ${{ secrets.MODELSERVER_ADMIN_TOKEN }}
         run: |
+          set -o pipefail
           claude -p "$(cat .github/steward/sweep-ux.md)" \
             --dangerously-skip-permissions \
             --max-turns 120 \
-            --allowedTools "Bash,Read,Glob,Grep,Write"
+            --allowedTools "Bash,Read,Glob,Grep,Write" | tee /tmp/steward-out.txt
+
+      - name: Journal the run
+        if: always()
+        run: bash .github/steward/journal.sh "${{ github.run_id }}" "Steward sweep (UX)" "${{ job.status }}" /tmp/steward-out.txt
