@@ -108,6 +108,7 @@ jobs:
           RELAY_ADMIN_TOKEN: ${{ secrets.RELAY_ADMIN_TOKEN }}
           MODELSERVER_ADMIN_TOKEN: ${{ secrets.MODELSERVER_ADMIN_TOKEN }}
         run: |
+          set -o pipefail
           # an explicit 'fleet' input (or an empty app) means the suite-wide pick
           [ "$FOCUS_APP" = "fleet" ] && FOCUS_APP=""
           PROMPT="$(cat .github/steward/improve.md)
@@ -116,4 +117,11 @@ jobs:
           claude -p "$PROMPT" \
             --dangerously-skip-permissions \
             --max-turns 150 \
-            --allowedTools "Bash,Edit,Write,Read,Glob,Grep"
+            --allowedTools "Bash,Edit,Write,Read,Glob,Grep" | tee /tmp/steward-out.txt
+
+      # The run's own account of what it did (the prompt ends by printing a
+      # summary) goes to the Steward journal issue — Manager's Fleet Ops shows
+      # it in the run's in-panel review.
+      - name: Journal the run
+        if: always()
+        run: bash .github/steward/journal.sh "${{ github.run_id }}" "Steward improve — ${{ github.event.inputs.app || 'fleet pick' }}" "${{ job.status }}" /tmp/steward-out.txt

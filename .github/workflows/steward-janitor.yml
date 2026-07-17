@@ -98,6 +98,7 @@ jobs:
         run: |
           git config --global url."https://x-access-token:${GH_TOKEN}@github.com/kevinrhaas/".insteadOf "https://github.com/kevinrhaas/"
           MERGED=0; FAILED=0; SKIPPED=0
+          : > /tmp/steward-out.txt   # action list for the Steward journal
           for REPO in $FLEET; do
             PRS=$(gh pr list -R "kevinrhaas/$REPO" --state open \
               --json number,headRefName,isDraft,labels \
@@ -131,10 +132,15 @@ jobs:
               cd /; rm -rf "$DIR"
               if [ $RC -eq 0 ]; then
                 echo "GREEN ($GATE) → merging"
-                if gh pr merge "$N" -R "kevinrhaas/$REPO" --squash; then MERGED=$((MERGED+1)); else echo "merge failed (conflict?)"; SKIPPED=$((SKIPPED+1)); fi
+                if gh pr merge "$N" -R "kevinrhaas/$REPO" --squash; then
+                  MERGED=$((MERGED+1)); echo "- merged kevinrhaas/$REPO#$N (smoke green)" >> /tmp/steward-out.txt
+                else
+                  echo "merge failed (conflict?)"; SKIPPED=$((SKIPPED+1)); echo "- merge FAILED (conflict?) on kevinrhaas/$REPO#$N" >> /tmp/steward-out.txt
+                fi
               else
                 FAILED=$((FAILED+1))
                 echo "RED ($GATE)"
+                echo "- parked kevinrhaas/$REPO#$N — smoke gate failed ($GATE)" >> /tmp/steward-out.txt
                 if ! gh pr view "$N" -R "kevinrhaas/$REPO" --json comments --jq '.comments[].body' | grep -q "Steward janitor: smoke gate FAILED"; then
                   TAIL=$(tail -c 1500 /tmp/gate.log)
                   gh pr comment "$N" -R "kevinrhaas/$REPO" --body "Steward janitor: smoke gate FAILED (\`$GATE\`) — leaving this PR open. Add the \`hold\` label to keep the janitor away while investigating. Log tail:
@@ -146,4 +152,11 @@ jobs:
               fi
             done
           done
-          echo "janitor done: merged=$MERGED red=$FAILED skipped=$SKIPPED"
+          [ -s /tmp/steward-out.txt ] || echo "Nothing to do — no open automation PRs outside hold/draft." >> /tmp/steward-out.txt
+          echo "janitor done: merged=$MERGED red=$FAILED skipped=$SKIPPED" | tee -a /tmp/steward-out.txt
+
+      - name: Journal the run
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.STEWARD_PAT }}
+        run: bash .github/steward/journal.sh "${{ github.run_id }}" "Steward janitor" "${{ job.status }}" /tmp/steward-out.txt
