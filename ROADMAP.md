@@ -12,7 +12,8 @@
       automatically on deploy; same-account transfer)
 - [x] Steward routines: fleet-improve (every 2h), fleet-sweep-ux (Mon), fleet-sweep-tech
       (Thu), shell-release (on demand) — LIVE 2026-07-15 (AUTOMATION.md)
-- [ ] Migrate jobtracker → manager → autoselector (MIGRATION.md; relay deliberately last)
+- [x] Migrate jobtracker → manager → autoselector (MIGRATION.md; DONE 2026-07-17;
+      relay deliberately last, still open)
 - [ ] Fleet Ops in the Manager console: manage the steward from manager.polecat.live —
       toggle focus.json apps/cadence and dispatch/observe steward runs via the GitHub
       API (contents + actions) using a vault credential; surface run history, open
