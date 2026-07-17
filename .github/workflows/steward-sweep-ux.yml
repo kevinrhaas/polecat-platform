@@ -50,6 +50,10 @@ jobs:
       - name: Run sweep
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # Optional: unlocks manager.polecat.live/app/ (client-side invite
+          # gate) so the sweep can exercise the real app. Empty = gate stays
+          # closed and the sweep notes it can only audit source.
+          MANAGER_ADMIN_TOKEN: ${{ secrets.MANAGER_ADMIN_TOKEN }}
         run: |
           claude -p "$(cat .github/steward/sweep-ux.md)" \
             --dangerously-skip-permissions \
