@@ -87,6 +87,10 @@ jobs:
       - name: Run steward
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # Optional: unlocks the manager app's client-side invite gate (live
+          # AND locally-served copies — same key) so manager-focused runs can
+          # drive the real UI. Never echo it into commits, PRs, or issues.
+          MANAGER_ADMIN_TOKEN: ${{ secrets.MANAGER_ADMIN_TOKEN }}
         run: |
           # an explicit 'fleet' input (or an empty app) means the suite-wide pick
           [ "$FOCUS_APP" = "fleet" ] && FOCUS_APP=""

@@ -34,6 +34,14 @@ and `STEWARD_PAT` (classic PAT, repo scope on kevinrhaas/* — powers cross-repo
 clone/push and `gh` PRs/issues). Every workflow fails fast with a clear error if
 either is missing.
 
+Optional secret: `MANAGER_ADMIN_TOKEN` — the admin token for the manager app's
+client-side invite gate (lib/access.js). When set, the UX sweep and
+manager-focused improve runs unlock manager.polecat.live/app/ and exercise the
+real UI; when absent, they audit the gate screen + repo source and say so.
+The prompts forbid ever echoing its value into issues, PRs, commits, or logs.
+Note the gate is UX gating, not security (the app is a public static site), so
+this token is low-sensitivity — but treat it as a secret anyway.
+
 **How a run ships (the whole process):** steward works on a `steward/*` branch →
 stamps changelog timestamps with the repo's own tool → runs the repo's smoke gate →
 opens a PR → **merges it itself when green** → the merge triggers that app's
