@@ -52,7 +52,7 @@ concurrency:
 jobs:
   improve:
     runs-on: ubuntu-latest
-    timeout-minutes: 55
+    timeout-minutes: 90
     steps:
       - name: Check secrets
         env:
@@ -77,11 +77,22 @@ jobs:
           git config --global user.email "steward@polecat.live"
           echo "GH_TOKEN=${STEWARD_PAT}" >> "$GITHUB_ENV"
 
+      - name: Resolve playwright version (browser cache key)
+        id: pw
+        run: echo "version=$(npm view playwright version)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: pw-${{ runner.os }}-${{ steps.pw.outputs.version }}-chromium-webkit
+
       - name: Install Claude Code + browsers
         run: |
           npm install -g @anthropic-ai/claude-code
           npm install -D playwright
           # webkit too: several app smoke tests (jobtracker) run the iOS engine
+          # (~215MB of downloads skipped on a warm browser cache)
           npx playwright install --with-deps chromium webkit
 
       - name: Run steward

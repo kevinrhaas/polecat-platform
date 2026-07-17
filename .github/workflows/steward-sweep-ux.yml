@@ -41,6 +41,16 @@ jobs:
           STEWARD_PAT: ${{ secrets.STEWARD_PAT }}
         run: echo "GH_TOKEN=${STEWARD_PAT}" >> "$GITHUB_ENV"
 
+      - name: Resolve playwright version (browser cache key)
+        id: pw
+        run: echo "version=$(npm view playwright version)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: pw-${{ runner.os }}-${{ steps.pw.outputs.version }}-chromium
+
       - name: Install Claude Code + browser
         run: |
           npm install -g @anthropic-ai/claude-code

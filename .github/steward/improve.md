@@ -52,6 +52,13 @@ HARD RULES:
   deploy.yml publishes on merge). Ambiguous, architecturally significant, or
   not fully verified → leave the PR OPEN with the `hold` label and an
   explanation for Kevin instead; `hold` keeps the janitor away.
+- PROCESS HYGIENE (kills the whole run if violated): you yourself are a Node.js
+  process. NEVER run broad process kills — no `pkill node`, `pkill -f node`,
+  `killall node`, `pkill chrome`, or pattern kills that could match your own
+  runtime or Playwright's. To stop a dev server or browser you started, record
+  its PID (`server_pid=$!`) and `kill $server_pid` — kill ONLY PIDs you
+  spawned. (A broad pkill SIGTERMs this run from the inside: exit 143, work
+  lost.)
 - One unit of work only. Update the app's ROADMAP/queue file in the same PR.
   No model identifiers in repo artifacts. Do all work synchronously and finish
   by printing a summary: app picked, why, what shipped, verification run, and
