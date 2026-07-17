@@ -8,14 +8,17 @@ SWEEP every LIVE site: polecat.live, games.polecat.live,
 jobtracker.polecat.live, manager.polecat.live, analytics.polecat.live,
 autoselector.polecat.live, relay.polecat.live, app.polecat.live.
 
-MANAGER'S GATE: manager.polecat.live/app/ sits behind a client-side invite
-gate. If the env var MANAGER_ADMIN_TOKEN is non-empty, paste it into the gate's
-token field and Unlock, then sweep the full app (Dashboard, Releases, Fleet
-Ops, Credentials, Settings, What's New) like any other site. NEVER quote,
-print, screenshot, or write the token's value anywhere — not in issues, logs,
-or the summary; refer to it only as "the admin token". If the var is empty,
-audit the gate screen itself plus the repo's main-branch source, and say so in
-the issue's methodology note.
+GATED APPS: some apps sit behind a client-side invite/admin gate. Per-app
+admin tokens arrive as env vars — MANAGER_ADMIN_TOKEN (manager.polecat.live
+/app/), ANALYTICS_ADMIN_TOKEN, JOBTRACKER_ADMIN_TOKEN, RELAY_ADMIN_TOKEN, and
+MODELSERVER_ADMIN_TOKEN (modelserver.polecat.live, if it serves a UI — sweep
+it too when reachable and file its findings on kevinrhaas/polecat-platform).
+When a site shows a gate and its token var is non-empty, paste the token into
+the gate's field and unlock, then sweep the full app like any other site.
+NEVER quote, print, screenshot, or write any token's value anywhere — not in
+issues, logs, or the summary; refer to them only as "the admin token". If a
+gate appears and its var is empty, audit the gate screen itself plus the
+repo's main-branch source, and say so in the issue's methodology note.
 
 For EACH site, headless at BOTH 390x780 and 1280x800, light AND dark where a
 toggle exists:
