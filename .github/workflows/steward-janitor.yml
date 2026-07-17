@@ -12,8 +12,9 @@ name: Steward janitor
 # passes, still ships without a human. Requires STEWARD_PAT.
 
 on:
-  schedule:
-    - cron: '33 */2 * * *'
+  # No cron — scheduled by the focus roster (.github/steward/focus.json
+  # `jobs.janitor`, every 2h by default; dispatched by steward-focus.yml's
+  # hourly tick). Adjust cadence there — Manager's Fleet Ops or the GitHub UI.
   workflow_dispatch: {}
 
 permissions:

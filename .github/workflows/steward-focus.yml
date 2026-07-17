@@ -11,8 +11,11 @@ name: Steward focus scheduler
 # focus.json — from the GitHub UI, any Claude session, or (roadmap) the
 # Manager console. No workflow edits, takes effect next tick.
 #
-# Requires the STEWARD_PAT secret (GITHUB_TOKEN-initiated dispatches don't
-# start workflow runs, so the PAT does the dispatching).
+# Dispatches with the built-in GITHUB_TOKEN (`actions: write` below):
+# workflow_dispatch and repository_dispatch are GitHub's documented exceptions
+# to the "GITHUB_TOKEN events don't start workflow runs" rule, and a same-repo
+# dispatch needs no PAT at all. (The old STEWARD_PAT dispatching 403'd the
+# first time the roster actually enabled an app — 2026-07-16.)
 
 on:
   schedule:
@@ -21,6 +24,7 @@ on:
 
 permissions:
   contents: read
+  actions: write   # lets GITHUB_TOKEN dispatch steward-improve on this repo
 
 concurrency:
   group: steward-focus
@@ -35,20 +39,32 @@ jobs:
 
       - name: Dispatch focus runs per roster
         env:
-          GH_TOKEN: ${{ secrets.STEWARD_PAT }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          [ -n "$GH_TOKEN" ] || { echo "::error::STEWARD_PAT secret is missing"; exit 1; }
-          HOUR=$(date -u +%-H)
           COUNT=0
-          for APP in $(node -e "
-            const f = require('./.github/steward/focus.json');
-            const hour = ${HOUR};
-            for (const [app, c] of Object.entries(f.apps || {})) {
-              if (c.enabled && hour % Math.max(1, c.everyHours || 1) === 0) console.log(app);
-            }"); do
+          # schedule.mjs is the canonical lane evaluator (cadence, offset,
+          # window, startAt, until — see its header). `due` prints the apps
+          # whose lanes fire this hour.
+          for APP in $(node .github/steward/schedule.mjs due); do
             echo "→ dispatching focus run for ${APP}"
             gh workflow run steward-improve.yml -R kevinrhaas/polecat-platform -f app="${APP}"
             COUNT=$((COUNT+1))
           done
-          echo "Dispatched ${COUNT} focus run(s) for UTC hour ${HOUR}."
-          [ "$COUNT" -eq 0 ] && echo "(roster has no app enabled for this hour — nothing to do)" || true
+          # Platform-level jobs (focus.json `jobs`) ride the same tick and the
+          # same lane schema: fleet-improve → suite-wide steward pick;
+          # sweep-ux / sweep-tech / janitor → their workflows (their own crons
+          # are retired — this roster is the single scheduler).
+          for JOB in $(node .github/steward/schedule.mjs due-jobs); do
+            case "$JOB" in
+              fleet-improve) WF="steward-improve.yml"; ARGS="-f app=fleet" ;;
+              sweep-ux)      WF="steward-sweep-ux.yml"; ARGS="" ;;
+              sweep-tech)    WF="steward-sweep-tech.yml"; ARGS="" ;;
+              janitor)       WF="steward-janitor.yml"; ARGS="" ;;
+              *) echo "::warning::unknown roster job '$JOB' — skipping"; continue ;;
+            esac
+            echo "→ dispatching job ${JOB} (${WF})"
+            gh workflow run "$WF" -R kevinrhaas/polecat-platform $ARGS
+            COUNT=$((COUNT+1))
+          done
+          echo "Dispatched ${COUNT} run(s) for UTC hour $(date -u +%-H)."
+          [ "$COUNT" -eq 0 ] && echo "(nothing on the roster is due this hour)" || true

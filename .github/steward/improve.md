@@ -17,7 +17,8 @@ the picking logic. Otherwise pick, in priority order:
 2. The next unmigrated app in the docs/MIGRATION.md queue that is NOT marked
    ASSIGNED to a dedicated session (currently polecat-app, the polecat repo
    AND analytics are ASSIGNED — skip them and their open PRs entirely; the
-   live queue for you: jobtracker → manager → autoselector → relay) → advance its
+   live queue for you: jobtracker → manager → autoselector (all three DONE as
+   of 2026-07-17) → relay next) → advance its
    shell migration per docs/SHELL-API.md § Migrating an app, one coherent
    slice per run, WIP notes in the PR. NEVER execute the
    app→chat.polecat.live domain rename (DOMAINS.md gated sequence) without
