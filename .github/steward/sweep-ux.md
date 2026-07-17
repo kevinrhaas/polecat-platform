@@ -30,6 +30,10 @@ toggle exists:
 - Note anything broken, ugly, confusing, joyless, or inconsistent with the
   suite.
 
+PROCESS HYGIENE: you are a Node.js process — NEVER run broad kills (`pkill
+node`, `killall node`, `pkill chrome`, pattern kills). Kill only PIDs you
+spawned; a broad pkill terminates this run from the inside.
+
 OUTPUT (read-only run — NO code changes, NO merges):
 - One GitHub issue PER APP titled "UX sweep YYYY-MM-DD" (skip if clean):
   prioritized findings, worst first, each with viewport/theme where seen.

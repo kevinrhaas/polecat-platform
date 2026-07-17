@@ -44,6 +44,16 @@ jobs:
           git config --global url."https://x-access-token:${STEWARD_PAT}@github.com/kevinrhaas/".insteadOf "https://github.com/kevinrhaas/"
           echo "GH_TOKEN=${STEWARD_PAT}" >> "$GITHUB_ENV"
 
+      - name: Resolve playwright version (browser cache key)
+        id: pw
+        run: echo "version=$(npm view playwright version)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: pw-${{ runner.os }}-${{ steps.pw.outputs.version }}-chromium
+
       - name: Install Claude Code + browser
         run: |
           npm install -g @anthropic-ai/claude-code
