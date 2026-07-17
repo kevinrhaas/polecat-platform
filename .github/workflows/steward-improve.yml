@@ -87,10 +87,15 @@ jobs:
       - name: Run steward
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          # Optional: unlocks the manager app's client-side invite gate (live
-          # AND locally-served copies — same key) so manager-focused runs can
-          # drive the real UI. Never echo it into commits, PRs, or issues.
+          # Optional per-app admin tokens: unlock each app's client-side
+          # invite/admin gate (live AND locally-served copies — same key) so
+          # focused runs can drive the real UI. Never echo their values into
+          # commits, PRs, or issues.
           MANAGER_ADMIN_TOKEN: ${{ secrets.MANAGER_ADMIN_TOKEN }}
+          ANALYTICS_ADMIN_TOKEN: ${{ secrets.ANALYTICS_ADMIN_TOKEN }}
+          JOBTRACKER_ADMIN_TOKEN: ${{ secrets.JOBTRACKER_ADMIN_TOKEN }}
+          RELAY_ADMIN_TOKEN: ${{ secrets.RELAY_ADMIN_TOKEN }}
+          MODELSERVER_ADMIN_TOKEN: ${{ secrets.MODELSERVER_ADMIN_TOKEN }}
         run: |
           # an explicit 'fleet' input (or an empty app) means the suite-wide pick
           [ "$FOCUS_APP" = "fleet" ] && FOCUS_APP=""
