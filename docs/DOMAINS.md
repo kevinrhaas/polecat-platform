@@ -5,8 +5,8 @@
 | Domain | Repo | Role |
 |---|---|---|
 | polecat.live | polecat-platform (`site/`) | Suite marketing + launcher (public front door) |
-| chat.polecat.live | polecat-app (renamed role) | The consensus-chat app (future home) |
-| app.polecat.live | polecat-app (current) | → becomes a redirect stub to chat.polecat.live |
+| chat.polecat.live | polecat-app | The consensus-chat app (LIVE — renamed 2026-07-18) |
+| app.polecat.live | polecat (repo) | Data-carrying "we moved" handoff stub → chat.polecat.live (keep for months; installed PWAs pin here) |
 | manager.polecat.live | manager.polecat.live | Fleet console (admin-leaning) |
 | jobtracker.polecat.live | jobtracker.polecat.live | JobTracker |
 | analytics.polecat.live | analytics.polecat.live | Dashboard Studio |
@@ -39,7 +39,12 @@ one non-Pages exception above).
 
 Gap between 2 and 3 = polecat.live serving 404s; keep it to minutes.
 
-## app.polecat.live → chat.polecat.live (GATED — do not rush)
+## app.polecat.live → chat.polecat.live (DONE 2026-07-18 — sequence kept for reference)
+
+Executed on Kevin's written go: handoff shipped + verified (polecat-app#4),
+DNS added by Kevin, Pages repointed (polecat-app#14), the polecat repo claims
+app.polecat.live with the data-carrying stub (polecat#3). Original gated
+sequence below.
 
 PWA installs are pinned to their origin and localStorage does NOT cross origins
 (chat history + BYOK API keys live there). Sequence:
