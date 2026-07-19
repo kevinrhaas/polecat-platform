@@ -14,7 +14,7 @@
       "everyHours": 1
     },
     "analytics.polecat.live": {
-      "enabled": true,
+      "enabled": false,
       "everyHours": 3
     },
     "autoselector.polecat.live": {
@@ -44,16 +44,16 @@
       "everyHours": 2
     },
     "sweep-ux": {
-      "enabled": true,
+      "enabled": false,
       "everyHours": 12
     },
     "sweep-tech": {
-      "enabled": true,
+      "enabled": false,
       "everyHours": 12,
       "offset": 3
     },
     "janitor": {
-      "enabled": true,
+      "enabled": false,
       "everyHours": 2
     }
   }
