@@ -40,6 +40,11 @@ jobs:
           P: ${{ secrets.STEWARD_PAT }}
         run: '[ -n "$P" ] || { echo "::error::STEWARD_PAT secret is missing"; exit 1; }'
 
+      # The janitor clones each fleet repo itself, but the journal step needs
+      # THIS repo's .github/steward/journal.sh on disk — without the checkout
+      # every run died at the end with exit 127 (first seen 2026-07-18).
+      - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
