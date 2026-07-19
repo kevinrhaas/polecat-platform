@@ -1,4 +1,4 @@
-# Polecat Shell — API Reference (v0.4.0)
+# Polecat Shell — API Reference (v0.4.2)
 
 Plain ES modules, no dependencies, no build. Import from `vendor/polecat-shell/`.
 Every module that persists anything takes a `storageKey` — apps keep their historical
