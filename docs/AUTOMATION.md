@@ -50,6 +50,13 @@ ever echoing a token's value into issues, PRs, commits, or logs. These gates
 are UX gating, not security (the apps are public static sites), so the tokens
 are low-sensitivity — but treat them as secrets anyway.
 
+**The Steward journal** (2026-07-17): every steward run finishes by posting what it
+did — the Claude jobs' printed summaries, the janitor's action list — as a comment
+on the always-open `Steward journal` issue (label `steward-journal`, posted by
+`.github/steward/journal.sh`, tagged `<!-- steward-run:ID -->`). Manager's Fleet Ops
+matches the tag to show each run's narrative in its in-panel review. Don't close the
+issue; a new one is auto-created if it goes missing.
+
 **How a run ships (the whole process):** steward works on a `steward/*` branch →
 stamps changelog timestamps with the repo's own tool → runs the repo's smoke gate →
 opens a PR → **merges it itself when green** → the merge triggers that app's

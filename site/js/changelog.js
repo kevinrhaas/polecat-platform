@@ -3,6 +3,11 @@
 // no // inside item text. Empty ts is stamped by CI at publish time.
 
 export const CHANGELOG = [
+  { v: 9, title: 'Chat moved to chat.polecat.live', kind: 'improvement', ts: '',
+    items: [
+      'The Chat tile and every app switcher now point at chat.polecat.live, the app\'s new permanent home.',
+      'The old app.polecat.live keeps a friendly forwarding page that carries your chats, keys and settings across in one tap.',
+    ] },
   { v: 8, title: 'Biography, in the right order', kind: 'improvement', ts: '2026-07-16T20:09:18Z',
     items: [
       'About now tells it the way it happened: Florida, then Northwestern, then Chicago ever since.',

@@ -15,7 +15,7 @@
     },
     "analytics.polecat.live": {
       "enabled": true,
-      "everyHours": 1
+      "everyHours": 3
     },
     "autoselector.polecat.live": {
       "enabled": false,
@@ -40,18 +40,17 @@
   },
   "jobs": {
     "fleet-improve": {
-      "enabled": true,
+      "enabled": false,
       "everyHours": 2
     },
     "sweep-ux": {
       "enabled": true,
-      "everyHours": 24,
-      "offset": 6
+      "everyHours": 12
     },
     "sweep-tech": {
       "enabled": true,
-      "everyHours": 24,
-      "offset": 9
+      "everyHours": 12,
+      "offset": 3
     },
     "janitor": {
       "enabled": true,
