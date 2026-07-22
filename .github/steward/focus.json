@@ -53,8 +53,8 @@
       "offset": 3
     },
     "janitor": {
-      "enabled": false,
-      "everyHours": 2
+      "enabled": true,
+      "everyHours": 6
     }
   }
 }
