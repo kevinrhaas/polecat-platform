@@ -46,7 +46,12 @@ section.wrap { padding-top: 80px; padding-bottom: 80px; }
 .nav-links { display: flex; align-items: center; gap: 22px; font-size: 14px; }
 .nav-links a { color: var(--text-2); text-decoration: none; transition: color .12s; }
 .nav-links a:hover { color: var(--text); }
-@media (max-width: 640px) { .nav-links a:not(.btn) { display: none; } }
+@media (max-width: 640px) {
+  .nav-links a:not(.btn) { display: none; }
+  /* touch target: ~44px minimum (WCAG 2.5.5) — the nav-cta buttons are wide
+     enough already, just short */
+  .btn:not(.icon) { min-height: 44px; }
+}
 
 /* hero */
 .hero { text-align: center; padding: 70px 22px 80px; max-width: 860px; margin: 0 auto; position: relative; }
@@ -140,7 +145,11 @@ section.wrap { padding-top: 80px; padding-bottom: 80px; }
 .modal-foot { display: flex; gap: 10px; justify-content: flex-end; padding: 14px 20px; border-top: 1px solid var(--border); flex-wrap: wrap; }
 .modal .btn.icon { padding: 6px 10px; font-size: 18px; line-height: 1; color: var(--text-2); background: none; border-color: transparent; box-shadow: none; }
 .modal .btn.icon:hover { color: var(--text); transform: none; }
-@media (max-width: 520px) { .modal-back { padding: 12px; } }
+@media (max-width: 520px) {
+  .modal-back { padding: 12px; }
+  /* touch target: the close (×) button measured 37×32 on phones — WCAG 2.5.5 wants ~44px */
+  .modal .btn.icon { width: 44px; height: 44px; }
+}
 
 /* ---- the idea + stats band ---- */
 .idea-cols { max-width: 880px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; font-size: clamp(15px, 2vw, 17px); color: var(--text-2); }
