@@ -59,6 +59,20 @@ HARD RULES:
   its PID (`server_pid=$!`) and `kill $server_pid` — kill ONLY PIDs you
   spawned. (A broad pkill SIGTERMs this run from the inside: exit 143, work
   lost.)
+- RUN VERIFICATION IN THE FOREGROUND — NEVER background it, and NEVER end your
+  turn to "wait" for it. You run headless (`claude -p`): when you yield, the run
+  ENDS. A test suite you started in the background and are "waiting on" will
+  never be checked, and you will open no PR — the run finishes green but empty
+  (this is a real failure mode we have observed hourly: the final message was
+  "I'm waiting for the background Playwright test run… before continuing," after
+  which the process simply exited). So: run the smoke/test command as a BLOCKING
+  foreground command (e.g. `NODE_PATH=$(npm root -g) node tests/run.js`, or the
+  app's smoke) so its exit status is in your hands in the SAME turn, read the
+  result, THEN open and merge the PR — all before you yield. Do not use `&`,
+  `run_in_background`, `nohup`, or "I'll wait" phrasing for verification. If the
+  suite is too slow to finish inside one run, cut the SCOPE of the unit (smaller
+  slice), never the synchrony. Your run is complete only when you have either
+  merged a green PR, or left a PR open with the `hold` label + explanation.
 - One unit of work only. Update the app's ROADMAP/queue file in the same PR.
   No model identifiers in repo artifacts. Do all work synchronously and finish
   by printing a summary: app picked, why, what shipped, verification run, and
