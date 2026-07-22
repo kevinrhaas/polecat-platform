@@ -133,9 +133,13 @@ drag/resize, bulk action bar, CSV/XLS export. Keep using app-local implementatio
 ## catalog.js
 
 The fleet registry (vendored data, offline-safe):
-`FLEET = [{ id, name, url, tagline, icon, accent, status: 'live'|'beta'|'soon',
+`FLEET = [{ id, name, url, tagline, icon, accent, accent2, status: 'live'|'beta'|'soon',
 changelogUrl, visibility: 'public'|'private' }]`. Single source for the launcher grid
-and every app's waffle switcher.
+and every app's waffle switcher. `accent`/`accent2` are the two stops of the app's
+brand gradient (matched to its favicon) — the launcher tile, the marketing header tile
+(`site-chrome`), and the in-app rail tile (`shell.js`, auto-read by `app.id`) all render
+the same `linear-gradient(140deg, accent, accent2)` with a white glyph, so an app's mark
+is one color everywhere. See docs/BRAND.md.
 
 ## site-chrome.js · site-chrome.css
 

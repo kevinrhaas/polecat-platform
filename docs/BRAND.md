@@ -132,6 +132,17 @@ One naming rule across all three surfaces (launcher tile, marketing header,
 in-app rail): same glyph, same app name, same accent. If they disagree, the
 catalog (`lib/catalog.js`) wins.
 
+**One brand color, one tile treatment.** Each catalog entry carries an
+`accent` **and** an `accent2` — the two stops of the app's brand gradient,
+matched to its favicon (JobTracker `#1a8fd6→#12a24f` blue-green, Analytics
+`#d4773b→#f55036` terracotta, Relay `#21c7a8→#12b3a0` green, …). All three
+tiles render the **same** vivid gradient with a **white glyph**
+(`linear-gradient(140deg, accent, accent2)`): the launcher `.app-glyph`, the
+marketing `.psx-tile`, and the in-app rail `.ps-rail-logo` (which auto-reads
+the catalog by `app.id`, so no per-app color wiring). An app's icon reads the
+same color and style whether you see it on the launcher, its landing page, or
+inside the app.
+
 ## Adoption
 
 1. The app vendors the shell (arrives via a `chore: polecat-shell vX.Y.Z` sync
