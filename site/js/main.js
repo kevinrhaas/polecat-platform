@@ -6,6 +6,7 @@
 import { publicFleet } from '../vendor/polecat-shell/catalog.js';
 import { icon } from '../vendor/polecat-shell/icons.js';
 import { relTime } from '../vendor/polecat-shell/ui.js';
+import { siteFooter } from '../vendor/polecat-shell/site-chrome.js';
 import { appStatus } from './ingest.js';
 import { initAuthUi } from './auth-ui.js';
 import { initConnect } from './connect.js';
@@ -151,11 +152,15 @@ if (!noMotion && finePointer) {
   });
 }
 
-// "What's new" in the footer just links to the newest entry's app for now —
-// the launcher's own changelog ships alongside (js/changelog.js).
-document.getElementById('whatsNewLink').addEventListener('click', async (e) => {
-  e.preventDefault();
-  const { CHANGELOG } = await import('./changelog.js');
-  const latest = CHANGELOG[0];
-  alert(`polecat.live v${latest.v} — ${latest.title}\n\n• ${latest.items.join('\n• ')}`);
+// The shared fleet footer (root variant) — same look/feel as every app's
+// footer, keeps the sharp Pole·cat wordmark, drops the old "What's new" link.
+siteFooter('#siteFooter', {
+  links: [
+    { href: '#apps', label: 'Apps' },
+    { href: '#work', label: 'Consulting' },
+    { href: '#connect', label: 'Connect' },
+    { href: 'https://www.linkedin.com/in/kevinrhaas/', label: 'LinkedIn', ext: true },
+  ],
+  root: true,
+  meta: '© 2026 Polecat.live · GPL-3.0 · a collective of one, made with joy',
 });
