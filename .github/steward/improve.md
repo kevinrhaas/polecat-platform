@@ -60,20 +60,39 @@ HARD RULES:
   its PID (`server_pid=$!`) and `kill $server_pid` — kill ONLY PIDs you
   spawned. (A broad pkill SIGTERMs this run from the inside: exit 143, work
   lost.)
-- RUN VERIFICATION IN THE FOREGROUND — NEVER background it, and NEVER end your
-  turn to "wait" for it. You run headless (`claude -p`): when you yield, the run
-  ENDS. A test suite you started in the background and are "waiting on" will
-  never be checked, and you will open no PR — the run finishes green but empty
-  (this is a real failure mode we have observed hourly: the final message was
-  "I'm waiting for the background Playwright test run… before continuing," after
-  which the process simply exited). So: run the smoke/test command as a BLOCKING
-  foreground command (e.g. `NODE_PATH=$(npm root -g) node tests/run.js`, or the
-  app's smoke) so its exit status is in your hands in the SAME turn, read the
-  result, THEN open and merge the PR — all before you yield. Do not use `&`,
-  `run_in_background`, `nohup`, or "I'll wait" phrasing for verification. If the
-  suite is too slow to finish inside one run, cut the SCOPE of the unit (smaller
-  slice), never the synchrony. Your run is complete only when you have either
-  merged a green PR, or left a PR open with the `hold` label + explanation.
+- NEVER SUSPEND YOURSELF MID-RUN. Finish the slice in ONE synchronous pass, or
+  stop cleanly and hand it off — but never park yourself waiting on anything. You
+  run headless (`claude -p`): the moment you yield, the run ENDS with no way to
+  "resume." So there is NO SUCH THING as "I'll continue when X finishes." If you
+  ever catch yourself about to schedule a wake-up, wait on a background task, or
+  write a sentence like "I'll resume when the background job completes / the
+  wakeup fires / the notification arrives" — STOP. That is the #1 observed
+  failure mode: a run backgrounded its Playwright suite, said "I'm waiting for
+  the background test run before continuing," and the process simply exited —
+  green but EMPTY, no PR. Do NOT use `&`, `run_in_background`, `nohup`, a
+  ScheduleWakeup/timer, or any "wait for it" phrasing — not for tests, not for
+  CI, not for anything.
+- RUN VERIFICATION IN THE FOREGROUND, SYNCHRONOUSLY. Run the smoke/test command
+  as a BLOCKING foreground command (e.g. `NODE_PATH=$(npm root -g) node
+  tests/run.js`, or the app's smoke) so its exit status is in your hands in the
+  SAME turn; read the result, THEN open and merge the PR — all before you yield.
+  If a suite is too slow to finish inside one run, cut the SCOPE of the unit
+  (smaller slice), NEVER the synchrony. Each of the three per-run slices runs its
+  own full foreground verification before it merges.
+- THE THREE OUTCOMES when a slice hits something (this is what "keep going" does
+  and does NOT mean — it does NOT mean pushing through failures):
+  * Verification PASSES → merge the green PR. Done; move to the next slice.
+  * Verification FAILS for real, or you're blocked/uncertain → STOP that slice
+    cleanly: leave its PR OPEN with the `hold` label + a short written
+    explanation for Kevin. Do NOT merge broken work, and do NOT retry the same
+    thing forever. Then either start a DIFFERENT independent slice or finish the
+    run.
+  * Transient infra error (rate limit, runner hiccup, network) → let the run end;
+    the next hourly tick retries fresh. Don't fight it, don't loop, don't
+    self-suspend to "wait it out."
+  Your run is complete only when you have, for each slice attempted, either
+  merged a green PR or left a `hold` PR + explanation — reached SYNCHRONOUSLY,
+  never by waiting on a background process.
 - SLICES PER RUN — do UP TO THREE (target 3), then finish:
   * Each slice is its OWN steward branch + PR, fully verified (green suite/smoke
     in the foreground) and MERGED before the next slice starts. NEVER bundle
