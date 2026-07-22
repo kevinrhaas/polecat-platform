@@ -1,5 +1,5 @@
 {
-  "_doc": "Focus roster for steward-focus.yml (hourly scheduler, tick at :03 UTC). Lane fields beyond enabled/everyHours (all optional): offset (which hours the cadence lands on — hourUTC % everyHours === offset, so 'align next run to 21:00' is offset = 21 % everyHours), window ([startUTC,endUTC) hour window, wraps midnight), startAt (ISO — lane sleeps until then), until (ISO — lane expires then; 'run every X until Y'). Evaluated by .github/steward/schedule.mjs (the canonical logic — `node .github/steward/schedule.mjs next` previews every lane). Edit this file from the GitHub UI, any Claude session, or Manager's Fleet Ops panel — changes take effect on the next hourly tick, no workflow edits needed. Different apps run in parallel; the same app never overlaps itself. The `jobs` section schedules the platform-level recurring jobs with the SAME lane fields: fleet-improve (suite-wide steward pick), sweep-ux, sweep-tech, janitor — their standalone workflow crons are retired; this roster is the single scheduler.",
+  "_doc": "Focus roster for steward-focus.yml (hourly scheduler, tick at :03 UTC). Lane fields beyond enabled/everyHours (all optional): offset (which hours the cadence lands on — hourUTC % everyHours === offset, so 'align next run to 21:00' is offset = 21 % everyHours), window ([startUTC,endUTC) hour window, wraps midnight), startAt (ISO — lane sleeps until then), until (ISO — lane expires then; 'run every X until Y'), slices (1..5, default 1 — how many independent improve runs to dispatch each time the lane fires; each slice is a full separate unit of work with its own PR + smoke gate, serialized by steward-improve's per-app concurrency so the app never overlaps itself; raise it to grind an app harder for a while). Evaluated by .github/steward/schedule.mjs (the canonical logic — `node .github/steward/schedule.mjs next` previews every lane). Edit this file from the GitHub UI, any Claude session, or Manager's Fleet Ops panel — changes take effect on the next hourly tick, no workflow edits needed. Different apps run in parallel; the same app never overlaps itself. The `jobs` section schedules the platform-level recurring jobs with the SAME lane fields (slices excepted): fleet-improve (suite-wide steward pick), sweep-ux, sweep-tech, janitor — their standalone workflow crons are retired; this roster is the single scheduler.",
   "apps": {
     "games.polecat.live": {
       "enabled": false,
@@ -15,7 +15,8 @@
     },
     "analytics.polecat.live": {
       "enabled": true,
-      "everyHours": 1
+      "everyHours": 1,
+      "slices": 3
     },
     "autoselector.polecat.live": {
       "enabled": false,
