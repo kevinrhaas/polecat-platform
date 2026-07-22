@@ -13,6 +13,13 @@ import { initConnect } from './connect.js';
 
 const grid = document.getElementById('appsGrid');
 
+// Launcher display order (a polecat.live presentation choice — the shared
+// catalog stays in its own order for every app's waffle). Anything not listed
+// falls to the end in catalog order.
+const ORDER = ['chat', 'analytics', 'modelserver', 'relay', 'jobtracker', 'manager', 'autoselector', 'games'];
+// The two we build mostly for the joy of it — tagged "for fun" on the grid.
+const FUN = new Set(['autoselector', 'games']);
+
 function card(app){
   const a = document.createElement('a');
   a.className = 'app-card reveal';
@@ -22,7 +29,7 @@ function card(app){
     <div class="app-top">
       <div class="app-glyph">${icon(app.icon, 24)}</div>
       <div>
-        <div class="app-name">${app.name}</div>
+        <div class="app-name">${app.name}${FUN.has(app.id) ? '<span class="app-fun">for fun</span>' : ''}</div>
         <div class="app-host">${new URL(app.url).host}</div>
       </div>
     </div>
@@ -45,10 +52,25 @@ async function hydrate(app, el){
   return s.v;
 }
 
-const apps = publicFleet();
+const apps = publicFleet().slice().sort((a, b) => {
+  const ia = ORDER.indexOf(a.id), ib = ORDER.indexOf(b.id);
+  return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+});
 const els = apps.map(card);
 grid.replaceChildren(...els);
 grid.setAttribute('aria-busy', 'false');
+
+// A little bonus: a barely-there mark tucked in the corner that opens Kevin's
+// workshop of made things. Hidden in plain sight — faint until you find it.
+const mystery = document.createElement('a');
+mystery.className = 'mystery';
+mystery.href = 'https://kevinrhaas.github.io/custom/';
+mystery.target = '_blank';
+mystery.rel = 'noopener';
+mystery.setAttribute('aria-label', 'a workshop of made things');
+mystery.title = '?';
+mystery.textContent = '◆';
+document.body.appendChild(mystery);
 
 // Live stats band: app count is static truth; the releases figure sums each
 // app's LATEST_VERSION (version numbers ≈ shipped releases). Falls back to

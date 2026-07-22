@@ -3,6 +3,11 @@
 // no // inside item text. Empty ts is stamped by CI at publish time.
 
 export const CHANGELOG = [
+  { v: 12, title: 'The app grid, reordered — and a couple of tiles just for fun', kind: 'improvement', ts: '2026-07-22T18:26:00Z',
+    items: [
+      'The apps are laid out in a new order on the home grid, leading with Chat, Analytics, and Model Server.',
+      'AutoSelector and Games now wear a little “for fun” tag — they’re built for the joy of it.',
+    ] },
   { v: 11, title: 'One footer for the whole suite', kind: 'improvement', ts: '2026-07-22T16:33:58Z',
     items: [
       'The footer now uses the shared fleet chrome that every Polecat app is adopting, so the whole suite reads as one — the sharp Pole·cat wordmark stays put.',
