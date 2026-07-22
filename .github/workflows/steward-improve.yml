@@ -114,6 +114,14 @@ jobs:
           # Scope DB work to a throwaway `steward_test` schema — never CREATE/
           # DROP/ALTER/DELETE against live `public` tables. Never echo its value.
           SUPABASE_PASSWORD: ${{ secrets.SUPABASE_PASSWORD }}
+          # Browser-side Supabase creds for the analytics M3.2/M7 round-trip
+          # (PostgREST + RLS): the project URL is public (ships in client code),
+          # the publishable/anon key (sb_publishable_… on the new key format) is
+          # browser-safe under RLS. Lets a focused run test the real connect →
+          # sign-in → RLS path, not just server-side SQL. anon key is a secret
+          # for hygiene; never echo it. NOT the sb_secret_… key (server-only).
+          SUPABASE_URL: https://lnngiprrrcxtsawamqei.supabase.co
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: |
           set -o pipefail
           # an explicit 'fleet' input (or an empty app) means the suite-wide pick
