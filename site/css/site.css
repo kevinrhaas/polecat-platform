@@ -89,6 +89,13 @@ section.wrap { padding-top: 80px; padding-bottom: 80px; }
 }
 .app-glyph svg { display: block; }
 .app-name { font-size: 17px; font-weight: 800; letter-spacing: -.3px; }
+.app-fun {
+  margin-left: 8px; font-size: 10.5px; font-weight: 700; letter-spacing: .4px;
+  text-transform: uppercase; vertical-align: middle;
+  padding: 2px 7px; border-radius: 100px; color: var(--c);
+  background: color-mix(in srgb, var(--c) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--c) 32%, transparent);
+}
 .app-host { font-size: 12px; color: var(--text-3); }
 .app-tagline { font-size: 14px; color: var(--text-2); flex: 1; }
 .app-status { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-3); min-height: 18px; }
@@ -329,6 +336,16 @@ body::after  { background: radial-gradient(circle, var(--brand-b), transparent 6
   background: radial-gradient(circle, rgba(224,138,69,.10), rgba(176,112,240,.06) 45%, transparent 68%); animation: haloBreathe 6s ease-in-out infinite; }
 @keyframes haloBreathe { 0%,100% { transform: translate(-50%,-50%) scale(1); opacity: .8; } 50% { transform: translate(-50%,-50%) scale(1.18); opacity: 1; } }
 
+/* the hidden bonus mark — tucked bottom-right, nearly invisible until found */
+.mystery {
+  position: fixed; right: 14px; bottom: 12px; z-index: 80;
+  font-size: 13px; line-height: 1; text-decoration: none;
+  color: var(--text-3); opacity: .12; transition: opacity .25s ease, transform .25s ease, color .25s ease;
+}
+.mystery:hover, .mystery:focus-visible {
+  opacity: .9; color: var(--brand-b); transform: rotate(45deg) scale(1.25); outline: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .grad, body::before, body::after, .adv, .hero-cta .btn-primary { animation: none; }
   .stat::after { display: none; }
@@ -338,6 +355,7 @@ body::after  { background: radial-gradient(circle, var(--brand-b), transparent 6
   .reveal { transform: none; filter: none; }
   .app-card, .app-card:hover { transform: none; }
   .app-card::before, .btn-primary::after { display: none; }
+  .mystery:hover, .mystery:focus-visible { transform: none; }
 }
 
 /* ── Connect-with-us form ───────────────────────────────────────────────── */
