@@ -134,6 +134,29 @@ The fleet registry (vendored data, offline-safe):
 changelogUrl, visibility: 'public'|'private' }]`. Single source for the launcher grid
 and every app's waffle switcher.
 
+## site-chrome.js · site-chrome.css
+
+The shared PUBLIC-SITE header + footer for the fleet's marketing/landing pages
+(distinct from the in-app `shell.js` chrome). One source of truth for the brand
+tile, the "back to polecat.live" affordance, the layout, and the footer — see
+**docs/BRAND.md** for the standard it enforces. Namespaced `psx-` (never
+collides with app CSS or the in-app `ps-` shell).
+
+- `siteHeader(mount, { app, nav, cta, home, theme })` — sticky header: the app's
+  glyph tile + name (left, → `home`), the app's own `nav` sections, an
+  accent-filled `cta` pill, and a muted **`Polecat ↗`** wordmark link to the
+  suite (right). `app` is a catalog id (resolves icon+accent+name) or an
+  explicit `{ name, icon, accent }`.
+- `siteFooter(mount, { app, docs, appUrl, notices, extraLinks })` — the
+  canonical two-line footer: `AppName · part of the polecat.live suite` /
+  `Docs · App · Third-party notices · © YEAR Polecat.live`.
+- `siteFooter(mount, { root: true, links, meta })` — the polecat.live root
+  variant: the sharp Pole·cat wordmark + a suite links row + © meta.
+
+Per-app accent tints the tile + CTA via the inline `--psx-accent` prop; all
+other surfaces follow the viewer's theme. `theme: 'auto'` opts into the light
+media-query fallback (fleet landing pages are dark today).
+
 ## auth/
 
 `schema.js` (contract + `registerAuthSource`), `null.js` (logged-out default),

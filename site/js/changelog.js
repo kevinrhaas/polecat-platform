@@ -3,6 +3,11 @@
 // no // inside item text. Empty ts is stamped by CI at publish time.
 
 export const CHANGELOG = [
+  { v: 11, title: 'One footer for the whole suite', kind: 'improvement', ts: '2026-07-22T16:33:58Z',
+    items: [
+      'The footer now uses the shared fleet chrome that every Polecat app is adopting, so the whole suite reads as one — the sharp Pole·cat wordmark stays put.',
+      'Dropped the old What’s-new footer link.',
+    ] },
   { v: 10, title: 'Connect with us', kind: 'feature', ts: '2026-07-22T15:22:10Z',
     items: [
       'A new Connect section lets you reach out for access to a private app, a question about a build, or a problem worth solving — it comes straight to us.',

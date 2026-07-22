@@ -14,6 +14,7 @@
 {"@context":"https://schema.org","@type":"Person","name":"Kevin R. Haas","url":"https://polecat.live/","sameAs":["https://www.linkedin.com/in/kevinrhaas/"],"jobTitle":"Independent Data, Analytics & AI Consultant","address":{"@type":"PostalAddress","addressLocality":"Chicago","addressRegion":"IL"},"alumniOf":["Northwestern University","University of Florida"],"knowsAbout":["Enterprise data integration","Pentaho","Analytics and business intelligence","Cloud data platforms","Artificial intelligence","Solution architecture"]}
 </script>
 <link rel="stylesheet" href="css/site.css">
+<link rel="stylesheet" href="vendor/polecat-shell/site-chrome.css">
 <script src="js/connect-config.js"></script>
 </head>
 <body>
@@ -279,17 +280,9 @@
   </section>
 </main>
 
-<footer class="foot">
-  <div class="foot-brand">Pole<span class="grad">cat</span></div>
-  <div class="foot-links">
-    <a href="#apps">Apps</a>
-    <a href="#work">Consulting</a>
-    <a href="#connect">Connect</a>
-    <a href="https://www.linkedin.com/in/kevinrhaas/" rel="noopener">LinkedIn</a>
-    <a href="#" id="whatsNewLink">What's new</a>
-  </div>
-  <div class="foot-meta">© 2026 Polecat.live · GPL-3.0 · a collective of one, made with joy</div>
-</footer>
+<!-- the shared fleet footer (root variant) — keeps the sharp Pole·cat wordmark;
+     built by site-chrome.js so it matches every app's footer. -->
+<footer id="siteFooter"></footer>
 
 <script type="module" src="js/main.js"></script>
 </body>
