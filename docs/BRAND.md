@@ -112,6 +112,26 @@ Docs · App · Third-party notices · © 2026 Polecat.live
 typography and separators as the app footers, but no "part of the suite" line
 (it *is* the suite) and **no "What's new" link**.
 
+## In-app rail brand standard
+
+The marketing chrome above is the front door; inside the app the left rail
+carries the matching brand mark, built by `initShell({ app })` (`lib/shell.js`):
+
+- **The glyph tile**: pass `app.icon: icon('<catalogGlyph>', 22)` — the app's
+  own catalog glyph (gauge, chart, briefcase, …), the *same* mark as its
+  launcher tile and its marketing header. `app.wordmark` is a legacy fallback
+  only; new adoptions pass `app.icon`. The tile keeps the brand→accent gradient
+  chassis, so the mark reads white-on-accent everywhere.
+- **The app name** sits beside the tile (shown when the rail is open).
+- **The suite link**: a *barely-there* `polecat.live` link under the name —
+  opacity `.45` at rest, `.9` on hover — the in-app echo of the marketing
+  header's `Polecat ↗`. Visible if you look, never shouting. Opens the suite in
+  a new tab. It hides with the labels when the rail collapses to icons.
+
+One naming rule across all three surfaces (launcher tile, marketing header,
+in-app rail): same glyph, same app name, same accent. If they disagree, the
+catalog (`lib/catalog.js`) wins.
+
 ## Adoption
 
 1. The app vendors the shell (arrives via a `chore: polecat-shell vX.Y.Z` sync

@@ -69,7 +69,10 @@ The app frame: left rail + top bar + main view + right panel + app switcher.
 
 ```js
 initShell({
-  app: { id, name, wordmark? },
+  app: { id, name, icon?, wordmark? },   // icon = the app's catalog glyph
+                                         // (`icon('<glyph>')`) so the rail mark
+                                         // matches its launcher tile; wordmark
+                                         // is the legacy fallback. (v0.5.3)
   sections: [ { key, label, icon, minMode?, admin? } | { group } ],
   onNav(key), isAdmin?(), uiMode?(),
   rail: { storageKey, resizable? },
