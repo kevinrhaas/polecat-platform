@@ -3,6 +3,10 @@
 // no // inside item text. Empty ts is stamped by CI at publish time.
 
 export const CHANGELOG = [
+  { v: 11, title: 'Mobile tap targets, actually shipped', kind: 'fix', ts: '2026-07-22T16:43:47Z',
+    items: [
+      'Buttons and nav rail items in the shell now meet the ~44px minimum on phones — the fix had landed in the shared library but this site was still serving a stale vendored copy.',
+    ] },
   { v: 10, title: 'Connect with us', kind: 'feature', ts: '2026-07-22T15:22:10Z',
     items: [
       'A new Connect section lets you reach out for access to a private app, a question about a build, or a problem worth solving — it comes straight to us.',
