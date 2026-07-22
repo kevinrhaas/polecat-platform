@@ -128,12 +128,19 @@
   outline: 2px solid var(--psx-accent); outline-offset: 3px; border-radius: 4px;
 }
 
-/* mobile: the app's own section links collapse; brand, CTA and the Polecat
-   parent link stay reachable (matches the fleet's existing nav behavior) */
+/* mobile: the app's own section links collapse to the brand + CTA. The brand
+   name can ellipsis and paddings tighten so nothing overflows a narrow phone. */
 @media (max-width: 640px) {
-  .psx-nav { gap: 14px; }
+  .psx-h-in { padding-left: 16px; padding-right: 16px; gap: 10px; }
+  .psx-nav { gap: 12px; }
   .psx-nav > a.psx-section { display: none; }
+  .psx-brand { min-width: 0; }
+  .psx-brand-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .psx-cta { padding: 7px 12px; }
 }
+/* the "Polecat ↗" parent link is redundant with the footer's suite link on a
+   phone — drop it below 560px to keep the header uncrowded */
+@media (max-width: 560px) { .psx-parent { display: none; } }
 
 /* light-surface fallback (no fleet landing page uses it today, but the
    component shouldn't assume dark) */

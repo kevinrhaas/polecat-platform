@@ -86,6 +86,8 @@ One sticky header on every app front door, built by
 - **Center/right — the app's own sections**: `Features`, `How it works`, etc.
   (these stay per-app; they collapse on mobile).
 - **Primary CTA**: the accent-filled pill (`Launch app`, `Open console`, …).
+  Launching the app **opens in a new tab** across the suite (so the marketing
+  page stays put) — the footer's `App` link does the same.
 - **Right edge — the suite affordance**: a muted **`Polecat ↗`** wordmark link
   to `https://polecat.live`. This is the *consistent* "back to the suite" path
   the fleet was missing — same place, same treatment, every app.
