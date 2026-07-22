@@ -16,6 +16,11 @@
 //   until       ISO datetime — the lane expires at this moment ("run every
 //               X until Y"); expired lanes simply stop matching. Flip
 //               `enabled` off (or clear `until`) to tidy up later.
+//   slices      int 1..5 (default 1) — how many independent improve runs to
+//               dispatch each time the lane fires. Each slice is a full,
+//               separate unit of work (its own PR + smoke gate), serialized by
+//               steward-improve's per-app concurrency group so the app never
+//               overlaps itself. Raise it to grind an app harder for a while.
 //
 // Manager's Fleet Ops mirrors this logic for its next-run previews in
 // js/schedule.js — KEEP THE TWO IN SYNC (they are deliberately tiny).
@@ -37,6 +42,14 @@ export function isDueAt(lane, date){
   return true;
 }
 
+// How many independent improve runs a lane dispatches per fired tick (default
+// 1, clamped to 1..5). Slices don't change WHEN a lane fires — only how many
+// units of work it kicks off that hour — so nextRunAt/isDueAt ignore it.
+export function slicesOf(lane){
+  const n = Math.floor(Number(lane && lane.slices) || 1);
+  return Math.max(1, Math.min(5, n));
+}
+
 // The next tick (hh:tickMinute UTC) at which the lane will fire, or null.
 export function nextRunAt(lane, from = new Date(), tickMinute = 3){
   if(!lane || !lane.enabled) return null;
@@ -52,7 +65,9 @@ export function nextRunAt(lane, from = new Date(), tickMinute = 3){
 }
 
 // ---- CLI (used by steward-focus.yml; handy for humans too) -----------------
-//   due       → app lane names due at THIS tick, one per line
+//   due       → app lane names due at THIS tick, one per line, REPEATED once
+//               per slice (a lane with slices:3 prints its app 3×, so the
+//               dispatcher fires 3 independent improve runs for it)
 //   due-jobs  → platform job names due at THIS tick (focus.json `jobs`)
 //   next      → "name<TAB>iso-or-never" for every app lane AND job
 const cmd = process.argv[2];
@@ -60,7 +75,8 @@ if(cmd){
   const f = JSON.parse(readFileSync(new URL('./focus.json', import.meta.url), 'utf8'));
   const now = new Date();
   if(cmd === 'due'){
-    for(const [app, lane] of Object.entries(f.apps || {})) if(isDueAt(lane, now)) console.log(app);
+    for(const [app, lane] of Object.entries(f.apps || {})) if(isDueAt(lane, now))
+      for(let i = 0; i < slicesOf(lane); i++) console.log(app);
   }else if(cmd === 'due-jobs'){
     for(const [job, lane] of Object.entries(f.jobs || {})) if(isDueAt(lane, now)) console.log(job);
   }else if(cmd === 'next'){

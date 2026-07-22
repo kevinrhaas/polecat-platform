@@ -1,9 +1,13 @@
 name: Steward focus scheduler
 
 # Multi-app focus runs, driven by .github/steward/focus.json (the roster).
-# Every hour this cheap, Claude-free job reads the roster and dispatches one
+# Every hour this cheap, Claude-free job reads the roster and dispatches a
 # "Steward improve" run per enabled app whose cadence matches the hour
 # (everyHours: 1 = every hour, 2 = even UTC hours, 3 = hours divisible by 3…).
+# An app's `slices` (1..5, default 1) fires that many independent runs for it
+# this tick — schedule.mjs `due` prints the app once per slice, so the dispatch
+# loop below needs no special-casing; the per-app concurrency group serializes
+# them into back-to-back units of work, each its own PR + smoke gate.
 #
 # Different apps run in PARALLEL (steward-improve uses a per-app concurrency
 # group and each app is its own repo, so there's no contention); the same app
@@ -45,10 +49,15 @@ jobs:
           # schedule.mjs is the canonical lane evaluator (cadence, offset,
           # window, startAt, until — see its header). `due` prints the apps
           # whose lanes fire this hour.
+          # `due` prints an app once per slice, so an app with slices:3 shows
+          # up 3× here and gets 3 back-to-back runs (serialized by the per-app
+          # concurrency group). A short stagger keeps run creation times
+          # distinct (predictable queue order) and is gentle on the API.
           for APP in $(node .github/steward/schedule.mjs due); do
             echo "→ dispatching focus run for ${APP}"
             gh workflow run steward-improve.yml -R kevinrhaas/polecat-platform -f app="${APP}"
             COUNT=$((COUNT+1))
+            sleep 2
           done
           # Platform-level jobs (focus.json `jobs`) ride the same tick and the
           # same lane schema: fleet-improve → suite-wide steward pick;
