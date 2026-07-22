@@ -14,6 +14,7 @@
 {"@context":"https://schema.org","@type":"Person","name":"Kevin R. Haas","url":"https://polecat.live/","sameAs":["https://www.linkedin.com/in/kevinrhaas/"],"jobTitle":"Independent Data, Analytics & AI Consultant","address":{"@type":"PostalAddress","addressLocality":"Chicago","addressRegion":"IL"},"alumniOf":["Northwestern University","University of Florida"],"knowsAbout":["Enterprise data integration","Pentaho","Analytics and business intelligence","Cloud data platforms","Artificial intelligence","Solution architecture"]}
 </script>
 <link rel="stylesheet" href="css/site.css">
+<script src="js/connect-config.js"></script>
 </head>
 <body>
 <div class="grain" aria-hidden="true"></div>
@@ -232,6 +233,41 @@
     </div>
   </section>
 
+  <section id="connect" class="band">
+    <div class="wrap connect-wrap">
+      <div class="section-head center">
+        <div class="kicker">Connect</div>
+        <h2>Connect with us</h2>
+        <p class="lead">Want a key to a private app like the <a href="https://modelserver.polecat.live">Model Server</a>, curious about a build, or have a problem worth solving? Leave a note — it comes straight to us.</p>
+      </div>
+      <form id="connectForm" class="connect-form" novalidate>
+        <div class="cf-row">
+          <label class="cf-field">Name
+            <input name="name" type="text" autocomplete="name" required placeholder="Your name">
+          </label>
+          <label class="cf-field">Email
+            <input name="email" type="email" autocomplete="email" required placeholder="you@example.com">
+          </label>
+        </div>
+        <label class="cf-field">I'm interested in
+          <select name="topic">
+            <option>Model Server access</option>
+            <option>A specific app</option>
+            <option>Consulting</option>
+            <option>Just saying hi</option>
+          </select>
+        </label>
+        <label class="cf-field">Message
+          <textarea name="message" rows="4" placeholder="A sentence or two about what you're after…"></textarea>
+        </label>
+        <div class="cf-actions">
+          <button class="btn btn-primary btn-lg" type="submit">Send it</button>
+          <span class="cf-status" role="status" aria-live="polite"></span>
+        </div>
+      </form>
+    </div>
+  </section>
+
   <section class="cta-final">
     <h2>Have a targeted problem?</h2>
     <p class="lead" style="margin-bottom:24px">Bring it. The first conversation is free,
@@ -248,6 +284,7 @@
   <div class="foot-links">
     <a href="#apps">Apps</a>
     <a href="#work">Consulting</a>
+    <a href="#connect">Connect</a>
     <a href="https://www.linkedin.com/in/kevinrhaas/" rel="noopener">LinkedIn</a>
     <a href="#" id="whatsNewLink">What's new</a>
   </div>

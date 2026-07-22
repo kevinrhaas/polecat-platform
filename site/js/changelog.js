@@ -3,6 +3,11 @@
 // no // inside item text. Empty ts is stamped by CI at publish time.
 
 export const CHANGELOG = [
+  { v: 10, title: 'Connect with us', kind: 'feature', ts: '2026-07-22T15:22:10Z',
+    items: [
+      'A new Connect section lets you reach out for access to a private app, a question about a build, or a problem worth solving — it comes straight to us.',
+      'Requests are captured in Supabase when configured, and otherwise open a pre-filled email, so a note never gets lost.',
+    ] },
   { v: 9, title: 'Chat moved to chat.polecat.live', kind: 'improvement', ts: '',
     items: [
       'The Chat tile and every app switcher now point at chat.polecat.live, the app\'s new permanent home.',

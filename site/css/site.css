@@ -330,3 +330,27 @@ body::after  { background: radial-gradient(circle, var(--brand-b), transparent 6
   .app-card, .app-card:hover { transform: none; }
   .app-card::before, .btn-primary::after { display: none; }
 }
+
+/* ── Connect-with-us form ───────────────────────────────────────────────── */
+.connect-wrap { max-width: 640px; }
+.connect-form { display: flex; flex-direction: column; gap: 16px; }
+.cf-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 560px) { .cf-row { grid-template-columns: 1fr; } }
+.cf-field { display: flex; flex-direction: column; gap: 7px; font-size: 13px; font-weight: 700;
+  color: var(--text-2); letter-spacing: .2px; }
+.cf-field input, .cf-field select, .cf-field textarea {
+  font-family: inherit; font-size: 15px; font-weight: 500; color: var(--text);
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-sm);
+  padding: 12px 14px; transition: border-color .15s, box-shadow .15s; width: 100%; }
+.cf-field textarea { resize: vertical; min-height: 96px; }
+.cf-field input::placeholder, .cf-field textarea::placeholder { color: var(--text-3); font-weight: 400; }
+.cf-field input:focus, .cf-field select:focus, .cf-field textarea:focus {
+  outline: none; border-color: var(--brand-b);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand-b) 26%, transparent); }
+.cf-actions { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-top: 2px; }
+.cf-status { font-size: 14px; color: var(--text-2); }
+.connect-thanks { display: flex; align-items: center; gap: 14px; padding: 22px 24px;
+  background: var(--surface); border: 1px solid color-mix(in srgb, var(--ok) 40%, var(--border));
+  border-radius: var(--r); max-width: 640px; margin: 0 auto; }
+.connect-thanks svg { width: 26px; height: 26px; color: var(--ok); flex: none; }
+.connect-thanks p { margin: 0; color: var(--text); font-size: 15px; }
