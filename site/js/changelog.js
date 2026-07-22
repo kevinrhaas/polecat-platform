@@ -3,6 +3,10 @@
 // no // inside item text. Empty ts is stamped by CI at publish time.
 
 export const CHANGELOG = [
+  { v: 12, title: 'Mobile tap targets, actually shipped', kind: 'fix', ts: '2026-07-22T16:53:00Z',
+    items: [
+      'Buttons and nav rail items in the shell now meet the ~44px minimum on phones — the fix had landed in the shared library twice now but this site kept serving a stale vendored copy.',
+    ] },
   { v: 11, title: 'One footer for the whole suite', kind: 'improvement', ts: '2026-07-22T16:33:58Z',
     items: [
       'The footer now uses the shared fleet chrome that every Polecat app is adopting, so the whole suite reads as one — the sharp Pole·cat wordmark stays put.',
