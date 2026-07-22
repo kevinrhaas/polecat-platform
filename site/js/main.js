@@ -8,6 +8,7 @@ import { icon } from '../vendor/polecat-shell/icons.js';
 import { relTime } from '../vendor/polecat-shell/ui.js';
 import { appStatus } from './ingest.js';
 import { initAuthUi } from './auth-ui.js';
+import { initConnect } from './connect.js';
 
 const grid = document.getElementById('appsGrid');
 
@@ -95,6 +96,7 @@ if(band && !matchMedia('(prefers-reduced-motion: reduce)').matches){
 }
 
 initAuthUi(document.getElementById('signInBtn'));
+initConnect(document.getElementById('connectForm'));
 
 // ── glamour v2: scroll progress, hero spotlight, card tilt ──────────────────
 // All motion-gated: nothing runs for reduced-motion users, and the pointer

@@ -6,9 +6,11 @@ games.polecat.live, jobtracker.polecat.live, manager.polecat.live,
 analytics.polecat.live, autoselector.polecat.live, relay.polecat.live,
 polecat-app, polecat.
 
-MISSION: ONE high-quality unit of work (~30-45 min of focused effort), shipped
-via PR. Read docs/AUTOMATION.md, docs/MIGRATION.md and docs/SHELL-API.md in this
-checkout FIRST — they are the authority.
+MISSION: UP TO THREE high-quality units of work (slices) per run — target 3,
+each shipped as its OWN separate PR, verified green and merged before the next
+begins (see "SLICES PER RUN" in the hard rules). Read docs/AUTOMATION.md,
+docs/MIGRATION.md and docs/SHELL-API.md in this checkout FIRST — they are the
+authority.
 
 FOCUS_APP (from the workflow input/env): if set, work ONLY on that app and skip
 the picking logic. Otherwise pick, in priority order:
@@ -59,7 +61,38 @@ HARD RULES:
   its PID (`server_pid=$!`) and `kill $server_pid` — kill ONLY PIDs you
   spawned. (A broad pkill SIGTERMs this run from the inside: exit 143, work
   lost.)
-- One unit of work only. Update the app's ROADMAP/queue file in the same PR.
-  No model identifiers in repo artifacts. Do all work synchronously and finish
-  by printing a summary: app picked, why, what shipped, verification run, and
+- RUN VERIFICATION IN THE FOREGROUND — NEVER background it, and NEVER end your
+  turn to "wait" for it. You run headless (`claude -p`): when you yield, the run
+  ENDS. A test suite you started in the background and are "waiting on" will
+  never be checked, and you will open no PR — the run finishes green but empty
+  (this is a real failure mode we have observed hourly: the final message was
+  "I'm waiting for the background Playwright test run… before continuing," after
+  which the process simply exited). So: run the smoke/test command as a BLOCKING
+  foreground command (e.g. `NODE_PATH=$(npm root -g) node tests/run.js`, or the
+  app's smoke) so its exit status is in your hands in the SAME turn, read the
+  result, THEN open and merge the PR — all before you yield. Do not use `&`,
+  `run_in_background`, `nohup`, or "I'll wait" phrasing for verification. If the
+  suite is too slow to finish inside one run, cut the SCOPE of the unit (smaller
+  slice), never the synchrony. Your run is complete only when you have either
+  merged a green PR, or left a PR open with the `hold` label + explanation.
+- SLICES PER RUN — do UP TO THREE (target 3), then finish:
+  * Each slice is its OWN steward branch + PR, fully verified (green suite/smoke
+    in the foreground) and MERGED before the next slice starts. NEVER bundle
+    multiple slices into one PR: Guard-main auto-revert and the janitor operate
+    per-PR, so one PR must stay one revertible unit. Bundling unrelated work into
+    one PR is a defect, not efficiency.
+  * After merging a slice, if meaningful run budget/time remains, pick the next
+    queue item and repeat — up to 3 merged PRs. Prefer 3 SMALL/independent slices
+    over 1 big one; if a slice is large or architecturally risky (a shell
+    migration, a cross-cutting refactor, anything touching an export/byte-identity
+    invariant), do just THAT ONE slice and stop — a second slice would race it.
+  * Sequence matters: verify + merge slice N completely before touching slice
+    N+1, each off a FRESH origin/main (re-fetch between slices so slice 2 builds
+    on slice 1). A run that only finishes 1 of 3 still ends clean (1 merged PR).
+  * If a slice can't go green, leave THAT slice's PR open with `hold` + an
+    explanation and STOP the run — do not start another slice on top of a
+    broken one.
+  Update the app's ROADMAP/queue file in the SAME PR as each slice. No model
+  identifiers in repo artifacts. Do all work synchronously and finish by printing
+  a summary: app picked, why, and per slice — what shipped, verification run, and
   the PR URL.
