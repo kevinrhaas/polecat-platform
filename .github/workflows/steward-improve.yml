@@ -107,6 +107,13 @@ jobs:
           JOBTRACKER_ADMIN_TOKEN: ${{ secrets.JOBTRACKER_ADMIN_TOKEN }}
           RELAY_ADMIN_TOKEN: ${{ secrets.RELAY_ADMIN_TOKEN }}
           MODELSERVER_ADMIN_TOKEN: ${{ secrets.MODELSERVER_ADMIN_TOKEN }}
+          # Supabase Postgres password for the analytics M7 (Supabase Auth + RLS)
+          # backend work — lets a focused run provision the schema/RLS and run
+          # server-side DB integration tests via psql. SERVER-SIDE ONLY: the
+          # browser app connects via PostgREST + anon key, never this password.
+          # Scope DB work to a throwaway `steward_test` schema — never CREATE/
+          # DROP/ALTER/DELETE against live `public` tables. Never echo its value.
+          SUPABASE_PASSWORD: ${{ secrets.SUPABASE_PASSWORD }}
         run: |
           set -o pipefail
           # an explicit 'fleet' input (or an empty app) means the suite-wide pick
