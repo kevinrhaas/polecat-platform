@@ -123,7 +123,9 @@ if(band && !matchMedia('(prefers-reduced-motion: reduce)').matches){
 initAuthUi(document.getElementById('signInBtn'));
 initConnect(document.getElementById('connectForm'));
 
-// ── glamour v2: scroll progress, hero spotlight, card tilt ──────────────────
+// ── glamour v2: scroll progress + card tilt (the drifting aurora backdrop is
+// pure CSS — see .aurora in site.css). The old pointer-following spotlight was
+// removed; the aurora carries the ambient glow now.
 // All motion-gated: nothing runs for reduced-motion users, and the pointer
 // effects only bind on fine pointers (no jitter on touch).
 const noMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -145,18 +147,6 @@ if (!noMotion) {
 }
 
 if (!noMotion && finePointer) {
-  // page-wide spotlight follows the pointer (layer is fixed + viewport-
-  // spanning; coordinates are viewport-relative — see .spotlight in site.css)
-  const spot = document.querySelector('.spotlight');
-  if (spot) {
-    document.addEventListener('pointermove', (e) => {
-      spot.style.setProperty('--mx', (e.clientX / innerWidth * 100) + '%');
-      spot.style.setProperty('--my', (e.clientY / innerHeight * 100) + '%');
-      spot.classList.add('on');
-    }, { passive: true });
-    document.documentElement.addEventListener('pointerleave', () => spot.classList.remove('on'));
-  }
-
   // app cards: gentle 3D tilt toward the pointer
   grid.addEventListener('pointermove', (e) => {
     const card = e.target.closest('.app-card');
