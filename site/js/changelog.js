@@ -3,6 +3,10 @@
 // no // inside item text. Empty ts is stamped by CI at publish time.
 
 export const CHANGELOG = [
+  { v: 13, title: 'Apps open in a new tab', kind: 'improvement', ts: '2026-07-22T19:18:14Z',
+    items: [
+      'Clicking an app on the home grid now opens it in a new tab, so the launcher stays put behind it.',
+    ] },
   { v: 12, title: 'The app grid, reordered — and a couple of tiles just for fun', kind: 'improvement', ts: '2026-07-22T18:26:00Z',
     items: [
       'The apps are laid out in a new order on the home grid, leading with Chat, Analytics, and Model Server.',
