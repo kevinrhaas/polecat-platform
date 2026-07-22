@@ -24,6 +24,8 @@ function card(app){
   const a = document.createElement('a');
   a.className = 'app-card reveal';
   a.href = app.url;
+  a.target = '_blank';          // open apps in a new tab, leaving the launcher put
+  a.rel = 'noopener';
   a.style.setProperty('--c', app.accent);
   a.innerHTML = `
     <div class="app-top">
