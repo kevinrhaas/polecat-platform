@@ -3,6 +3,11 @@
 // no // inside item text. Empty ts is stamped by CI at publish time.
 
 export const CHANGELOG = [
+  { v: 14, title: 'A calmer, cooler front door — drifting aurora, no more cursor glow', kind: 'improvement', ts: '2026-07-22T20:15:00Z',
+    items: [
+      'The home page now wears the same drifting aurora backdrop as the Manager and JobTracker apps — three soft color fields moving slowly behind everything.',
+      'Retired the glow that chased your mouse; the ambient aurora carries the mood instead.',
+    ] },
   { v: 13, title: 'Apps open in a new tab', kind: 'improvement', ts: '2026-07-22T19:18:14Z',
     items: [
       'Clicking an app on the home grid now opens it in a new tab, so the launcher stays put behind it.',

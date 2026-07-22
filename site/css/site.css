@@ -199,15 +199,19 @@ section.wrap { padding-top: 80px; padding-bottom: 80px; }
 .grad { background-size: 200% 100%; animation: gradShift 9s ease-in-out infinite; }
 @keyframes gradShift { 0%,100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
 
-/* aurora: two blurred color fields drifting behind everything */
-body::before, body::after {
-  content: ''; position: fixed; z-index: -2; pointer-events: none;
-  width: 60vw; height: 60vw; border-radius: 50%; filter: blur(90px); opacity: .13;
+/* aurora: three blurred color fields drifting behind everything — the same
+   treatment the Manager and JobTracker apps wear (blob field, screen blend). */
+.aurora { position: fixed; inset: 0; z-index: -2; overflow: hidden; pointer-events: none; }
+.aurora span {
+  position: absolute; width: 60vmax; height: 60vmax; border-radius: 50%;
+  filter: blur(90px); opacity: .28; mix-blend-mode: screen;
+  animation: drift 30s ease-in-out infinite;
 }
-body::before { background: radial-gradient(circle, #b070f0, transparent 65%); top: -22vw; right: -18vw; animation: drift1 26s ease-in-out infinite; }
-body::after  { background: radial-gradient(circle, var(--brand-b), transparent 65%); bottom: -25vw; left: -18vw; animation: drift2 32s ease-in-out infinite; }
-@keyframes drift1 { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(-8vw, 6vw) scale(1.15); } }
-@keyframes drift2 { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(7vw, -5vw) scale(1.12); } }
+.aurora span:nth-child(1) { background: #b070f0;         top: -24vmax; left: -14vmax; }
+.aurora span:nth-child(2) { background: var(--brand-b);  bottom: -28vmax; right: -12vmax; animation-delay: -10s; }
+.aurora span:nth-child(3) { background: var(--blush);    top: 26vmax; right: 22vmax; opacity: .18; animation-delay: -18s; }
+@keyframes drift { 0%,100% { transform: translate(0,0) scale(1); } 33% { transform: translate(7vmax,4vmax) scale(1.12); } 66% { transform: translate(-5vmax,3vmax) scale(.95); } }
+@media (prefers-reduced-motion: reduce) { .aurora span { animation: none; } }
 
 /* kickers get a gradient tick */
 .kicker { display: inline-flex; align-items: center; gap: 10px; }
@@ -266,14 +270,6 @@ body::after  { background: radial-gradient(circle, var(--brand-b), transparent 6
 .hero .hero-cta { animation-delay: .28s; }
 .hero .hero-note { animation-delay: .38s; }
 .hero .scroll-cue { animation-delay: .55s; }
-
-/* page-wide pointer spotlight (JS sets --mx/--my; pointer:fine only).
-   Fixed + viewport-spanning (never clips against a content box) and blended
-   additively above section backgrounds, so it follows the cursor across the
-   whole page without washing out text. Sits under the nav/grain. */
-.spotlight { position: fixed; inset: 0; z-index: 45; pointer-events: none; opacity: 0; transition: opacity .5s ease; mix-blend-mode: screen;
-  background: radial-gradient(380px circle at var(--mx, 50%) var(--my, 40%), rgba(224,138,69,.11), rgba(176,112,240,.06) 45%, transparent 70%); }
-.spotlight.on { opacity: 1; }
 
 /* mascot: playful wiggle when you poke it */
 .hero-mascot:hover { animation: riseIn .7s cubic-bezier(.22,.8,.3,1) both, wiggle .6s ease-in-out; }
