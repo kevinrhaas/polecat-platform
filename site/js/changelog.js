@@ -3,6 +3,11 @@
 // no // inside item text. Empty ts is stamped by CI at publish time.
 
 export const CHANGELOG = [
+  { v: 15, title: 'One brand color per app, everywhere you see it', kind: 'improvement', ts: '2026-07-22T20:45:00Z',
+    items: [
+      'Every app tile is now a vivid gradient in that app’s own brand color — Relay green, JobTracker blue-green, Analytics terracotta — and the same color follows the app onto its home page and inside the app itself, so an icon reads the same everywhere.',
+      'Softened the closing invitation — less of a pitch, more of an open door.',
+    ] },
   { v: 14, title: 'A calmer, cooler front door — drifting aurora, no more cursor glow', kind: 'improvement', ts: '2026-07-22T20:15:00Z',
     items: [
       'The home page now wears the same drifting aurora backdrop as the Manager and JobTracker apps — three soft color fields moving slowly behind everything.',

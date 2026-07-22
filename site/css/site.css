@@ -84,8 +84,8 @@ section.wrap { padding-top: 80px; padding-bottom: 80px; }
 .app-glyph {
   width: 44px; height: 44px; border-radius: 12px; flex-shrink: 0;
   display: flex; align-items: center; justify-content: center;
-  color: var(--c); background: color-mix(in srgb, var(--c) 13%, transparent);
-  border: 1px solid color-mix(in srgb, var(--c) 30%, transparent);
+  color: #fff; background: linear-gradient(140deg, var(--c), var(--c2, var(--c)));
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--c) 30%, transparent);
 }
 .app-glyph svg { display: block; }
 .app-name { font-size: 17px; font-weight: 800; letter-spacing: -.3px; }

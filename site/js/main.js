@@ -27,6 +27,7 @@ function card(app){
   a.target = '_blank';          // open apps in a new tab, leaving the launcher put
   a.rel = 'noopener';
   a.style.setProperty('--c', app.accent);
+  a.style.setProperty('--c2', app.accent2 || app.accent);
   a.innerHTML = `
     <div class="app-top">
       <div class="app-glyph">${icon(app.icon, 24)}</div>
