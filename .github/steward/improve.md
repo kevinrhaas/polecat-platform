@@ -6,11 +6,16 @@ games.polecat.live, jobtracker.polecat.live, manager.polecat.live,
 analytics.polecat.live, autoselector.polecat.live, relay.polecat.live,
 polecat-app, polecat.
 
-MISSION: UP TO THREE high-quality units of work (slices) per run — target 3,
-each shipped as its OWN separate PR, verified green and merged before the next
-begins (see "SLICES PER RUN" in the hard rules). Read docs/AUTOMATION.md,
-docs/MIGRATION.md and docs/SHELL-API.md in this checkout FIRST — they are the
-authority.
+MISSION: exactly ONE high-quality unit of work this run — shipped as its OWN PR,
+verified green in the foreground, and merged (or left on `hold` if it can't go
+green). Then finish. How many units the fleet does per hour is set ELSEWHERE, NOT
+by you: focus.json's per-lane `slices` field fans a lane out into that many
+INDEPENDENT runs (each a separate process with its own PR + verification,
+serialized per-app so the app never overlaps itself). So do NOT try to do several
+— one run, one unit. (Chaining multiple units in a single run is what exhausts
+the turn budget and trips the "Reached max turns" failure.) Read
+docs/AUTOMATION.md, docs/MIGRATION.md and docs/SHELL-API.md in this checkout FIRST
+— they are the authority.
 
 FOCUS_APP (from the workflow input/env): if set, work ONLY on that app and skip
 the picking logic. Otherwise pick, in priority order:
@@ -77,40 +82,37 @@ HARD RULES:
   tests/run.js`, or the app's smoke) so its exit status is in your hands in the
   SAME turn; read the result, THEN open and merge the PR — all before you yield.
   If a suite is too slow to finish inside one run, cut the SCOPE of the unit
-  (smaller slice), NEVER the synchrony. Each of the three per-run slices runs its
-  own full foreground verification before it merges.
-- THE THREE OUTCOMES when a slice hits something (this is what "keep going" does
+  (smaller slice), NEVER the synchrony. Your one unit runs its full foreground
+  verification before it merges.
+- THE OUTCOMES when your unit hits something (this is what "keep going" does
   and does NOT mean — it does NOT mean pushing through failures):
-  * Verification PASSES → merge the green PR. Done; move to the next slice.
-  * Verification FAILS for real, or you're blocked/uncertain → STOP that slice
-    cleanly: leave its PR OPEN with the `hold` label + a short written
-    explanation for Kevin. Do NOT merge broken work, and do NOT retry the same
-    thing forever. Then either start a DIFFERENT independent slice or finish the
-    run.
+  * Verification PASSES → merge the green PR. The run is done.
+  * Verification FAILS for real, or you're blocked/uncertain → STOP cleanly:
+    leave the PR OPEN with the `hold` label + a short written explanation for
+    Kevin. Do NOT merge broken work, and do NOT retry the same thing forever.
+    Then finish the run — do NOT start a different unit to compensate; the
+    lane's other slices and the next hourly tick cover the rest.
   * Transient infra error (rate limit, runner hiccup, network) → let the run end;
     the next hourly tick retries fresh. Don't fight it, don't loop, don't
     self-suspend to "wait it out."
-  Your run is complete only when you have, for each slice attempted, either
-  merged a green PR or left a `hold` PR + explanation — reached SYNCHRONOUSLY,
-  never by waiting on a background process.
-- SLICES PER RUN — do UP TO THREE (target 3), then finish:
-  * Each slice is its OWN steward branch + PR, fully verified (green suite/smoke
-    in the foreground) and MERGED before the next slice starts. NEVER bundle
-    multiple slices into one PR: Guard-main auto-revert and the janitor operate
-    per-PR, so one PR must stay one revertible unit. Bundling unrelated work into
-    one PR is a defect, not efficiency.
-  * After merging a slice, if meaningful run budget/time remains, pick the next
-    queue item and repeat — up to 3 merged PRs. Prefer 3 SMALL/independent slices
-    over 1 big one; if a slice is large or architecturally risky (a shell
-    migration, a cross-cutting refactor, anything touching an export/byte-identity
-    invariant), do just THAT ONE slice and stop — a second slice would race it.
-  * Sequence matters: verify + merge slice N completely before touching slice
-    N+1, each off a FRESH origin/main (re-fetch between slices so slice 2 builds
-    on slice 1). A run that only finishes 1 of 3 still ends clean (1 merged PR).
-  * If a slice can't go green, leave THAT slice's PR open with `hold` + an
-    explanation and STOP the run — do not start another slice on top of a
-    broken one.
-  Update the app's ROADMAP/queue file in the SAME PR as each slice. No model
+  Your run is complete when your one unit is either a merged green PR or a `hold`
+  PR + explanation — reached SYNCHRONOUSLY, never by waiting on a background
+  process.
+- ONE UNIT PER RUN — do exactly one, then finish:
+  * The unit is its OWN steward branch + PR, fully verified (green suite/smoke
+    in the foreground) and MERGED (or left on `hold`). NEVER bundle unrelated
+    work into one PR: Guard-main auto-revert and the janitor operate per-PR, so
+    a PR must stay one revertible unit. Bundling unrelated work into one PR is a
+    defect, not efficiency.
+  * Do NOT start a second unit after finishing the first — even if run
+    budget/time seems to remain. Fleet throughput is controlled by focus.json,
+    NOT by this prompt: a lane with `slices: N` is already dispatched as N
+    independent runs (serialized per-app), and the hourly tick starts the next
+    batch. A single run chaining multiple units is exactly what exhausts the
+    turn budget and trips the max-turns failure.
+  * If the unit is large or architecturally risky (a shell migration, a
+    cross-cutting refactor, anything touching an export/byte-identity invariant),
+    that is fine — it is still one unit; do it and stop.
+  Update the app's ROADMAP/queue file in the SAME PR as the unit. No model
   identifiers in repo artifacts. Do all work synchronously and finish by printing
-  a summary: app picked, why, and per slice — what shipped, verification run, and
-  the PR URL.
+  a summary: app picked, why, what shipped, verification run, and the PR URL.
