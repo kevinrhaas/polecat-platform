@@ -65,9 +65,11 @@ export function nextRunAt(lane, from = new Date(), tickMinute = 3){
 }
 
 // ---- CLI (used by steward-focus.yml; handy for humans too) -----------------
-//   due       → app lane names due at THIS tick, one per line, REPEATED once
-//               per slice (a lane with slices:3 prints its app 3×, so the
-//               dispatcher fires 3 independent improve runs for it)
+//   due       → app lane names due at THIS tick, one per line (ONCE per app;
+//               steward-focus reads the lane's slice count via `slices-of` and
+//               passes it so steward-improve CHAINS that many sequential runs)
+//   slices-of → the slice count (1..5, default 1) for one app lane — how many
+//               sequential improve runs its chain should produce
 //   due-jobs  → platform job names due at THIS tick (focus.json `jobs`)
 //   next      → "name<TAB>iso-or-never" for every app lane AND job
 const cmd = process.argv[2];
@@ -75,14 +77,16 @@ if(cmd){
   const f = JSON.parse(readFileSync(new URL('./focus.json', import.meta.url), 'utf8'));
   const now = new Date();
   if(cmd === 'due'){
-    for(const [app, lane] of Object.entries(f.apps || {})) if(isDueAt(lane, now))
-      for(let i = 0; i < slicesOf(lane); i++) console.log(app);
+    for(const [app, lane] of Object.entries(f.apps || {})) if(isDueAt(lane, now)) console.log(app);
+  }else if(cmd === 'slices-of'){
+    const lane = (f.apps || {})[process.argv[3]];
+    console.log(lane ? slicesOf(lane) : 1);
   }else if(cmd === 'due-jobs'){
     for(const [job, lane] of Object.entries(f.jobs || {})) if(isDueAt(lane, now)) console.log(job);
   }else if(cmd === 'next'){
     for(const [app, lane] of Object.entries(f.apps || {})) console.log(`${app}\t${nextRunAt(lane, now)?.toISOString() || 'never'}`);
     for(const [job, lane] of Object.entries(f.jobs || {})) console.log(`job:${job}\t${nextRunAt(lane, now)?.toISOString() || 'never'}`);
   }else{
-    console.error('usage: schedule.mjs due|due-jobs|next'); process.exit(2);
+    console.error('usage: schedule.mjs due|slices-of <app>|due-jobs|next'); process.exit(2);
   }
 }

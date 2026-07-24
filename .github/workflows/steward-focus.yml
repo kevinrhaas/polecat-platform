@@ -4,10 +4,14 @@ name: Steward focus scheduler
 # Every hour this cheap, Claude-free job reads the roster and dispatches a
 # "Steward improve" run per enabled app whose cadence matches the hour
 # (everyHours: 1 = every hour, 2 = even UTC hours, 3 = hours divisible by 3…).
-# An app's `slices` (1..5, default 1) fires that many independent runs for it
-# this tick — schedule.mjs `due` prints the app once per slice, so the dispatch
-# loop below needs no special-casing; the per-app concurrency group serializes
-# them into back-to-back units of work, each its own PR + smoke gate.
+# An app's `slices` (1..5, default 1) runs as that many SEQUENTIAL units: this
+# job dispatches ONE run per due app with slice=1/slices=N, and each
+# steward-improve run chains the next on completion (see its "Chain next slice"
+# step). Firing them all up front would overflow the per-app concurrency queue
+# (one running + one pending) and GitHub would cancel the surplus; chaining
+# serializes them one-at-a-time, each its own PR + smoke gate, and a chain that
+# outruns the hour just continues (the skip-if-busy check below keeps this tick
+# from injecting a competing chain).
 #
 # Different apps run in PARALLEL (steward-improve uses a per-app concurrency
 # group and each app is its own repo, so there's no contention); the same app
@@ -49,13 +53,21 @@ jobs:
           # schedule.mjs is the canonical lane evaluator (cadence, offset,
           # window, startAt, until — see its header). `due` prints the apps
           # whose lanes fire this hour.
-          # `due` prints an app once per slice, so an app with slices:3 shows
-          # up 3× here and gets 3 back-to-back runs (serialized by the per-app
-          # concurrency group). A short stagger keeps run creation times
-          # distinct (predictable queue order) and is gentle on the API.
+          # `due` prints each due app ONCE. Dispatch a single slice-1 run per app
+          # with the lane's slice count; the run chains the rest itself. Skip an
+          # app that already has a steward-improve run in flight (a chain from an
+          # earlier tick still going) so we don't inject a competing chain.
           for APP in $(node .github/steward/schedule.mjs due); do
-            echo "→ dispatching focus run for ${APP}"
-            gh workflow run steward-improve.yml -R kevinrhaas/polecat-platform -f app="${APP}"
+            BUSY=$(gh run list -R kevinrhaas/polecat-platform --workflow steward-improve.yml \
+              --limit 40 --json status,displayTitle \
+              -q "[.[] | select(.status==\"in_progress\" or .status==\"queued\") | .displayTitle] | map(select(contains(\"${APP}\"))) | length" 2>/dev/null || echo 0)
+            if [ "${BUSY:-0}" -gt 0 ]; then
+              echo "↷ skipping ${APP} — a run is already in flight; its chain continues"
+              continue
+            fi
+            N=$(node .github/steward/schedule.mjs slices-of "${APP}")
+            echo "→ dispatching ${APP} (slice 1/${N})"
+            gh workflow run steward-improve.yml -R kevinrhaas/polecat-platform -f app="${APP}" -f slice=1 -f slices="${N}"
             COUNT=$((COUNT+1))
             sleep 2
           done

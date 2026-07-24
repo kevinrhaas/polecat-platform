@@ -1,7 +1,7 @@
 name: Steward improve
 # Annotate each run with the app it targets (shows in the Actions list and in
 # Manager's Fleet Ops panel). Mirrors the FOCUS_APP env resolution below.
-run-name: "Steward improve — ${{ github.event.inputs.app || 'fleet pick' }}"
+run-name: "Steward improve — ${{ github.event.inputs.app || 'fleet pick' }}${{ github.event.inputs.slices != '' && github.event.inputs.slices != '1' && format(' [{0}/{1}]', github.event.inputs.slice, github.event.inputs.slices) || '' }}"
 
 # The fleet improvement loop (see .github/steward/improve.md + docs/AUTOMATION.md).
 # One unit of work per run, shipped via PR, merged only when smoke is green.
@@ -32,6 +32,14 @@ on:
         description: 'Focus on one app (repo name, e.g. autoselector.polecat.live). Empty = fleet pick.'
         required: false
         default: ''
+      slice:
+        description: 'Which slice of the chain this run is (1-based). Set by the chain; leave 1 for a manual run.'
+        required: false
+        default: '1'
+      slices:
+        description: 'Total sequential slices in this chain (focus.json slices; capped at 5). 1 = no chaining.'
+        required: false
+        default: '1'
 
 env:
   # The app to work on comes from the dispatch input (focus.json passes it per
@@ -41,6 +49,7 @@ env:
 
 permissions:
   contents: read
+  actions: write   # lets a run chain the next slice via GITHUB_TOKEN dispatch
 
 # Per-app concurrency: focus runs on DIFFERENT apps proceed in parallel
 # (separate repos — no contention); runs on the SAME app queue behind each
@@ -140,3 +149,30 @@ jobs:
       - name: Journal the run
         if: always()
         run: bash .github/steward/journal.sh "${{ github.run_id }}" "Steward improve — ${{ github.event.inputs.app || 'fleet pick' }}" "${{ job.status }}" /tmp/steward-out.txt
+
+      # Chain the next slice. focus.json's `slices: N` runs as N SEQUENTIAL units,
+      # each dispatched by the previous run on completion — NOT all fired up front
+      # (that overflows the per-app concurrency queue, which holds only one running
+      # + one pending, so GitHub cancels the surplus). always() so a failed/held
+      # slice still hands off to the next independent unit; hard-capped at 5 so a
+      # bug can never loop forever. The per-app concurrency group serializes the
+      # handoff, and steward-focus skips an app that still has a run in flight, so
+      # a chain that outruns the hour just continues without a competing chain.
+      - name: Chain next slice
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APP: ${{ github.event.inputs.app }}
+          SLICE: ${{ github.event.inputs.slice || '1' }}
+          SLICES: ${{ github.event.inputs.slices || '1' }}
+        run: |
+          SLICE=${SLICE:-1}; SLICES=${SLICES:-1}
+          if [ -n "$APP" ] && [ "$APP" != "fleet" ] \
+             && [ "$SLICE" -lt "$SLICES" ] && [ "$SLICE" -lt 5 ]; then
+            NEXT=$((SLICE + 1))
+            echo "→ chaining slice ${NEXT}/${SLICES} for ${APP}"
+            gh workflow run steward-improve.yml -R kevinrhaas/polecat-platform \
+              -f app="${APP}" -f slice="${NEXT}" -f slices="${SLICES}"
+          else
+            echo "no chain (app='${APP}' slice=${SLICE} slices=${SLICES})"
+          fi
