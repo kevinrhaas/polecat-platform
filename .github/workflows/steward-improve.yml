@@ -146,8 +146,14 @@ jobs:
       # The run's own account of what it did (the prompt ends by printing a
       # summary) goes to the Steward journal issue — Manager's Fleet Ops shows
       # it in the run's in-panel review.
+      # continue-on-error: journaling posts to a GitHub issue over GraphQL, which
+      # shares the PAT's rate budget with PR ops and Manager's live Fleet Ops
+      # polling. A rate-limited journal must NOT flip a run whose actual work
+      # already shipped (PR merged) to "failure" — the work is the result, the
+      # journal is just its write-up.
       - name: Journal the run
         if: always()
+        continue-on-error: true
         run: bash .github/steward/journal.sh "${{ github.run_id }}" "Steward improve — ${{ github.event.inputs.app || 'fleet pick' }}" "${{ job.status }}" /tmp/steward-out.txt
 
       # Chain the next slice. focus.json's `slices: N` runs as N SEQUENTIAL units,
@@ -160,6 +166,7 @@ jobs:
       # a chain that outruns the hour just continues without a competing chain.
       - name: Chain next slice
         if: always()
+        continue-on-error: true   # a rate-limited handoff shouldn't fail a shipped run; the next tick's skip-if-busy sees no in-flight run and restarts the chain
         env:
           GH_TOKEN: ${{ github.token }}
           APP: ${{ github.event.inputs.app }}
