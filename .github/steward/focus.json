@@ -48,11 +48,11 @@
       "everyHours": 2
     },
     "sweep-ux": {
-      "enabled": false,
+      "enabled": true,
       "everyHours": 12
     },
     "sweep-tech": {
-      "enabled": false,
+      "enabled": true,
       "everyHours": 12,
       "offset": 3
     },
