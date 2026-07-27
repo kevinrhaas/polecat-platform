@@ -20,7 +20,9 @@
       steward PRs, and sweep issues per app on the project pages
 - [ ] Supabase project: Google/Apple/email providers; launcher sign-in live;
       account menu in the shell topbar
-- [ ] Fleet catalog: per-app og images + consistent single-color app glyphs
+- [ ] Fleet catalog: per-app og images (polecat.live's own launcher og:image
+      shipped 2026-07-27 via `scripts/gen-og-image.mjs`; each app repo still
+      needs its own) + consistent single-color app glyphs
 
 - [ ] Automation cleanup (once the steward has ~3 weeks of solid runs): delete the
       dispatch-only fallback loops (`self-improve.yml` in jobtracker/manager/relay/
