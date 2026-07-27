@@ -3,6 +3,10 @@
 // no // inside item text. Empty ts is stamped by CI at publish time.
 
 export const CHANGELOG = [
+  { v: 17, title: 'A proper share card', kind: 'polish', ts: '2026-07-27T23:40:10Z',
+    items: [
+      'Sharing polecat.live in Slack, iMessage, or X now shows a real card — the mark, the house gradient, and the headline — instead of a blank preview.',
+    ] },
   { v: 16, title: 'A real mobile menu — no more vanishing nav links', kind: 'fix', ts: '2026-07-27T22:38:29Z',
     items: [
       'On phones, Apps, How we build, What I do, and About used to just disappear from the top nav with no way to reach them. A hamburger menu now opens a proper drawer with all four.',
