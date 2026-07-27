@@ -140,7 +140,7 @@ jobs:
           FOCUS_APP: ${FOCUS_APP:-'(none — fleet pick)'}"
           claude -p "$PROMPT" \
             --dangerously-skip-permissions \
-            --max-turns 150 \
+            --max-turns 200 \
             --allowedTools "Bash,Edit,Write,Read,Glob,Grep" | tee /tmp/steward-out.txt
 
       # The run's own account of what it did (the prompt ends by printing a
