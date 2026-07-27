@@ -3,6 +3,10 @@
 // no // inside item text. Empty ts is stamped by CI at publish time.
 
 export const CHANGELOG = [
+  { v: 16, title: 'A real mobile menu — no more vanishing nav links', kind: 'fix', ts: '2026-07-27T22:38:29Z',
+    items: [
+      'On phones, Apps, How we build, What I do, and About used to just disappear from the top nav with no way to reach them. A hamburger menu now opens a proper drawer with all four.',
+    ] },
   { v: 15, title: 'One brand color per app, everywhere you see it', kind: 'improvement', ts: '2026-07-22T20:45:00Z',
     items: [
       'Every app tile is now a vivid gradient in that app’s own brand color — Relay green, JobTracker blue-green, Analytics terracotta — and the same color follows the app onto its home page and inside the app itself, so an icon reads the same everywhere.',
