@@ -124,6 +124,31 @@ if(band && !matchMedia('(prefers-reduced-motion: reduce)').matches){
 initAuthUi(document.getElementById('signInBtn'));
 initConnect(document.getElementById('connectForm'));
 
+// mobile nav drawer: the top nav's wayfinding links are hidden below 640px
+// with nowhere to go (UX sweep #62 finding #4) — this hamburger reveals them.
+const navToggle = document.getElementById('navToggle');
+const navLinks = document.getElementById('navLinks');
+if(navToggle && navLinks){
+  navToggle.innerHTML = icon('menu', 20);
+  const setOpen = (open) => {
+    navLinks.classList.toggle('open', open);
+    navToggle.setAttribute('aria-expanded', String(open));
+    navToggle.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
+    navToggle.innerHTML = icon(open ? 'close' : 'menu', 20);
+  };
+  navToggle.addEventListener('click', () => setOpen(!navLinks.classList.contains('open')));
+  navLinks.querySelectorAll('a').forEach(a => a.addEventListener('click', () => setOpen(false)));
+  document.addEventListener('keydown', e => { if(e.key === 'Escape') setOpen(false); });
+  document.addEventListener('click', e => {
+    if(!navLinks.classList.contains('open')) return;
+    // composedPath, not e.target: setOpen() swaps navToggle's icon markup
+    // mid-bubble, detaching the original target before the event reaches
+    // here — a plain .contains(e.target) check would misfire on that.
+    const path = e.composedPath();
+    if(!path.includes(navLinks) && !path.includes(navToggle)) setOpen(false);
+  });
+}
+
 // ── glamour v2: scroll progress + card tilt (the drifting aurora backdrop is
 // pure CSS — see .aurora in site.css). The old pointer-following spotlight was
 // removed; the aurora carries the ambient glow now.
