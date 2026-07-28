@@ -159,13 +159,20 @@ jobs:
       # Chain the next slice. focus.json's `slices: N` runs as N SEQUENTIAL units,
       # each dispatched by the previous run on completion — NOT all fired up front
       # (that overflows the per-app concurrency queue, which holds only one running
-      # + one pending, so GitHub cancels the surplus). always() so a failed/held
-      # slice still hands off to the next independent unit; hard-capped at 5 so a
-      # bug can never loop forever. The per-app concurrency group serializes the
+      # + one pending, so GitHub cancels the surplus). Hard-capped at 5 so a bug
+      # can never loop forever. The per-app concurrency group serializes the
       # handoff, and steward-focus skips an app that still has a run in flight, so
       # a chain that outruns the hour just continues without a competing chain.
+      #
+      # Gated on job.status == 'success': the "Run steward" step has no
+      # continue-on-error, so it alone determines job.status here. A run that
+      # errors out (e.g. "Reached max turns") must NOT hand off to the next
+      # slice — that unconditional handoff is what let a week of failing
+      # analytics runs burn through the fleet's shared GraphQL quota (see
+      # tech-sweep issue #106). A held-but-not-crashed run (exit 0, PR left
+      # open with `hold`) still chains, same as before.
       - name: Chain next slice
-        if: always()
+        if: always() && job.status == 'success'
         continue-on-error: true   # a rate-limited handoff shouldn't fail a shipped run; the next tick's skip-if-busy sees no in-flight run and restarts the chain
         env:
           GH_TOKEN: ${{ github.token }}
