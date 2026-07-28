@@ -1,6 +1,7 @@
 // polecat.live launcher changelog — fleet format (see docs/SHELL-API.md).
 // Literal style: unquoted keys, single-quoted strings, escaped apostrophes,
-// no // inside item text. Empty ts is stamped by CI at publish time.
+// no // inside item text. Empty ts is stamped before merge by
+// scripts/stamp-changelog.mjs.
 
 export const CHANGELOG = [
   { v: 19, title: 'A light theme, and a switch to flip it', kind: 'feature', ts: '2026-07-28T00:59:50Z',

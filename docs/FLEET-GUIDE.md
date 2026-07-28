@@ -25,9 +25,10 @@ Read this first; it links to everything else.*
    `js/changelog.js` entry in the same commit and run your repo's stamp tool
    before merging (games `tools/stamp-changelog.mjs`; jobtracker/relay/
    autoselector `.github/stamp-changelog.mjs`; analytics
-   `tools/changelog-normalize.js`; polecat-app its generator). Nothing stamps
-   after merge anymore. Manager and the polecat.live launcher parse this file
-   live — never break it.
+   `tools/changelog-normalize.js`; polecat-app its generator; polecat-platform
+   itself `scripts/stamp-changelog.mjs`, for `site/js/changelog.js`). Nothing
+   stamps after merge anymore. Manager and the polecat.live launcher parse
+   this file live — never break it.
 
 ## What builds what
 
