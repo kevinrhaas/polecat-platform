@@ -20,7 +20,7 @@
       "slices": 3
     },
     "autoselector.polecat.live": {
-      "enabled": false,
+      "enabled": true,
       "everyHours": 1,
       "slices": 2
     },
