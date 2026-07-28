@@ -14,7 +14,15 @@ set -e
 RUN_ID="$1"; TITLE="$2"; STATUS="$3"; FILE="${4:-}"
 REPO="kevinrhaas/polecat-platform"
 gh label create steward-journal -R "$REPO" --description "The steward's run journal" --color 1f6feb --force >/dev/null 2>&1 || true
-JR=$(gh issue list -R "$REPO" --label steward-journal --state open --json number --jq '.[0].number' 2>/dev/null || true)
+# REST, not `gh issue list` (GraphQL): the GraphQL quota is shared fleet-wide
+# and can be exhausted by unrelated runs. Distinguish "API call failed" (skip
+# entirely — do NOT fall through to minting a duplicate journal issue) from
+# "call succeeded, no open issue exists yet" (create one, as before).
+if ! JR=$(gh api "repos/${REPO}/issues?state=open&labels=steward-journal&per_page=1" --jq '.[0].number // empty' 2>/tmp/journal-lookup-err.txt); then
+  echo "warning: steward-journal lookup failed (rate limit or API error) — skipping journal entry, not creating a duplicate issue" >&2
+  cat /tmp/journal-lookup-err.txt >&2
+  exit 0
+fi
 if [ -z "$JR" ]; then
   JR=$(gh issue create -R "$REPO" --title "Steward journal" --label steward-journal \
     --body "Every steward run posts a comment here saying what it actually did — Manager's Fleet Ops reads this journal for its in-panel run reviews. Keep this issue open." \
