@@ -4,6 +4,11 @@
 // scripts/stamp-changelog.mjs.
 
 export const CHANGELOG = [
+  { v: 22, title: 'Bigger tap targets in the mobile nav and footer', kind: 'fix', ts: '2026-07-28T19:18:55Z',
+    items: [
+      'The four links inside the mobile hamburger drawer (Apps, How we build, What I do, About) were only 35px tall, under this site\'s own 44px minimum for everything else in the nav. They\'re a full 44px now.',
+      'Footer links (Apps, Consulting, Connect, LinkedIn) were 22px tall, under the WCAG minimum tap size. Gave them breathing room so they clear it.',
+    ] },
   { v: 21, title: 'Caught the front door up to its own shell', kind: 'fix', ts: '2026-07-28T13:45:35Z',
     items: [
       'This site vendors its own copy of the Polecat Shell it hands out to every other app. That copy had drifted a step behind, so it was quietly serving an unpinned sign-in library instead of the exact version everywhere else runs. Re-synced.',

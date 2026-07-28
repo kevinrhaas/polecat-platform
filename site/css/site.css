@@ -91,7 +91,7 @@ section.wrap { padding-top: 80px; padding-bottom: 80px; }
   }
   .nav-links a { display: none; }
   .nav-links.open { opacity: 1; pointer-events: auto; transform: none; }
-  .nav-links.open a { display: block; padding: 11px 12px; border-radius: 8px; }
+  .nav-links.open a { display: flex; align-items: center; min-height: 44px; padding: 0 12px; border-radius: 8px; }
   .nav-links.open a:hover { background: var(--surface-2); }
 }
 @media (prefers-reduced-motion: reduce) {
