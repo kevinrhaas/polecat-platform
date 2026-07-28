@@ -9,6 +9,15 @@
   --brand-a: #9C6B3F; --brand-b: #e08a45; --blush: #F4A6A6; --cream: #F5E9D6;
   --ok: #34d399; --warn: #f0a830;
   --r: 16px; --r-sm: 10px; --maxw: 1080px;
+  --nav-bg: rgba(11,10,16,.78); --scrim: rgba(5,4,10,.65);
+}
+/* light theme — same warm-amber brand, a cream-and-white surface instead of
+   near-black. Toggled by vendor theme.js (js/main.js), stamped pre-paint by
+   the inline <script> in <head> so there's no flash. */
+[data-theme="light"] {
+  --bg: #FBF7F1; --bg-2: #F3EBDD; --surface: #FFFFFF; --surface-2: #F8F1E5;
+  --border: #E5D9C5; --text: #241D2E; --text-2: #5E566E; --text-3: #8A8296;
+  --nav-bg: rgba(251,247,241,.82); --scrim: rgba(36,29,46,.45);
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html { scroll-behavior: smooth; overflow-x: hidden; }
@@ -41,7 +50,7 @@ section.wrap { padding-top: 80px; padding-bottom: 80px; }
 .btn-lg { font-size: 16px; padding: 13px 26px; }
 
 /* nav */
-.nav { position: sticky; top: 0; z-index: 50; display: flex; align-items: center; justify-content: space-between; padding: 12px 22px; background: rgba(11,10,16,.78); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); }
+.nav { position: sticky; top: 0; z-index: 50; display: flex; align-items: center; justify-content: space-between; padding: 12px 22px; background: var(--nav-bg); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); }
 .brand { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 17px; letter-spacing: -.4px; text-decoration: none; }
 .nav-right { display: flex; align-items: center; gap: 8px; position: relative; }
 .nav-links { display: flex; align-items: center; gap: 22px; font-size: 14px; }
@@ -54,6 +63,15 @@ section.wrap { padding-top: 80px; padding-bottom: 80px; }
 }
 .nav-toggle:hover { color: var(--text); border-color: var(--text-3); }
 .nav-toggle svg { display: block; }
+.theme-toggle {
+  width: 36px; height: 36px; padding: 0; border-radius: var(--r-sm);
+  display: inline-flex; align-items: center; justify-content: center;
+  background: none; border: 1px solid var(--border); color: var(--text-2); cursor: pointer;
+  transition: color .12s, border-color .12s;
+}
+.theme-toggle:hover { color: var(--text); border-color: var(--text-3); }
+.theme-toggle svg { display: block; }
+@media (max-width: 640px) { .theme-toggle { width: 44px; height: 44px; } }
 @media (max-width: 640px) {
   .nav-toggle { display: inline-flex; }
   /* touch target: ~44px minimum (WCAG 2.5.5) — the nav-cta buttons are wide
@@ -168,7 +186,7 @@ section.wrap { padding-top: 80px; padding-bottom: 80px; }
    the Sign-in panel (auth-ui.js), but this page doesn't load shell.css (its
    .btn would fight the marketing buttons), so the modal family is styled
    here on the marketing tokens. Keep in sync with vendor ui.js class names. */
-.modal-back { position: fixed; inset: 0; background: rgba(5, 4, 10, .65); backdrop-filter: blur(5px); z-index: 100; display: grid; place-items: center; padding: 20px; opacity: 0; transition: opacity .2s; }
+.modal-back { position: fixed; inset: 0; background: var(--scrim); backdrop-filter: blur(5px); z-index: 100; display: grid; place-items: center; padding: 20px; opacity: 0; transition: opacity .2s; }
 .modal-back.in { opacity: 1; }
 .modal { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); box-shadow: 0 24px 70px rgba(0,0,0,.55); width: min(480px, 100%); max-height: 88vh; display: flex; flex-direction: column; transform: translateY(12px) scale(.98); transition: transform .2s; }
 .modal-back.in .modal { transform: none; }

@@ -161,8 +161,9 @@ collides with app CSS or the in-app `ps-` shell).
   variant: the sharp Pole·cat wordmark + a suite links row + © meta.
 
 Per-app accent tints the tile + CTA via the inline `--psx-accent` prop; all
-other surfaces follow the viewer's theme. `theme: 'auto'` opts into the light
-media-query fallback (fleet landing pages are dark today).
+other surfaces follow the viewer's theme. `theme: 'auto'` opts into a light
+surface when the page's own `data-theme` (stamped by `theme.js`, e.g. from an
+in-page toggle) is `"light"` — polecat.live's root header/footer use it.
 
 ## auth/
 

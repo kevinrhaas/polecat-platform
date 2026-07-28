@@ -147,12 +147,13 @@
    phone — drop it below 560px to keep the header uncrowded */
 @media (max-width: 560px) { .psx-parent { display: none; } }
 
-/* light-surface fallback (no fleet landing page uses it today, but the
-   component shouldn't assume dark) */
-@media (prefers-color-scheme: light) {
-  .psx-header[data-psx-theme="auto"], .psx-footer[data-psx-theme="auto"] {
-    --psx-bg: rgba(255, 255, 255, .8); --psx-solid: #f6f2ec;
-    --psx-text: #1b1720; --psx-muted: #5b5468; --psx-faint: #8b8397;
-    --psx-border: rgba(0, 0, 0, .10);
-  }
+/* light-surface fallback — opt in with siteHeader/siteFooter's `theme:
+   'auto'`. Keys off the shell's data-theme attribute on <html> (the same
+   convention every other shell component uses, stamped by theme.js) rather
+   than the raw OS preference, so it follows an in-page theme toggle. */
+[data-theme="light"] .psx-header[data-psx-theme="auto"],
+[data-theme="light"] .psx-footer[data-psx-theme="auto"] {
+  --psx-bg: rgba(255, 255, 255, .8); --psx-solid: #f6f2ec;
+  --psx-text: #1b1720; --psx-muted: #5b5468; --psx-faint: #8b8397;
+  --psx-border: rgba(0, 0, 0, .10);
 }

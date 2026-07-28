@@ -7,6 +7,7 @@ import { publicFleet } from '../vendor/polecat-shell/catalog.js';
 import { icon } from '../vendor/polecat-shell/icons.js';
 import { relTime } from '../vendor/polecat-shell/ui.js';
 import { siteFooter } from '../vendor/polecat-shell/site-chrome.js';
+import { applyTheme, toggleMode, effectiveMode } from '../vendor/polecat-shell/theme.js';
 import { appStatus } from './ingest.js';
 import { initAuthUi } from './auth-ui.js';
 import { initConnect } from './connect.js';
@@ -124,6 +125,22 @@ if(band && !matchMedia('(prefers-reduced-motion: reduce)').matches){
 initAuthUi(document.getElementById('signInBtn'));
 initConnect(document.getElementById('connectForm'));
 
+// theme toggle: the inline pre-paint <script> in <head> already stamped
+// data-theme before first render (no flash) — this just syncs the
+// theme-color meta tag and wires the button. Icon shown is the theme a
+// click switches TO, not the current one.
+applyTheme();
+const themeToggle = document.getElementById('themeToggle');
+if(themeToggle){
+  const paintThemeToggle = () => {
+    const dark = effectiveMode() === 'dark';
+    themeToggle.innerHTML = icon(dark ? 'sun' : 'moon', 18);
+    themeToggle.setAttribute('aria-label', dark ? 'Switch to light theme' : 'Switch to dark theme');
+  };
+  paintThemeToggle();
+  themeToggle.addEventListener('click', () => { toggleMode(); paintThemeToggle(); });
+}
+
 // mobile nav drawer: the top nav's wayfinding links are hidden below 640px
 // with nowhere to go (UX sweep #62 finding #4) — this hamburger reveals them.
 const navToggle = document.getElementById('navToggle');
@@ -202,5 +219,6 @@ siteFooter('#siteFooter', {
     { href: 'https://www.linkedin.com/in/kevinrhaas/', label: 'LinkedIn', ext: true },
   ],
   root: true,
+  theme: 'auto',
   meta: '© 2026 Polecat.live · GPL-3.0 · a collective of one, made with joy',
 });
