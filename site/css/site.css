@@ -190,7 +190,7 @@ section.wrap { padding-top: 80px; padding-bottom: 80px; }
 .idea-cols p { line-height: 1.75; }
 .stats-band { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; max-width: 880px; margin: 44px auto 0; }
 @media (max-width: 640px) { .stats-band { grid-template-columns: repeat(2, 1fr); } }
-.stat { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 20px 12px; text-align: center; }
+.stat { display: block; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 20px 12px; text-align: center; text-decoration: none; color: inherit; }
 .stat b { display: block; font-size: clamp(26px, 4vw, 36px); font-weight: 800; letter-spacing: -1px; background: linear-gradient(110deg, var(--brand-b), var(--blush)); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
 .stat span { font-size: 12px; text-transform: uppercase; letter-spacing: 1.2px; color: var(--text-3); }
 
