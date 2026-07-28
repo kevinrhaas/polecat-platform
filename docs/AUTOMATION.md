@@ -94,6 +94,13 @@ the design ports back one-to-one if the infrastructure matures (the prompts in
 5. Branch `steward/*`, PR, merge only when green; never push to main directly.
 6. One unit of high-quality work per run beats three rushed ones. Leave the PR open
    with an explanation when direction is ambiguous.
+7. Sweeps run every app in parallel per-app subagents — give each its own working
+   directory (a fresh `git worktree` or a `mktemp -d` clone), never a shared
+   checkout. On 2026-07-28 sibling per-app agents sharing one checkout left visible
+   scratch files reading each other's `*_ADMIN_TOKEN` vars; it read as a
+   credential-harvesting plant until investigation (issue #101) showed every file
+   matched its own app's designated sweep, never touching another app's token.
+   Isolating working directories avoids the false-alarm overhead entirely.
 
 ## Cost posture
 
