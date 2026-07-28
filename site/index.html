@@ -1,8 +1,10 @@
 <!doctype html>
-<html lang="en" data-theme="dark">
+<html lang="en">
 <head>
+<script>(function(){try{var k='polecat.theme',v=localStorage.getItem(k)||'polecat:dark',p=v.split(':'),m=p[1]||'dark';if(m==='system')m=matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';var d=document.documentElement;d.setAttribute('data-palette',p[0]);d.setAttribute('data-theme',m);var r=localStorage.getItem(k+'.motion');if(r==='1'||(r!=='0'&&matchMedia('(prefers-reduced-motion: reduce)').matches))d.setAttribute('data-reduce-motion','1');}catch(e){}})();</script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0b0a10">
 <title>Polecat — data, analytics & apps, built to fit.</title>
 <meta name="description" content="Polecat builds open-source data, analytics, and application software for targeted problems — and offers the thirty years of enterprise data expertise behind it. A fleet of AI agents, everything shipped in the open.">
 <link rel="icon" href="assets/polecat.svg" type="image/svg+xml">
@@ -42,6 +44,7 @@
       <a href="#work">What I do</a>
       <a href="#about">About</a>
     </div>
+    <button class="theme-toggle" id="themeToggle" type="button" aria-label="Switch to light theme"></button>
     <button class="btn btn-ghost" id="signInBtn" type="button">Sign in</button>
     <button class="nav-toggle" id="navToggle" type="button" aria-label="Open menu" aria-expanded="false" aria-controls="navLinks"></button>
   </div>

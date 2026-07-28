@@ -3,6 +3,10 @@
 // no // inside item text. Empty ts is stamped by CI at publish time.
 
 export const CHANGELOG = [
+  { v: 19, title: 'A light theme, and a switch to flip it', kind: 'feature', ts: '2026-07-28T00:59:50Z',
+    items: [
+      'polecat.live was dark-only since launch. There\'s now a light theme too — same warm-amber brand, a cream-and-white surface instead — and a sun/moon button in the top nav to switch. Your choice is remembered and applied before the page paints, so there\'s no flash.',
+    ] },
   { v: 18, title: 'The hero stats actually go somewhere now', kind: 'polish', ts: '2026-07-28T00:52:01Z',
     items: [
       'The four numbers up top — live apps, releases shipped, open source, meetings held — are clickable now, same as every other tile on the page. They jump to the app grid, the GitHub profile, or the consulting section.',
