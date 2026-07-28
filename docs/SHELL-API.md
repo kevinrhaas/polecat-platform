@@ -1,4 +1,4 @@
-# Polecat Shell — API Reference (v0.4.2)
+# Polecat Shell — API Reference (v0.5.8)
 
 Plain ES modules, no dependencies, no build. Import from `vendor/polecat-shell/`.
 Every module that persists anything takes a `storageKey` — apps keep their historical
@@ -123,8 +123,9 @@ drag/resize, bulk action bar, CSV/XLS export. Keep using app-local implementatio
 
 - `startTour(steps)` / `maybeStartTour(steps, { storageKey })` — popover walkthrough.
 - `registerShortcuts(map)` + `?` cheat-sheet panel.
-- `initBell({ feed, storageKey, mount })` — bell + badge + anchored panel over a derived
-  feed; dismissals persisted.
+- `initBell({ feed, storageKey, onOpen? }) -> button` — bell + badge + anchored panel
+  over a derived feed; dismissals persisted. Caller mounts the returned button and
+  calls its `.refresh()` method whenever app data changes to keep the badge honest.
 - `access.js` — ECDSA invite/admin token gate (client-side UX gating ONLY — do not call
   it security; real protection is Cloudflare Access, see DOMAINS.md).
 - `defineSettings(schema)` + `renderSettings(mount)` — section-based settings pages;
