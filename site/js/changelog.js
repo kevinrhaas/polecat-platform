@@ -3,6 +3,10 @@
 // no // inside item text. Empty ts is stamped by CI at publish time.
 
 export const CHANGELOG = [
+  { v: 18, title: 'The hero stats actually go somewhere now', kind: 'polish', ts: '2026-07-28T00:52:01Z',
+    items: [
+      'The four numbers up top — live apps, releases shipped, open source, meetings held — are clickable now, same as every other tile on the page. They jump to the app grid, the GitHub profile, or the consulting section.',
+    ] },
   { v: 17, title: 'A proper share card', kind: 'polish', ts: '2026-07-27T23:40:10Z',
     items: [
       'Sharing polecat.live in Slack, iMessage, or X now shows a real card — the mark, the house gradient, and the headline — instead of a blank preview.',
