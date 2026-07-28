@@ -24,6 +24,13 @@ site and a fresh shallow clone:
 7. Security quick pass: no secrets in committed files; CDN imports pinned;
    access.js never presented as a security boundary.
 
+WORKING-DIRECTORY ISOLATION: if you parallelize per-app checks across
+subagents, give each its own working directory (a fresh `git worktree add` or
+`mktemp -d` clone) — never point multiple subagents at this same checkout.
+Sharing a checkout once left sibling agents' scratch files visible to each
+other, reading as a credential-harvesting incident until investigated (see
+docs/AUTOMATION.md § Rules for any agent touching the fleet, rule 7).
+
 OUTPUT (read-only — NO code changes, NO merges):
 - One GitHub issue PER APP titled "Tech sweep YYYY-MM-DD" (skip if clean),
   prioritized, with exact paths/URLs/run links (`gh issue create`).

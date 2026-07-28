@@ -34,6 +34,13 @@ PROCESS HYGIENE: you are a Node.js process — NEVER run broad kills (`pkill
 node`, `killall node`, `pkill chrome`, pattern kills). Kill only PIDs you
 spawned; a broad pkill terminates this run from the inside.
 
+WORKING-DIRECTORY ISOLATION: if you parallelize per-app work across subagents,
+give each its own working directory (a fresh `git worktree add` or `mktemp -d`
+clone) — never point multiple subagents at this same checkout. Sharing a
+checkout once left sibling agents' scratch files visible to each other,
+reading as a credential-harvesting incident until investigated (see
+docs/AUTOMATION.md § Rules for any agent touching the fleet, rule 7).
+
 OUTPUT (read-only run — NO code changes, NO merges):
 - One GitHub issue PER APP titled "UX sweep YYYY-MM-DD" (skip if clean):
   prioritized findings, worst first, each with viewport/theme where seen.
