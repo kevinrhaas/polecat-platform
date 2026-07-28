@@ -176,6 +176,15 @@ section.wrap { padding-top: 80px; padding-bottom: 80px; }
   .app-card, .app-card:hover { transform: none; }
 }
 
+/* print / "Save as PDF": .reveal starts at opacity:0 until an
+   IntersectionObserver sees it cross the visual viewport (site/js/main.js) —
+   printing lays out the full page without ever scrolling it, so anything
+   below the fold that was never manually scrolled into view would print
+   blank. Force it visible for the print stylesheet, same as reduced-motion. */
+@media print {
+  .reveal { opacity: 1; transform: none; filter: none; transition: none; }
+}
+
 @media (max-width: 520px) {
   .nav { padding: 10px 14px; }
   .hero { padding: 46px 16px 56px; }

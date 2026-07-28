@@ -4,6 +4,10 @@
 // scripts/stamp-changelog.mjs.
 
 export const CHANGELOG = [
+  { v: 20, title: 'Printing the page no longer leaves it half blank', kind: 'fix', ts: '2026-07-28T09:37:39Z',
+    items: [
+      'Sections below the fold fade in as you scroll, which meant printing or saving the page as a PDF without scrolling through it first left most of the page blank. Printing now shows everything.',
+    ] },
   { v: 19, title: 'A light theme, and a switch to flip it', kind: 'feature', ts: '2026-07-28T00:59:50Z',
     items: [
       'polecat.live was dark-only since launch. There\'s now a light theme too — same warm-amber brand, a cream-and-white surface instead — and a sun/moon button in the top nav to switch. Your choice is remembered and applied before the page paints, so there\'s no flash.',
