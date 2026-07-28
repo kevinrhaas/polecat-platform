@@ -1,7 +1,7 @@
 {
-  "version": "0.5.7",
+  "version": "0.5.8",
   "files": {
-    "VERSION": "a7be85a38e01ecf8ca97da9637b54deb7ab70ae2c12f23ee0514deaae9f569e4",
+    "VERSION": "18ff6432867f284e31b1219b6a88a1535c9c9e48a8a9a1d27e72144e78c29c0b",
     "access.js": "532ce507b67afd4c87e87ec0abc0793319e4fa8a04f0a5ce0d67ce0b7c0a703b",
     "auth/null.js": "639217faef1c10efc8c1148fc33241900b7257a0d401fd09e62f05f64aab42d3",
     "auth/schema.js": "48379b720041131223f15735855057cd7e343392f6a8ff1ef99942b467ca2878",
@@ -21,7 +21,7 @@
     "tokens.css": "714742206c7f8c84f7ee2c2a741fea4a21dd580d9ba51c86ba85baa769aaffe2",
     "tour.js": "f77d13a50e829894da5fa0d47efb15751c710ecf883f230841823f2b531f8dd8",
     "ui.js": "29f074d443b4c9d4a5ae9fa9f7810dfc85195c029fe5e58b14b10f888e2d357f",
-    "views.js": "74ff4597b0cc641a316949db33c776ebcbb2442175f3db20af01d93be0776902",
+    "views.js": "6df12ccd9b1e5fb8e330b5f7b1e7f791b0939425eebc54681c16e403f8134ae6",
     "whatsnew.js": "fc6d1eb28c257bf5fdfed198695b49bcf9188091260425e76b278c9ceb681284"
   }
 }
