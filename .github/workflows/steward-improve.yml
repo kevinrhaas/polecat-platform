@@ -99,7 +99,7 @@ jobs:
       - name: Install Claude Code + browsers
         run: |
           npm install -g @anthropic-ai/claude-code
-          npm install -D playwright
+          npm install --no-save playwright
           # webkit too: several app smoke tests (jobtracker) run the iOS engine
           # (~215MB of downloads skipped on a warm browser cache)
           npx playwright install --with-deps chromium webkit

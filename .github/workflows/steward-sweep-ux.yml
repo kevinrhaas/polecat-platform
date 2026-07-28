@@ -54,7 +54,7 @@ jobs:
       - name: Install Claude Code + browser
         run: |
           npm install -g @anthropic-ai/claude-code
-          npm install -D playwright
+          npm install --no-save playwright
           npx playwright install --with-deps chromium
 
       - name: Run sweep
