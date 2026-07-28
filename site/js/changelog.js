@@ -4,6 +4,10 @@
 // scripts/stamp-changelog.mjs.
 
 export const CHANGELOG = [
+  { v: 21, title: 'Caught the front door up to its own shell', kind: 'fix', ts: '2026-07-28T13:45:35Z',
+    items: [
+      'This site vendors its own copy of the Polecat Shell it hands out to every other app. That copy had drifted a step behind, so it was quietly serving an unpinned sign-in library instead of the exact version everywhere else runs. Re-synced.',
+    ] },
   { v: 20, title: 'Printing the page no longer leaves it half blank', kind: 'fix', ts: '2026-07-28T09:37:39Z',
     items: [
       'Sections below the fold fade in as you scroll, which meant printing or saving the page as a PDF without scrolling through it first left most of the page blank. Printing now shows everything.',
