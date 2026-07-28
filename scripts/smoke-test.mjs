@@ -114,6 +114,25 @@ async function checkPage(browser, vp, url, asserts, label){
             }, `${bname}:demo/${palette}/${mode}`);
           }
         }
+
+        // 3) mobile drawer: opens via the topbar hamburger, and — regression
+        // check for the backdrop (z-index:25) sitting above the topbar
+        // (z-index:20), which made the hamburger unreachable to close it
+        // again — must also close via the rail's own toggle button.
+        if(vp.isMobile){
+          await checkPage(browser, vp, `http://localhost:${PORT}/lib/demo/?palette=polecat&mode=dark`, async page => {
+            await page.waitForSelector('.ps-rail', { timeout: 12000 });
+            await page.locator('.ps-topbar-menu').click();
+            await page.waitForSelector('.ps-rail.open', { timeout: 3000 });
+            const toggle = page.locator('.ps-rail-toggle');
+            if(!await toggle.isVisible()) throw new Error('mobile drawer has no visible close affordance');
+            const box = await toggle.boundingBox();
+            if(!box || box.width < 44 || box.height < 44)
+              throw new Error(`mobile drawer close button is ${box?.width}x${box?.height}, below the 44px touch-target minimum`);
+            await toggle.click({ timeout: 3000 });
+            await page.waitForSelector('.ps-rail:not(.open)', { timeout: 3000 });
+          }, `${bname}:demo/drawer-close`);
+        }
       }
     }
     console.log('\n✅ smoke test passed');
