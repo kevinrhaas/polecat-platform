@@ -98,6 +98,28 @@ async function checkPage(browser, vp, url, asserts, label){
           }, { timeout: 2000 }).then(() => true).catch(() => false);
           if(!visible) throw new Error('sign-in modal is not visibly styled');
           await page.keyboard.press('Escape');
+
+          // Theme toggle: a fresh visitor (no localStorage) always lands on
+          // the 'polecat:dark' default, so this is deterministic — click
+          // must flip data-theme AND repaint the button's aria-label/icon
+          // (regression: UX sweep #101 read this as "zero theme-toggle
+          // elements in the DOM", which the button's presence here disproves,
+          // but nothing was actually asserting it works).
+          const before = await page.getAttribute('html', 'data-theme');
+          await page.locator('#themeToggle').click();
+          await page.waitForFunction(
+            (prev) => document.documentElement.getAttribute('data-theme') !== prev,
+            before, { timeout: 2000 }
+          );
+          const after = await page.getAttribute('html', 'data-theme');
+          const label = await page.getAttribute('#themeToggle', 'aria-label');
+          if(after === before) throw new Error(`theme toggle did not change data-theme (stayed "${after}")`);
+          if(!/switch to/i.test(label || '')) throw new Error(`theme toggle aria-label didn't repaint: "${label}"`);
+          await page.locator('#themeToggle').click();
+          await page.waitForFunction(
+            (prev) => document.documentElement.getAttribute('data-theme') === prev,
+            before, { timeout: 2000 }
+          );
         }, `${bname}:launcher`);
 
         // 2) shell demo, every palette × both modes
