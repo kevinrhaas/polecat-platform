@@ -3,9 +3,10 @@ name: Steward janitor
 # The no-manual-merges guarantee. Every 2 hours this deterministic, Claude-free
 # job sweeps all fleet repos for open automation PRs (branches steward/* or
 # chore/polecat-shell-*), re-runs each app's own smoke gate against the PR
-# branch, and merges the green ones. Red PRs get one explanatory comment and
-# stay open. Draft PRs and PRs labeled `hold` are never touched — the `hold`
-# label is Kevin's "I want to look at this myself" switch.
+# branch, and merges the green ones (--delete-branch, so merged automation
+# branches don't pile up — see tech-sweep issue #106 item 3). Red PRs get one
+# explanatory comment and stay open. Draft PRs and PRs labeled `hold` are never
+# touched — the `hold` label is Kevin's "I want to look at this myself" switch.
 #
 # This backstops the normal flow (agents merge their own green PRs): a run
 # that died before merging, or a PR left open out of caution that actually
@@ -137,7 +138,7 @@ jobs:
               cd /; rm -rf "$DIR"
               if [ $RC -eq 0 ]; then
                 echo "GREEN ($GATE) → merging"
-                if gh pr merge "$N" -R "kevinrhaas/$REPO" --squash; then
+                if gh pr merge "$N" -R "kevinrhaas/$REPO" --squash --delete-branch; then
                   MERGED=$((MERGED+1)); echo "- merged kevinrhaas/$REPO#$N (smoke green)" >> /tmp/steward-out.txt
                 else
                   echo "merge failed (conflict?)"; SKIPPED=$((SKIPPED+1)); echo "- merge FAILED (conflict?) on kevinrhaas/$REPO#$N" >> /tmp/steward-out.txt
