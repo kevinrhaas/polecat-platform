@@ -53,7 +53,7 @@ HARD RULES:
   at 390x780 AND desktop, zero pageerrors. Playwright + chromium (and webkit
   where the app's smoke needs it) are pre-installed by the workflow.
 - Open a PR (what/why/verification) with `gh pr create`, and merge it yourself
-  with `gh pr merge --squash` when verification is fully green — merging your
+  with `gh pr merge --squash --delete-branch` when verification is fully green — merging your
   green PR is REQUIRED (Kevin never manually merges automation output; a
   janitor also sweeps green steward PRs every 2h). Merge is ship (each app's
   deploy.yml publishes on merge). Ambiguous, architecturally significant, or

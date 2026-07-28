@@ -16,9 +16,9 @@ STEPS:
    branch `chore/polecat-shell-vX.Y.Z`, replace vendor/polecat-shell/ with the
    released lib/ (minus demo/), bump the sw.js cache name if the app has one,
    PR titled `chore: polecat-shell vX.Y.Z`.
-3. Run each app's own smoke test against its PR branch; `gh pr merge --squash`
-   ONLY the green ones. Leave failures OPEN with a comment describing exactly
-   what broke.
+3. Run each app's own smoke test against its PR branch; `gh pr merge --squash
+   --delete-branch` ONLY the green ones. Leave failures OPEN with a comment
+   describing exactly what broke.
 4. Print: version shipped, apps merged, apps left open and why.
 
 HARD RULES: nothing beyond the vendor dir + SW cache bump changes in app PRs;
