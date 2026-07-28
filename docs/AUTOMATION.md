@@ -88,7 +88,8 @@ the design ports back one-to-one if the infrastructure matures (the prompts in
 2. Every user-visible change ships a fleet-format changelog entry, and the shipping
    agent STAMPS timestamps itself with the repo's own tool (nothing stamps after
    merge) — games `tools/stamp-changelog.mjs`, jobtracker/relay/autoselector
-   `.github/stamp-changelog.mjs`, analytics `tools/changelog-normalize.js`.
+   `.github/stamp-changelog.mjs`, analytics `tools/changelog-normalize.js`, this
+   repo's own `site/js/changelog.js` via `scripts/stamp-changelog.mjs`.
 3. Smoke before merge: 390×780 + desktop, zero pageerrors. Mobile is a gate.
 4. Never break `/js/changelog.js` parseability — Manager and the launcher read it live.
 5. Branch `steward/*`, PR, merge only when green; never push to main directly.

@@ -43,8 +43,9 @@ HARD RULES:
 - Ship a fleet-format js/changelog.js entry in the same commit and STAMP
   timestamps with the repo's own tool (games tools/stamp-changelog.mjs;
   jobtracker/relay/autoselector .github/stamp-changelog.mjs; analytics
-  tools/changelog-normalize.js; polecat-app its generator) — also stamp older
-  empty-ts entries. Must stay parseable by manager's ingest.
+  tools/changelog-normalize.js; polecat-app its generator; polecat-platform
+  itself scripts/stamp-changelog.mjs) — also stamp older empty-ts entries.
+  Must stay parseable by manager's ingest.
 - Run the app's own release steps where they exist (.github/archive-release.mjs,
   gen-shots.mjs) and bump sw.js cache names when precached files change.
 - Verify before merging: the app's own smoke script (.github/smoke-test.mjs,
