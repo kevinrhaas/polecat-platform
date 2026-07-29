@@ -2,7 +2,7 @@
   "_doc": "Focus roster for steward-focus.yml (heartbeat scheduler, cron */10 UTC — a tick every ~10 minutes; drop to */5 to run harder). Each tick fires one improve run per enabled lane that is due AND idle: a lane advances to its next unit within ~10 min of the last one finishing (skip-if-busy waits out an active run), and a chain that broke mid-way restarts on the next tick instead of stalling. Lane fields beyond enabled/everyHours (all optional): offset (which hours the cadence lands on — hourUTC % everyHours === offset, so 'align next run to 21:00' is offset = 21 % everyHours), window ([startUTC,endUTC) hour window, wraps midnight), startAt (ISO — lane sleeps until then), until (ISO — lane expires then; 'run every X until Y'), slices (1..5, default 1 — how many SEQUENTIAL improve runs the lane produces each time it fires; each slice is a full separate unit of work with its own PR + smoke gate). steward-focus dispatches ONE slice-1 run with this count, and each steward-improve run CHAINS the next on completion (its 'Chain next slice' step), so the slices run one-at-a-time — never fired all at once (which would overflow the per-app concurrency queue and get the surplus CANCELLED by GitHub). A chain that outruns the hour just continues: the next tick (~10 min) skips an app that still has a run in flight, so no competing chain is injected. Raise it to grind an app harder; hard-capped at 5. Evaluated by .github/steward/schedule.mjs (the canonical logic — `node .github/steward/schedule.mjs next` previews every lane). Edit this file from the GitHub UI, any Claude session, or Manager's Fleet Ops panel — changes take effect on the next tick (~10 min), no workflow edits needed. Different apps run in parallel; the same app never overlaps itself. The `jobs` section schedules the platform-level recurring jobs with the SAME lane fields (slices excepted): fleet-improve (suite-wide steward pick), sweep-ux, sweep-tech, janitor — their standalone workflow crons are retired; this roster is the single scheduler.",
   "apps": {
     "games.polecat.live": {
-      "enabled": true,
+      "enabled": false,
       "everyHours": 1,
       "slices": 2
     },
@@ -19,7 +19,7 @@
       "everyHours": 1
     },
     "autoselector.polecat.live": {
-      "enabled": true,
+      "enabled": false,
       "everyHours": 1,
       "slices": 2
     },
