@@ -93,9 +93,22 @@ HARD RULES:
     Kevin. Do NOT merge broken work, and do NOT retry the same thing forever.
     Then finish the run — do NOT start a different unit to compensate; the
     lane's other slices and the next hourly tick cover the rest.
-  * Transient infra error (rate limit, runner hiccup, network) → let the run end;
-    the next hourly tick retries fresh. Don't fight it, don't loop, don't
-    self-suspend to "wait it out."
+  * Contention / rate-limit THRASH — the #1 way a run wastes its whole turn
+    budget and dies on "Reached max turns" with NOTHING shipped. BAIL TO HOLD,
+    FAST, and preserve the work. Concretely: if GitHub rate-limits you (403 /
+    "secondary rate limit" / "abuse detection") more than TWICE, OR `main` moved
+    under you and you've had to rebase more than TWICE, STOP fighting — do NOT
+    keep retrying the limited call, do NOT keep re-rebasing, do NOT route around
+    the limit with a dozen REST calls. Instead: commit what you have to the
+    steward branch, push it, open a PR with the `hold` label + a one-line note
+    ("parked: main moving faster than I can rebase" or "parked: GitHub API
+    rate-limited — re-run when quieter"), and END the run. A `hold` PR that
+    preserves the work is a SUCCESS; thrashing to max-turns with nothing is the
+    failure to avoid. The next tick retries fresh when it's quieter. (Watch your
+    turn budget: if you're past ~two-thirds of it and not yet verified-green,
+    assume you won't make it — bail to `hold` now rather than dying with nothing.)
+  * Runner hiccup / network blip → let the run end; the next tick retries fresh.
+    Don't loop, don't self-suspend to "wait it out."
   Your run is complete when your one unit is either a merged green PR or a `hold`
   PR + explanation — reached SYNCHRONOUSLY, never by waiting on a background
   process.

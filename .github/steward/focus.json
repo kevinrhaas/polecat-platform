@@ -17,7 +17,7 @@
     "analytics.polecat.live": {
       "enabled": true,
       "everyHours": 1,
-      "slices": 3
+      "slices": 1
     },
     "autoselector.polecat.live": {
       "enabled": false,
