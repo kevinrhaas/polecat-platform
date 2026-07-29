@@ -1,9 +1,12 @@
 name: Steward focus scheduler
 
 # Multi-app focus runs, driven by .github/steward/focus.json (the roster).
-# Every hour this cheap, Claude-free job reads the roster and dispatches a
-# "Steward improve" run per enabled app whose cadence matches the hour
-# (everyHours: 1 = every hour, 2 = even UTC hours, 3 = hours divisible by 3…).
+# Every 10 MINUTES this cheap, Claude-free job reads the roster and dispatches a
+# "Steward improve" run per enabled app that is due AND idle. everyHours still
+# gates coarse cadence (everyHours:1 = eligible every tick, so it runs ~as fast
+# as its runs finish; 2 = even UTC hours…); the skip-if-busy check below is what
+# turns "eligible every tick" into "one unit at a time, next one within ~10 min
+# of the last finishing."
 # An app's `slices` (1..5, default 1) runs as that many SEQUENTIAL units: this
 # job dispatches ONE run per due app with slice=1/slices=N, and each
 # steward-improve run chains the next on completion (see its "Chain next slice"
@@ -27,7 +30,13 @@ name: Steward focus scheduler
 
 on:
   schedule:
-    - cron: '3 * * * *'        # hourly, off the :00 rush
+    # Every 10 minutes: the tick is the loop's heartbeat. Each tick fires one
+    # unit per IDLE enabled lane (skip-if-busy below waits out an active run),
+    # so a lane advances to its next unit within ~10 min of going idle — and a
+    # chain that broke mid-way restarts on the next tick instead of stalling an
+    # hour. Drop to '*/5 * * * *' to run more aggressively. (GitHub may delay a
+    # scheduled tick under load, so treat 10 min as the floor, not a guarantee.)
+    - cron: '*/10 * * * *'
   workflow_dispatch: {}         # manual tick for testing
 
 permissions:
