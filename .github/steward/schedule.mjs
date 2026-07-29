@@ -1,12 +1,15 @@
 #!/usr/bin/env node
 // schedule.mjs — the canonical focus-lane schedule evaluator.
 //
-// steward-focus.yml runs `node .github/steward/schedule.mjs due` on its
-// hourly tick and dispatches one improve run per printed app. Lane fields
-// (focus.json, all optional beyond `enabled`):
+// steward-focus.yml runs `node .github/steward/schedule.mjs due` every 10 MIN
+// (its cron heartbeat, TICK_MINUTES) and dispatches one improve run per printed
+// app that is idle. Lane fields (focus.json, all optional beyond `enabled`):
 //
 //   enabled     bool — master switch for the lane.
-//   everyHours  int ≥1 — cadence (1 = every hour, 2 = every other hour…).
+//   everyHours  int ≥1 — coarse cadence gate (1 = eligible EVERY tick, so the
+//               lane runs about as fast as its runs finish; 2 = even UTC hours…).
+//               The skip-if-busy check in steward-focus turns "eligible every
+//               tick" into "one unit at a time, next within ~10 min of the last."
 //   offset      int — which hours the cadence lands on: runs when
 //               hourUTC % everyHours === offset. This is how "align the next
 //               run to 21:00" works (offset = 21 % everyHours).
@@ -50,16 +53,22 @@ export function slicesOf(lane){
   return Math.max(1, Math.min(5, n));
 }
 
-// The next tick (hh:tickMinute UTC) at which the lane will fire, or null.
-export function nextRunAt(lane, from = new Date(), tickMinute = 3){
+// The loop's heartbeat: the scheduler ticks every TICK_MINUTES (steward-focus's
+// cron). Previews advance by ticks, not hours, so a lane eligible every tick
+// shows its next run within ~10 min.
+export const TICK_MINUTES = 10;
+
+// The next tick (10-min UTC grid) at which the lane will fire, or null.
+export function nextRunAt(lane, from = new Date(), tick = TICK_MINUTES){
   if(!lane || !lane.enabled) return null;
-  const first = new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth(),
-    from.getUTCDate(), from.getUTCHours(), tickMinute, 0, 0));
-  if(first <= from) first.setUTCHours(first.getUTCHours() + 1);
-  for(let i = 0; i < 14 * 24; i++){
-    const t = new Date(first.getTime() + i * 3600000);
+  const t = new Date(from); t.setUTCSeconds(0, 0);
+  // advance to the next tick boundary strictly after `from`
+  t.setUTCMinutes(t.getUTCMinutes() - (t.getUTCMinutes() % tick) + tick);
+  const steps = 14 * 24 * (60 / tick);
+  for(let i = 0; i < steps; i++){
     if(lane.until && t >= new Date(lane.until)) return null;
     if(isDueAt(lane, t)) return t;
+    t.setUTCMinutes(t.getUTCMinutes() + tick);
   }
   return null;
 }
