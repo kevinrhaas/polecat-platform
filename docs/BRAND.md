@@ -7,14 +7,32 @@ without flattening each app's own character. Living document: it starts from
 what the fleet already ships and grows as the identity matures. When code and
 this doc disagree, fix whichever is wrong in the same PR.
 
-> **The Polecat mark** is the new monoline head-and-tail in a ring.
+> **The Polecat mark** is the monoline head-and-tail in a ring.
 > **`site/assets/logo-mark.svg` is the canonical vector** (fill:
-> `currentColor`, defaults to black; dark surfaces invert it with
-> `filter: invert(1)`). `site/assets/favicon.svg` is the scheme-aware favicon
-> variant (ink on light browser UI, warm white on dark). It superseded the
-> legacy mascot (`site/assets/polecat.svg`, kept for history) in the 2026-07
-> design pass. The master mark lives on polecat.live only — apps identify
-> with their own glyph tile (below), never the polecat.
+> `currentColor`, defaults to black). **The one rule (brand v2, 2026-07-30):
+> the mark is dark on a light ground — ALWAYS.**
+>
+> 1. **Light surfaces** — the bare black mark sits directly on the surface
+>    (`#FFFFFF`, `#FBF7F1`, cream `#F5E9D6`).
+> 2. **Dark surfaces, including dark mode** — never knock the mark out to
+>    white. Keep it dark on a light round **coin** that echoes its own ring:
+>    cream `#F5E9D6` on the warm site dark and brand-orange surfaces, white
+>    where cream clashes (the cooler app dark). Coins are full-bleed circles
+>    with the mark at 85% — padding built in (CSS: circle background +
+>    ~7.5% padding on the bare mark, see `site/css/site.css .brand-mark`).
+> 3. **Light-on-dark is the exception, not an option** — allowed only where a
+>    coin is physically impossible (single-color reverse print, monochrome OS
+>    masks). `filter: invert(1)` on the mark is retired.
+>
+> Clear space ≥ the ring's stroke width (~7% of mark width); minimum 24px on
+> screen; one color only — no gradients, no accent fills, no recoloring, and
+> never the bare black mark on a dark surface "for subtlety".
+> **Favicon/PWA:** `site/assets/favicon.svg` IS the cream coin — it keeps the
+> mark dark-on-light even in dark browser chrome (the scheme-aware white
+> variant is retired). The legacy mascot (`site/assets/polecat.svg`) stays
+> retired — never on new work, never on app pages. The master mark lives on
+> polecat.live (and the app.polecat.live stub) only — apps identify with
+> their own glyph tile (below), never the polecat.
 
 ## Voice
 
