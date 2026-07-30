@@ -6,9 +6,21 @@
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { width: 1200px; height: 630px; overflow: hidden; }
   body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    font-family: 'Hanken Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
     background: #0b0a10;
     position: relative;
+  }
+  /* the two font src placeholders below are swapped for data URIs by
+     gen-og-image.mjs (setContent has no base URL for relative paths) */
+  @font-face {
+    font-family: 'Hanken Grotesk';
+    src: url('FONT_400') format('woff2');
+    font-weight: 400;
+  }
+  @font-face {
+    font-family: 'Hanken Grotesk';
+    src: url('FONT_800') format('woff2');
+    font-weight: 800;
   }
   .glow-a, .glow-b {
     position: absolute; border-radius: 50%; filter: blur(60px); opacity: .35;
@@ -22,7 +34,8 @@
   }
   .mark {
     flex: none; width: 220px; height: 220px;
-    filter: drop-shadow(0 18px 40px rgba(224,138,69,.28));
+    /* the mark ships black-on-alpha; invert to white for the dark card */
+    filter: invert(1) drop-shadow(0 18px 40px rgba(224,138,69,.28));
   }
   .copy { flex: 1; min-width: 0; }
   .kicker {

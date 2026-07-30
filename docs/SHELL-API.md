@@ -1,8 +1,16 @@
-# Polecat Shell — API Reference (v0.5.8)
+# Polecat Shell — API Reference (v0.6.0)
 
 Plain ES modules, no dependencies, no build. Import from `vendor/polecat-shell/`.
 Every module that persists anything takes a `storageKey` — apps keep their historical
 keys (`as.theme.v1`, `jt.rail.open`, …) so adoption never wipes user state.
+
+## fonts.css (v0.6.0)
+
+Hanken Grotesk, the brand face, self-hosted woff2 (`fonts/` — 400/500/600/700/800
+roman + 400 italic, `font-display: swap`). Optional: link it before any sheet that
+reads `--font`/`--font-site`; pages that skip it fall through to the system stack.
+`--font` in tokens.css names Hanken Grotesk first, so linking this file is the
+only step an app needs to adopt the brand face. See docs/BRAND.md § Typography.
 
 ## tokens.css
 

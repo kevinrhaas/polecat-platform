@@ -1,7 +1,10 @@
 /* polecat.live — the suite front door.
    Builds on the craft of the original polecat marketing site (dark, warm
-   amber brand, soft glows) but speaks for the whole fleet. Static, no fonts
-   loaded — system stack keeps first paint instant. */
+   amber brand, soft glows) but speaks for the whole fleet. Type is Hanken
+   Grotesk (the brand face), self-hosted woff2 via the vendored shell,
+   font-display: swap with core weights preloaded — the system stack sits
+   right behind it so first paint never blocks. Token vocabulary (type scale,
+   spacing, shadows, motion) lives in css/tokens.css, loaded before this. */
 
 :root {
   --bg: #0b0a10; --bg-2: #110f18; --surface: #16131f; --surface-2: #1d1928;
@@ -22,8 +25,8 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html { scroll-behavior: smooth; overflow-x: hidden; }
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-  background: var(--bg); color: var(--text); line-height: 1.6;
+  font-family: var(--font-site, -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif);
+  background: var(--bg); color: var(--text); line-height: var(--t-body-site-lh, 1.6);
   -webkit-font-smoothing: antialiased; overflow-x: hidden;
 }
 a { color: inherit; }
@@ -32,10 +35,10 @@ a:focus-visible, button:focus-visible { outline: 2px solid var(--brand-b); outli
 .wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 22px; }
 .narrow { max-width: 720px; }
 .center { text-align: center; }
-h1 { font-size: clamp(34px, 6vw, 60px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.05; }
-h2 { font-size: clamp(24px, 4vw, 36px); font-weight: 800; letter-spacing: -.8px; line-height: 1.15; }
-.lead { font-size: clamp(15px, 2vw, 18px); color: var(--text-2); margin-top: 12px; }
-.kicker { font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 1.5px; color: var(--brand-b); margin-bottom: 8px; }
+h1 { font-size: var(--t-h1); font-weight: 800; letter-spacing: var(--t-h1-ls); line-height: var(--t-h1-lh); }
+h2 { font-size: var(--t-h2); font-weight: 800; letter-spacing: var(--t-h2-ls); line-height: var(--t-h2-lh); }
+.lead { font-size: var(--t-lead); color: var(--text-2); margin-top: 12px; }
+.kicker { font-size: var(--t-kicker); font-weight: 800; text-transform: uppercase; letter-spacing: var(--t-kicker-ls); color: var(--brand-b); margin-bottom: 8px; }
 section[id] { scroll-margin-top: 76px; }
 section.wrap { padding-top: 80px; padding-bottom: 80px; }
 .band { background: var(--bg-2); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); padding: 80px 0; }
@@ -101,10 +104,18 @@ section.wrap { padding-top: 80px; padding-bottom: 80px; }
 /* hero */
 .hero { text-align: center; padding: 70px 22px 80px; max-width: 860px; margin: 0 auto; position: relative; }
 .hero-glow { position: absolute; top: -10%; left: 50%; transform: translateX(-50%); width: 680px; height: 480px; background: radial-gradient(closest-side, rgba(176,112,240,.16), rgba(224,138,69,.10), transparent 70%); pointer-events: none; z-index: -1; }
-.hero-mascot { filter: drop-shadow(0 12px 34px rgba(156,107,63,.4)); animation: float 4.5s ease-in-out infinite; }
+.hero-mascot { filter: var(--shadow-mascot); animation: float var(--d-float) ease-in-out infinite; }
 @keyframes float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+
+/* The mark ships as a black-alpha PNG (the monoline logo). On dark surfaces
+   invert it to white; on the cream light theme it stays ink-black. The
+   drop-shadow filter above still applies to the hero via the combined list. */
+.brand-mark { filter: invert(1); }
+[data-theme="light"] .brand-mark { filter: none; }
+.hero-mascot { filter: invert(1) var(--shadow-mascot); }
+[data-theme="light"] .hero-mascot { filter: var(--shadow-mascot); }
 .hero h1 { margin: 14px 0 6px; }
-.hero-sub { font-size: clamp(15px, 2.2vw, 19px); color: var(--text-2); max-width: 640px; margin: 16px auto 0; }
+.hero-sub { font-size: var(--t-hero-sub); color: var(--text-2); max-width: 640px; margin: 16px auto 0; }
 .hero-cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-top: 30px; }
 .hero-note { font-size: 13px; color: var(--text-2); margin-top: 18px; }
 
@@ -123,14 +134,16 @@ section.wrap { padding-top: 80px; padding-bottom: 80px; }
   background: radial-gradient(120% 90% at 20% 0%, color-mix(in srgb, var(--c) 14%, transparent), transparent 60%);
   transition: opacity .2s ease;
 }
-.app-card:hover { transform: translateY(-3px); border-color: color-mix(in srgb, var(--c) 45%, var(--border)); box-shadow: 0 14px 38px rgba(0,0,0,.35); }
+.app-card:hover { transform: var(--lift-card); border-color: color-mix(in srgb, var(--c) 45%, var(--border)); box-shadow: var(--shadow-card-hover); }
 .app-card:hover::after { opacity: 1; }
 .app-top { display: flex; align-items: center; gap: 12px; }
+/* round single-color ring badge — ring ≈7.5% of size, 10% accent wash, stroke
+   glyph in the accent. Gradient tiles are retired across the mark system. */
 .app-glyph {
-  width: 44px; height: 44px; border-radius: 12px; flex-shrink: 0;
+  width: 44px; height: 44px; border-radius: 50%; flex-shrink: 0;
   display: flex; align-items: center; justify-content: center;
-  color: #fff; background: linear-gradient(140deg, var(--c), var(--c2, var(--c)));
-  box-shadow: 0 4px 14px color-mix(in srgb, var(--c) 30%, transparent);
+  color: var(--c); background: color-mix(in srgb, var(--c) 10%, transparent);
+  border: 3px solid var(--c);
 }
 .app-glyph svg { display: block; }
 .app-name { font-size: 17px; font-weight: 800; letter-spacing: -.3px; }
@@ -149,23 +162,11 @@ section.wrap { padding-top: 80px; padding-bottom: 80px; }
 .app-open { position: absolute; top: 18px; right: 18px; color: var(--text-3); opacity: 0; transform: translateX(-4px); transition: opacity .16s, transform .16s; }
 .app-card:hover .app-open { opacity: 1; transform: none; color: var(--c); }
 
-/* principles */
-.principles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
-@media (max-width: 900px) { .principles { grid-template-columns: repeat(2, 1fr); } }
-@media (max-width: 560px) { .principles { grid-template-columns: 1fr; } }
-.prin { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 20px; font-size: 14px; color: var(--text-2); display: flex; flex-direction: column; gap: 6px; }
-.prin b { color: var(--text); font-size: 15px; }
-.prin-ic { font-size: 20px; }
-
-/* final cta + footer */
+/* final cta */
 .cta-final { text-align: center; padding: 90px 22px; }
 .cta-final h2 { margin-bottom: 24px; }
-.foot { display: flex; align-items: center; justify-content: space-between; padding: 26px 22px; border-top: 1px solid var(--border); max-width: var(--maxw); margin: 0 auto; flex-wrap: wrap; gap: 12px; }
-.foot-brand { font-weight: 800; }
-.foot-links { display: flex; gap: 20px; font-size: 14px; }
-.foot-links a { color: var(--text-2); text-decoration: none; }
-.foot-links a:hover { color: var(--text); }
-.foot-meta { width: 100%; text-align: center; font-size: 12px; color: var(--text-3); order: 3; }
+/* (the footer is the shared psx- root variant built by siteFooter(); the old
+   .foot/.prin rules that no longer matched any markup were removed) */
 
 /* reveal + motion hygiene */
 .reveal { opacity: 0; transform: translateY(18px); transition: opacity .6s ease, transform .6s ease; }
@@ -218,7 +219,7 @@ section.wrap { padding-top: 80px; padding-bottom: 80px; }
 .stats-band { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; max-width: 880px; margin: 44px auto 0; }
 @media (max-width: 640px) { .stats-band { grid-template-columns: repeat(2, 1fr); } }
 .stat { display: block; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 20px 12px; text-align: center; text-decoration: none; color: inherit; }
-.stat b { display: block; font-size: clamp(26px, 4vw, 36px); font-weight: 800; letter-spacing: -1px; background: linear-gradient(110deg, var(--brand-b), var(--blush)); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+.stat b { display: block; font-size: var(--t-stat); font-weight: 800; letter-spacing: -1px; background: linear-gradient(110deg, var(--brand-b), var(--blush)); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
 .stat span { font-size: 12px; text-transform: uppercase; letter-spacing: 1.2px; color: var(--text-3); }
 
 /* ---- method grid ---- */
@@ -317,8 +318,11 @@ section.wrap { padding-top: 80px; padding-bottom: 80px; }
 
 /* hero: staggered entrance — each child rises in on load */
 @keyframes riseIn { from { opacity: 0; transform: translateY(22px); filter: blur(6px); } to { opacity: 1; transform: none; filter: none; } }
+/* the mark's entrance must NOT animate filter — riseIn's `to` would pin
+   `filter: none` (fill-mode both) and erase the invert + drop shadow */
+@keyframes riseInMark { from { opacity: 0; transform: translateY(22px); } to { opacity: 1; transform: none; } }
 .hero > * { animation: riseIn .7s cubic-bezier(.22,.8,.3,1) both; }
-.hero .hero-mascot { animation: riseIn .7s cubic-bezier(.22,.8,.3,1) both, float 4.5s ease-in-out 1s infinite; }
+.hero .hero-mascot { animation: riseInMark .7s cubic-bezier(.22,.8,.3,1) both, float 4.5s ease-in-out 1s infinite; }
 .hero h1 { animation-delay: .08s; }
 .hero .hero-sub { animation-delay: .18s; }
 .hero .hero-cta { animation-delay: .28s; }
@@ -326,7 +330,7 @@ section.wrap { padding-top: 80px; padding-bottom: 80px; }
 .hero .scroll-cue { animation-delay: .55s; }
 
 /* mascot: playful wiggle when you poke it */
-.hero-mascot:hover { animation: riseIn .7s cubic-bezier(.22,.8,.3,1) both, wiggle .6s ease-in-out; }
+.hero-mascot:hover { animation: riseInMark .7s cubic-bezier(.22,.8,.3,1) both, wiggle .6s ease-in-out; }
 @keyframes wiggle { 0%,100% { transform: rotate(0); } 25% { transform: rotate(-8deg) scale(1.06); } 65% { transform: rotate(6deg) scale(1.04); } }
 
 /* scroll cue */
@@ -340,7 +344,7 @@ section.wrap { padding-top: 80px; padding-bottom: 80px; }
 .ticker { overflow: hidden; border-block: 1px solid var(--border); padding: 13px 0; position: relative;
   -webkit-mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
   mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent); }
-.ticker-track { display: flex; gap: 44px; width: max-content; animation: tickerRoll 44s linear infinite; }
+.ticker-track { display: flex; gap: 44px; width: max-content; animation: tickerRoll var(--d-ticker) linear infinite; }
 .ticker:hover .ticker-track { animation-play-state: paused; }
 .ticker-track span { font-size: 13px; font-weight: 700; letter-spacing: 1.4px; text-transform: uppercase; color: var(--text-3); white-space: nowrap; position: relative; transition: color .2s; }
 .ticker-track span:hover { color: var(--brand-b); }

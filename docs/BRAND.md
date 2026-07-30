@@ -7,10 +7,15 @@ without flattening each app's own character. Living document: it starts from
 what the fleet already ships and grows as the identity matures. When code and
 this doc disagree, fix whichever is wrong in the same PR.
 
-> The **Polecat mascot** (the masked cat face, `site/assets/polecat.svg`) is the
-> master mark and is getting its own focused design pass later. Until then:
-> keep it exactly as-is on polecat.live, and do **not** copy the mascot art into
-> app pages — apps identify with their own glyph tile (below), not the cat.
+> **The Polecat mark** is the new monoline head-and-tail in a ring
+> (`site/assets/logo-mark-*.png` — black-on-alpha; dark surfaces invert it to
+> white with `filter: invert(1)`). It superseded the legacy mascot
+> (`site/assets/polecat.svg`) in the 2026-07 design pass; the mascot survives
+> only as the favicon until an SVG of the new mark exists. ⚠️ The new mark is
+> **raster only** — ask the brand owner for an SVG before any print,
+> large-format, or favicon use. As before, the master mark lives on
+> polecat.live only — apps identify with their own glyph tile (below), never
+> the polecat.
 
 ## Voice
 
@@ -20,34 +25,40 @@ requirement, not decoration. We say what a thing does, then prove it.
 
 ## The mark system: one chassis, a glyph per app
 
-Every app is represented by a **single-color glyph in a shared tile** — the
-same rounded, accent-tinted square the launcher grid already uses. The chassis
-is the constant that makes the family cohere; the glyph and accent make each
-app itself.
+Every app is represented by a **single-color glyph in a shared round badge**.
+The chassis is the constant that makes the family cohere; the glyph and accent
+make each app itself. **No gradients anywhere in the mark system** — the old
+gradient-square tiles are retired.
 
-- **Chassis** (`.psx-tile`, and the launcher's `.app-glyph`): rounded square,
-  `border-radius` ~30% of size, background `color-mix(accent 15%, transparent)`,
-  `1px` border `color-mix(accent 32%, transparent)`, glyph in the accent color.
+- **Chassis** (`.psx-tile`, the launcher's `.app-glyph`, the rail's
+  `.ps-rail-logo`): a **circle** — ring weight ≈7.5% of size, background
+  `color-mix(accent 10%, transparent)`, glyph in the accent color at ~60% of
+  size. Small/busy surfaces use the **solid variant**: accent disc, white
+  glyph (`.psx-tile-sm`).
 - **Glyph**: one icon from `lib/icons.js` — single-color, `currentColor`,
   stroke-based, 24×24, stroke-width 1.7 (the fleet icon bar; never multi-color
   or filled). Chosen to say what the app *does*.
 - **Accent**: one hex per app, from `lib/catalog.js` (the single source of
-  truth). It tints the tile and the app's primary CTA. Chrome text/surfaces
+  truth). It tints the badge and the app's primary CTA. Chrome text/surfaces
   still follow the viewer's theme, never the brand color.
 
 ### The per-app assignments (canonical — from `lib/catalog.js`)
 
-| App | Glyph | Accent | Notes |
-|-----|-------|--------|-------|
-| **polecat.live** | the mascot (cat face) | house gradient¹ | the master mark; reserved |
-| Chat | `chat` | `#8b5cf6` violet | |
-| JobTracker | `briefcase` | `#7c5cff` purple | landing page currently shows a rocket → move to briefcase |
-| Analytics | `chart` | `#b8632e` terracotta | |
-| AutoSelector | `car` | `#2f81f7` blue | |
-| Relay | `network` | `#21c7a8` teal | landing page currently reads orange → reconcile to teal² |
-| Games | `gamepad` | `#ff2e97` neon pink | neon palette is intentional (arcade) |
-| Manager | `gauge` | `#38bdf8` sky | mission-control gauge |
-| Model Server | `terminal` | `#d4773b` brown-orange | landing page currently inlines the mascot → move to terminal glyph |
+| App | Glyph | Accent → Accent 2 | Notes |
+|-----|-------|-------------------|-------|
+| **polecat.live** | the Polecat mark | house gradient¹ | the master mark; reserved |
+| Chat | `chat` | `#8b5cf6` → `#6366f1` violet | |
+| JobTracker | `briefcase` | `#1a8fd6` → `#12a24f` blue-green | landing page currently shows a rocket → move to briefcase |
+| Analytics | `chart` | `#d4773b` → `#f55036` terracotta | |
+| AutoSelector | `car` | `#3e7bfa` → `#f0762f` blue | |
+| Relay | `network` | `#21c7a8` → `#12b3a0` teal | landing page currently reads orange → reconcile to teal² |
+| Games | `gamepad` | `#ff2e97` → `#b14dff` neon pink | neon palette is intentional (arcade) |
+| Manager | `gauge` | `#22d3ee` → `#38bdf8` cyan | mission-control gauge |
+| Model Server | `terminal` | `#d4773b` → `#e8994a` brown-orange | landing page currently inlines the mascot → move to terminal glyph |
+
+(Values mirror `lib/catalog.js` — re-check there when editing; the catalog
+wins on any disagreement. `accent2` survives as the gradient stop for
+non-mark uses — an app's favicon, a hero flourish — never the badge itself.)
 
 ¹ House gradient: `linear-gradient(110deg, #9C6B3F, #e08a45 45%, #F4A6A6)`.
 ² Teal keeps the eight tiles chromatically distinct (Relay orange would collide
@@ -75,6 +86,26 @@ assumption isn't baked in.
 **App accents**: the per-app hexes above. An accent should appear as the tile
 tint and the primary CTA — a spark of the app's color, not a full repaint of
 neutral chrome.
+
+## Typography
+
+**Hanken Grotesk is the brand face**, self-hosted as woff2 in `lib/fonts/`
+(`lib/fonts.css` carries the `@font-face` set: 400/500/600/700/800 roman +
+400 italic, all `font-display: swap`). **800 is the brand weight** — every
+heading, wordmark, kicker, stat number and app name. 600 carries controls and
+rail items. The system stack always sits right behind it, so pages that don't
+link `fonts.css` (or users mid-download) render instantly on system type.
+
+- **Site scale** (fluid, polecat.live + front doors): h1
+  `clamp(38px, 6.4vw, 66px)` / `-1.5px` / `1.05`; h2 `clamp(24px, 4vw, 36px)`
+  / `-.8px` / `1.15`; body 15px/1.6; kickers 12px/800/uppercase/`+1.5px`.
+- **App scale** (fixed, Polecat Shell): 14px/1.5 base with the control ladder
+  (13.5px controls, 12px pills, 11.5px chips, 10px rail group labels).
+- **Mono** (`--mono`) is for versions, object IDs, keyboard hints and `<kbd>`
+  only.
+- Adoption: link `vendor/polecat-shell/fonts.css`, then set the page's stack
+  from `--font` (app) or `--font-site` (marketing chrome). Preload the 400 and
+  800 woff2 on pages where the headline is the hero.
 
 ## Header standard
 
@@ -120,8 +151,8 @@ carries the matching brand mark, built by `initShell({ app })` (`lib/shell.js`):
 - **The glyph tile**: pass `app.icon: icon('<catalogGlyph>', 22)` — the app's
   own catalog glyph (gauge, chart, briefcase, …), the *same* mark as its
   launcher tile and its marketing header. `app.wordmark` is a legacy fallback
-  only; new adoptions pass `app.icon`. The tile keeps the brand→accent gradient
-  chassis, so the mark reads white-on-accent everywhere.
+  only; new adoptions pass `app.icon`. The tile is the round ring badge
+  (accent-colored glyph on a 10% wash), matching the launcher and header.
 - **The app name** sits beside the tile (shown when the rail is open).
 - **The suite link**: a *barely-there* `polecat.live` link under the name —
   opacity `.45` at rest, `.9` on hover — the in-app echo of the marketing
@@ -132,16 +163,15 @@ One naming rule across all three surfaces (launcher tile, marketing header,
 in-app rail): same glyph, same app name, same accent. If they disagree, the
 catalog (`lib/catalog.js`) wins.
 
-**One brand color, one tile treatment.** Each catalog entry carries an
-`accent` **and** an `accent2` — the two stops of the app's brand gradient,
-matched to its favicon (JobTracker `#1a8fd6→#12a24f` blue-green, Analytics
-`#d4773b→#f55036` terracotta, Relay `#21c7a8→#12b3a0` green, …). All three
-tiles render the **same** vivid gradient with a **white glyph**
-(`linear-gradient(140deg, accent, accent2)`): the launcher `.app-glyph`, the
-marketing `.psx-tile`, and the in-app rail `.ps-rail-logo` (which auto-reads
-the catalog by `app.id`, so no per-app color wiring). An app's icon reads the
-same color and style whether you see it on the launcher, its landing page, or
-inside the app.
+**One brand color, one badge treatment.** All three surfaces render the
+**same round single-color ring badge** (ring ≈7.5% of size, 10% accent wash,
+stroke glyph in the accent): the launcher `.app-glyph`, the marketing
+`.psx-tile`, and the in-app rail `.ps-rail-logo` (which auto-reads the catalog
+by `app.id`, so no per-app color wiring). An app's icon reads the same color
+and style whether you see it on the launcher, its landing page, or inside the
+app. Gradient tiles (`linear-gradient(140deg, accent, accent2)`) are retired
+from the mark system; `accent2` remains in the catalog for favicons and
+non-mark flourishes.
 
 ## Adoption
 

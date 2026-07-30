@@ -4,6 +4,13 @@
 // scripts/stamp-changelog.mjs.
 
 export const CHANGELOG = [
+  { v: 23, title: 'The design system arrives: new mark, brand typeface, round app badges', kind: 'feature', ts: '',
+    items: [
+      'The new monoline Polecat mark replaces the old mascot in the nav, the hero, and the share card. One drawn line, head and tail in a ring — same animal, sharper suit.',
+      'The whole site now sets in Hanken Grotesk, the fleet\'s brand face — self-hosted, swap-displayed, and preloaded so first paint stays instant. Display type got a touch bigger to match.',
+      'App tiles across the launcher are now round single-color ring badges instead of gradient squares — the same object you\'ll see in every app\'s header and rail as the fleet picks up the new shell.',
+      'Under the hood: the full design-token vocabulary (type scale, spacing, motion, shadows) now drives the page, and the design system ships in the repo as a skill so every future change designs on-system.',
+    ] },
   { v: 22, title: 'Bigger tap targets in the mobile nav and footer', kind: 'fix', ts: '2026-07-28T19:18:55Z',
     items: [
       'The four links inside the mobile hamburger drawer (Apps, How we build, What I do, About) were only 35px tall, under this site\'s own 44px minimum for everything else in the nav. They\'re a full 44px now.',

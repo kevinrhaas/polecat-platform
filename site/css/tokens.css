@@ -1,0 +1,81 @@
+/* -----------------------------------------------------------------------
+   tokens.css — the design-system token layer for polecat.live.
+   From the Polecat design system (skill: polecat-design). Loads BEFORE
+   site.css; site.css owns the color semantics (:root dark + light theme),
+   this file owns the raw palette, type scale, spacing, radii/shadows,
+   focus and motion vocabulary. Values are the shipped ones — where the
+   design system moved ahead (Hanken Grotesk, the larger display scale),
+   this file is the source of truth.
+   ----------------------------------------------------------------------- */
+
+:root{
+  /* ---- raw house palette (never theme-dependent) ---- */
+  --pc-brown:#9C6B3F;      /* gradient head */
+  --pc-orange:#e08a45;     /* primary accent, links, CTA */
+  --pc-blush:#F4A6A6;      /* gradient tail */
+  --pc-cream:#F5E9D6;      /* warm light */
+  --pc-plum:#2E2A33;       /* mascot ink / deep warm neutral */
+  --pc-glow:#b070f0;       /* purple ambient glow ONLY — never text or fill */
+
+  --pc-gradient:linear-gradient(110deg,#9C6B3F,#e08a45 45%,#F4A6A6);
+  --pc-gradient-cta:linear-gradient(110deg,#9C6B3F,#e08a45);
+
+  --pc-success:#34d399; --pc-danger:#f87171;
+  --pc-warning:#fbbf24; --pc-info:#60a5fa;
+
+  /* ---- type: Hanken Grotesk is the brand face (fonts via vendored shell) ---- */
+  --font-brand:'Hanken Grotesk',-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
+  --font-system:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
+  --font-site:var(--font-brand);
+  --mono:'SF Mono',ui-monospace,monospace;
+
+  /* site scale (fluid) — 800 is the brand weight */
+  --t-h1:clamp(38px,6.4vw,66px); --t-h1-ls:-1.5px; --t-h1-lh:1.05;
+  --t-h2:clamp(24px,4vw,36px);   --t-h2-ls:-.8px;  --t-h2-lh:1.15;
+  --t-lead:clamp(15px,2vw,18px);
+  --t-hero-sub:clamp(15px,2.2vw,19px);
+  --t-body-site:15px; --t-body-site-lh:1.6; --t-prose-lh:1.75;
+  --t-stat:clamp(26px,4vw,36px);
+  --t-kicker:12px;  --t-kicker-ls:1.5px;
+  --t-ticker:13px;  --t-ticker-ls:1.4px;
+  --t-eyebrow:11px; --t-eyebrow-ls:2.5px;
+  --w-body:400; --w-medium:500; --w-semibold:600; --w-bold:700; --w-black:800;
+
+  /* ---- layout + space (shipped values; not a strict 4/8 grid) ---- */
+  --maxw-prose:880px; --maxw-narrow:720px; --maxw-hero:860px;
+  --gutter:22px; --gutter-sm:14px;
+  --section-y:80px; --section-y-sm:56px;
+  --grid-gap:16px; --grid-gap-tight:14px;
+  --card-pad:22px; --card-pad-sm:20px;
+  --nav-y:12px; --scroll-offset:76px;
+  --tap-min:44px;
+
+  /* ---- radii, shadows, focus ---- */
+  --r-pill:100px; --border-w:1px;
+  --shadow-card-hover:0 14px 38px rgba(0,0,0,.35);
+  --shadow-cta:0 6px 22px rgba(224,138,69,.28);
+  --shadow-cta-hover:0 10px 28px rgba(193,96,44,.45);
+  --shadow-modal:0 24px 70px rgba(0,0,0,.55);
+  --shadow-pop:0 14px 38px rgba(0,0,0,.4);
+  --shadow-mascot:drop-shadow(0 12px 34px rgba(156,107,63,.4));
+  --ring-site:0 0 0 3px color-mix(in srgb, var(--brand-b) 26%, transparent);
+  --focus-outline:2px solid var(--brand-b); --focus-offset:2px;
+
+  /* ---- motion: quick on interaction, generous on entrance ---- */
+  --d-press:80ms; --d-fast:120ms; --d-hover:160ms; --d-panel:220ms;
+  --d-enter:550ms; --d-rise:700ms;
+  --d-drift:30s; --d-ticker:44s; --d-float:4.5s;
+  --e-standard:cubic-bezier(.4,0,.2,1);
+  --e-rise:cubic-bezier(.22,.8,.3,1);
+  --e-pop:cubic-bezier(.34,1.56,.64,1);
+  --e-out:ease;
+  --lift-hover:translateY(-2px); --lift-card:translateY(-3px); --lift-press:translateY(0);
+}
+
+@media (prefers-reduced-motion:reduce){
+  :root{
+    --d-press:1ms; --d-fast:1ms; --d-hover:1ms; --d-panel:1ms;
+    --d-enter:1ms; --d-rise:1ms;
+    --lift-hover:none; --lift-card:none;
+  }
+}

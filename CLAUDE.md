@@ -21,6 +21,10 @@ The hub repo for the Polecat suite: Polecat Shell (`lib/`), the polecat.live lau
 - **Design bar**: single-color currentColor icons; both themes always; joyful, elegant,
   modern — delight is a requirement, not decoration. Dashboard tiles/KPIs always link
   to their detail. Mobile is a release gate.
+- **Design work loads the design system first.** The full Polecat design system lives
+  at `.claude/skills/polecat-design` (tokens, Hanken Grotesk, icon set, component
+  specs, UI kits, guidelines). Any visual/brand/copy change starts there; docs/BRAND.md
+  is the distilled standard, the skill is the deep reference.
 - **Docs move with code**: changes to lib APIs update SHELL-API.md in the same commit;
   user-visible site changes ship a `site/js/changelog.js` entry (empty ts).
 - **One unit of high-quality work per run.** Ask via AskUserQuestion when direction is
