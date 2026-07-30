@@ -4,13 +4,18 @@
 // scripts/stamp-changelog.mjs.
 
 export const CHANGELOG = [
-  { v: 24, title: 'The mark goes vector', kind: 'polish', ts: '',
+  { v: 25, title: 'The mark never goes white: coins on every dark surface', kind: 'polish', ts: '2026-07-30T23:36:23Z',
+    items: [
+      'New brand rule, applied everywhere the mark appears: it stays dark on a light ground, always. On dark surfaces it now sits on a small cream coin that echoes its own ring, instead of being flipped to white.',
+      'The nav mark, the floating hero mark, the share card, and the favicon all wear the coin now — the favicon no longer swaps to a white mark in dark browser chrome.',
+    ] },
+  { v: 24, title: 'The mark goes vector', kind: 'polish', ts: '2026-07-30T23:36:23Z',
     items: [
       'The new Polecat mark is now a true vector — 3 KB of paths instead of a megabyte of pixels — so it renders razor-sharp at every size, from the favicon to the hero.',
       'The favicon is the new mark at last (the old mascot\'s final post), and it adapts to your browser theme: ink on light, warm white on dark.',
       'The share card regenerated from the vector, crisper than before.',
     ] },
-  { v: 23, title: 'The design system arrives: new mark, brand typeface, round app badges', kind: 'feature', ts: '',
+  { v: 23, title: 'The design system arrives: new mark, brand typeface, round app badges', kind: 'feature', ts: '2026-07-30T23:36:23Z',
     items: [
       'The new monoline Polecat mark replaces the old mascot in the nav, the hero, and the share card. One drawn line, head and tail in a ring — same animal, sharper suit.',
       'The whole site now sets in Hanken Grotesk, the fleet\'s brand face — self-hosted, swap-displayed, and preloaded so first paint stays instant. Display type got a touch bigger to match.',

@@ -107,13 +107,15 @@ section.wrap { padding-top: 80px; padding-bottom: 80px; }
 .hero-mascot { filter: var(--shadow-mascot); animation: float var(--d-float) ease-in-out infinite; }
 @keyframes float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
 
-/* The mark ships as a black-alpha PNG (the monoline logo). On dark surfaces
-   invert it to white; on the cream light theme it stays ink-black. The
-   drop-shadow filter above still applies to the hero via the combined list. */
-.brand-mark { filter: invert(1); }
-[data-theme="light"] .brand-mark { filter: none; }
-.hero-mascot { filter: invert(1) var(--shadow-mascot); }
-[data-theme="light"] .hero-mascot { filter: var(--shadow-mascot); }
+/* Brand v2 logo rule: the mark is dark on a light ground, ALWAYS. On dark
+   surfaces it is never knocked out to white — it sits on a light round coin
+   (cream, echoing the mark's own ring; mark at 85% via padding). On the
+   light theme the bare black mark sits directly on the surface. */
+.brand-mark, .hero-mascot { box-sizing: border-box; border-radius: 50%; }
+.brand-mark { background: #F5E9D6; padding: 2px; }
+[data-theme="light"] .brand-mark { background: none; padding: 0; }
+.hero-mascot { background: #F5E9D6; padding: 7px; filter: var(--shadow-mascot); }
+[data-theme="light"] .hero-mascot { background: none; padding: 0; }
 .hero h1 { margin: 14px 0 6px; }
 .hero-sub { font-size: var(--t-hero-sub); color: var(--text-2); max-width: 640px; margin: 16px auto 0; }
 .hero-cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-top: 30px; }

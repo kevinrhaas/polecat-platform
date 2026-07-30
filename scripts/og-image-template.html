@@ -34,8 +34,10 @@
   }
   .mark {
     flex: none; width: 220px; height: 220px;
-    /* the mark ships black-on-alpha; invert to white for the dark card */
-    filter: invert(1) drop-shadow(0 18px 40px rgba(224,138,69,.28));
+    /* Brand v2: never knock the mark out to white — on the dark card it sits
+       on a cream coin (mark at 85% via padding), staying dark-on-light. */
+    box-sizing: border-box; border-radius: 50%; background: #F5E9D6; padding: 16px;
+    filter: drop-shadow(0 18px 40px rgba(224,138,69,.28));
   }
   .copy { flex: 1; min-width: 0; }
   .kicker {
