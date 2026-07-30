@@ -12,11 +12,11 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const template = readFileSync(join(ROOT, 'scripts/og-image-template.html'), 'utf8');
-// The house mark (black-on-alpha PNG; the template inverts it to white) and
-// the brand face, all inlined as data URIs — setContent has no base URL.
+// The house mark (canonical vector, black; the template inverts it to white)
+// and the brand face, all inlined as data URIs — setContent has no base URL.
 const b64 = (p) => readFileSync(join(ROOT, p)).toString('base64');
 const html = template
-  .replaceAll('MASCOT_SRC', `data:image/png;base64,${b64('site/assets/logo-mark-256.png')}`)
+  .replaceAll('MASCOT_SRC', `data:image/svg+xml;base64,${b64('site/assets/logo-mark.svg')}`)
   .replaceAll('FONT_400', `data:font/woff2;base64,${b64('lib/fonts/HankenGrotesk-Regular.woff2')}`)
   .replaceAll('FONT_800', `data:font/woff2;base64,${b64('lib/fonts/HankenGrotesk-ExtraBold.woff2')}`);
 

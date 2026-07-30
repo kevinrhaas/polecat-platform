@@ -4,6 +4,12 @@
 // scripts/stamp-changelog.mjs.
 
 export const CHANGELOG = [
+  { v: 24, title: 'The mark goes vector', kind: 'polish', ts: '',
+    items: [
+      'The new Polecat mark is now a true vector — 3 KB of paths instead of a megabyte of pixels — so it renders razor-sharp at every size, from the favicon to the hero.',
+      'The favicon is the new mark at last (the old mascot\'s final post), and it adapts to your browser theme: ink on light, warm white on dark.',
+      'The share card regenerated from the vector, crisper than before.',
+    ] },
   { v: 23, title: 'The design system arrives: new mark, brand typeface, round app badges', kind: 'feature', ts: '',
     items: [
       'The new monoline Polecat mark replaces the old mascot in the nav, the hero, and the share card. One drawn line, head and tail in a ring — same animal, sharper suit.',

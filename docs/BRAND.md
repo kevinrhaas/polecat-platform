@@ -7,15 +7,14 @@ without flattening each app's own character. Living document: it starts from
 what the fleet already ships and grows as the identity matures. When code and
 this doc disagree, fix whichever is wrong in the same PR.
 
-> **The Polecat mark** is the new monoline head-and-tail in a ring
-> (`site/assets/logo-mark-*.png` — black-on-alpha; dark surfaces invert it to
-> white with `filter: invert(1)`). It superseded the legacy mascot
-> (`site/assets/polecat.svg`) in the 2026-07 design pass; the mascot survives
-> only as the favicon until an SVG of the new mark exists. ⚠️ The new mark is
-> **raster only** — ask the brand owner for an SVG before any print,
-> large-format, or favicon use. As before, the master mark lives on
-> polecat.live only — apps identify with their own glyph tile (below), never
-> the polecat.
+> **The Polecat mark** is the new monoline head-and-tail in a ring.
+> **`site/assets/logo-mark.svg` is the canonical vector** (fill:
+> `currentColor`, defaults to black; dark surfaces invert it with
+> `filter: invert(1)`). `site/assets/favicon.svg` is the scheme-aware favicon
+> variant (ink on light browser UI, warm white on dark). It superseded the
+> legacy mascot (`site/assets/polecat.svg`, kept for history) in the 2026-07
+> design pass. The master mark lives on polecat.live only — apps identify
+> with their own glyph tile (below), never the polecat.
 
 ## Voice
 
