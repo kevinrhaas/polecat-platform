@@ -122,6 +122,7 @@ select.input{cursor:pointer;appearance:none;background-image:url("data:image/svg
 .ps-rail-resize{position:absolute;top:0;right:0;width:6px;height:100%;cursor:col-resize;z-index:5}
 .ps-rail-resize:hover,.ps-rail.dragging .ps-rail-resize{background:color-mix(in srgb,var(--rail-accent) 40%,transparent)}
 .ps-rail-backdrop{display:none}
+.ps-rail-close{display:none}
 
 .ps-main{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden;isolation:isolate}
 .ps-topbar{display:flex;align-items:center;gap:10px;padding:12px 18px;border-bottom:1px solid var(--border);
@@ -233,13 +234,23 @@ select.input{cursor:pointer;appearance:none;background-image:url("data:image/svg
   .btn.icon{width:44px;height:44px}
   .ps-rail-item{min-height:44px}
   /* .ps-rail-toggle stays visible here (unlike desktop, where it collapses
-     the rail to icons): the drawer backdrop sits above the topbar
-     (z-index:25 vs 20), so the topbar hamburger that opened the drawer is
-     unreachable to close it again — this rail-local button (inside .ps-rail,
-     z-index:30) is the drawer's only working close affordance besides
-     tapping the backdrop itself. Its existing toggle logic + aria-expanded
-     wiring already work unchanged; only its size and visibility change here. */
+     the rail to icons): its existing toggle logic + aria-expanded wiring
+     already work unchanged; only its size and visibility change here. */
   .ps-rail-toggle{width:44px;height:44px}
+  /* The topbar hamburger (.ps-topbar-menu) that opens the drawer can't also
+     close it: it's a non-positioned element, so once the drawer is open it
+     paints *below* both the positioned .ps-rail (z-index:30) and its
+     .ps-rail-backdrop (z-index:25) regardless of any z-index given to the
+     button itself — CSS always stacks positioned boxes above static ones.
+     .ps-rail-close is a real, visible, top-corner close affordance rendered
+     *inside* .ps-rail so it inherits that same z-index:30 and is always
+     reachable while the drawer is open (fixes the fleet's oldest UX-sweep
+     finding: #10/#31/#33/#39/#54 on autoselector — the hamburger tapped a
+     second time silently hit the rail's own home-logo icon instead). */
+  .ps-rail-close{display:grid;place-items:center;position:absolute;top:8px;right:8px;
+    width:44px;height:44px;border-radius:10px;border:1px solid var(--border);
+    background:var(--surface-2);color:var(--text-2);cursor:pointer}
+  .ps-rail-close:focus-visible{outline:none;box-shadow:var(--ring)}
 }
 @media (max-width:520px){
   .ps-topbar h1{display:none}

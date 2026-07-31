@@ -140,17 +140,29 @@ async function checkPage(browser, vp, url, asserts, label){
         // 3) mobile drawer: opens via the topbar hamburger, and — regression
         // check for the backdrop (z-index:25) sitting above the topbar
         // (z-index:20), which made the hamburger unreachable to close it
-        // again — must also close via the rail's own toggle button.
+        // again — must close via the dedicated .ps-rail-close button (the
+        // fix for the fleet's oldest UX-sweep finding, autoselector #10/#31/
+        // #33/#39/#54: the hamburger tapped a second time silently hit the
+        // rail's own home-logo icon instead of closing the drawer). The
+        // pre-existing .ps-rail-toggle is also checked as a second working
+        // affordance, but .ps-rail-close is the one meant to be obvious.
         if(vp.isMobile){
           await checkPage(browser, vp, `http://localhost:${PORT}/lib/demo/?palette=polecat&mode=dark`, async page => {
             await page.waitForSelector('.ps-rail', { timeout: 12000 });
             await page.locator('.ps-topbar-menu').click();
             await page.waitForSelector('.ps-rail.open', { timeout: 3000 });
-            const toggle = page.locator('.ps-rail-toggle');
-            if(!await toggle.isVisible()) throw new Error('mobile drawer has no visible close affordance');
-            const box = await toggle.boundingBox();
+            const closeBtn = page.locator('.ps-rail-close');
+            if(!await closeBtn.isVisible()) throw new Error('mobile drawer has no visible close affordance');
+            const box = await closeBtn.boundingBox();
             if(!box || box.width < 44 || box.height < 44)
               throw new Error(`mobile drawer close button is ${box?.width}x${box?.height}, below the 44px touch-target minimum`);
+            await closeBtn.click({ timeout: 3000 });
+            await page.waitForSelector('.ps-rail:not(.open)', { timeout: 3000 });
+
+            // Second pass: the older .ps-rail-toggle affordance still works too.
+            await page.locator('.ps-topbar-menu').click();
+            await page.waitForSelector('.ps-rail.open', { timeout: 3000 });
+            const toggle = page.locator('.ps-rail-toggle');
             await toggle.click({ timeout: 3000 });
             await page.waitForSelector('.ps-rail:not(.open)', { timeout: 3000 });
           }, `${bname}:demo/drawer-close`);
