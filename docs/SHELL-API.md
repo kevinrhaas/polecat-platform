@@ -100,9 +100,7 @@ Rail behavior: collapse to icons, drag-to-resize, mobile drawer + backdrop, stat
 persisted under the app's keys. Sections filter by `minMode`/`admin`. The drawer
 never pops open over content: it boots closed on mobile, AND an open desktop rail
 auto-closes (without persisting) when the viewport crosses into drawer range
-mid-session — window shrink or phone rotation (v0.2.1) — and re-applies the
-persisted desktop preference when the viewport crosses back out of drawer range,
-so the rail doesn't stay stuck closed until a full reload (v0.6.2).
+mid-session — window shrink or phone rotation (v0.2.1).
 
 ## whatsnew.js
 
