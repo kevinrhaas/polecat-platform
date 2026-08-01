@@ -34,8 +34,8 @@
       "everyHours": 1
     },
     "polecat-platform": {
-      "enabled": false,
-      "everyHours": 1
+      "enabled": true,
+      "everyHours": 3
     }
   },
   "jobs": {
