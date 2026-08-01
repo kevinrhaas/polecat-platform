@@ -14,10 +14,11 @@
       (Thu), shell-release (on demand) — LIVE 2026-07-15 (AUTOMATION.md)
 - [x] Migrate jobtracker → manager → autoselector (MIGRATION.md; DONE 2026-07-17;
       relay deliberately last, still open)
-- [ ] Fleet Ops in the Manager console: manage the steward from manager.polecat.live —
-      toggle focus.json apps/cadence and dispatch/observe steward runs via the GitHub
-      API (contents + actions) using a vault credential; surface run history, open
-      steward PRs, and sweep issues per app on the project pages
+- [x] Fleet Ops in the Manager console (DONE — confirmed live 2026-08-01):
+      manager.polecat.live's `js/views/fleetops.js` toggles focus.json
+      apps/cadence and dispatches/observes steward runs via the GitHub API
+      using a vault credential; the paired Steward log view surfaces run
+      history, open steward PRs, and sweep-findings issues per app
 - [ ] Supabase project: Google/Apple/email providers; launcher sign-in live;
       account menu in the shell topbar
 - [ ] Fleet catalog: per-app og images (polecat.live's own launcher og:image
