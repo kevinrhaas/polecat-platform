@@ -4,6 +4,10 @@
 // scripts/stamp-changelog.mjs.
 
 export const CHANGELOG = [
+  { v: 27, title: 'The app rail no longer gets stuck closed after a resize', kind: 'fix', ts: '2026-08-01T15:51:49Z',
+    items: [
+      'Shrinking the window below the mobile breakpoint auto-closes an open rail so it can\'t pop over the content — by design. But widening back past that breakpoint left the rail stuck closed until a full reload instead of reopening, the way the shared shell chrome (used across every Polecat app) was meant to behave. It now reopens on its own.',
+    ] },
   { v: 26, title: 'The "100% open source" stat no longer flickers through fake percentages', kind: 'fix', ts: '2026-08-01T15:14:04Z',
     items: [
       'The stats-band count-up animation was meant to leave percentage figures alone and only count up plain numbers, but a bug let "100% open source" animate anyway, flashing through nonsensical values like "21%" and "62%" on its way up. It now skips straight to 100%.',
