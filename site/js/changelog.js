@@ -4,6 +4,10 @@
 // scripts/stamp-changelog.mjs.
 
 export const CHANGELOG = [
+  { v: 26, title: 'The "100% open source" stat no longer flickers through fake percentages', kind: 'fix', ts: '2026-08-01T15:14:04Z',
+    items: [
+      'The stats-band count-up animation was meant to leave percentage figures alone and only count up plain numbers, but a bug let "100% open source" animate anyway, flashing through nonsensical values like "21%" and "62%" on its way up. It now skips straight to 100%.',
+    ] },
   { v: 25, title: 'The mark never goes white: coins on every dark surface', kind: 'polish', ts: '2026-07-30T23:36:23Z',
     items: [
       'New brand rule, applied everywhere the mark appears: it stays dark on a light ground, always. On dark surfaces it now sits on a small cream coin that echoes its own ring, instead of being flipped to white.',

@@ -107,9 +107,10 @@ if(band && !matchMedia('(prefers-reduced-motion: reduce)').matches){
     so.disconnect();
     band.querySelectorAll('.stat b').forEach(el => {
       const raw = el.textContent;
+      if(/%/.test(raw)) return;                        // percentages stay put (not a countable total)
       const target = parseInt(raw.replace(/[^0-9]/g, ''), 10);
-      if(!target || target < 2) return;               // "1", "100%" stay put
-      const suffix = /\+/.test(raw) ? '+' : (/%/.test(raw) ? '%' : '');
+      if(!target || target < 2) return;                // "1" stays put
+      const suffix = /\+/.test(raw) ? '+' : '';
       const t0 = performance.now(), dur = 1100;
       const tick = (t) => {
         const p = Math.min(1, (t - t0) / dur), eased = 1 - Math.pow(1 - p, 3);
