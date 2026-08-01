@@ -10,8 +10,8 @@
       "everyHours": 2
     },
     "manager.polecat.live": {
-      "enabled": false,
-      "everyHours": 1
+      "enabled": true,
+      "everyHours": 3
     },
     "analytics.polecat.live": {
       "enabled": false,
