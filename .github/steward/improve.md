@@ -48,6 +48,12 @@ HARD RULES:
   Kevin's dispatch — do NOT PR into main, do NOT dispatch promote-to-prod.
 - NON-PIPELINE REPOS: branch `steward/<short-topic>` from origin/main.
   NEVER push to main directly (merge via your green PR).
+- BACKLOG CONTRACT: if the target repo has a `docs/BACKLOG.md`, it is the
+  operating manual for that repo's backlog — read it BEFORE touching the
+  queue and follow it exactly (stable IDs, the item grammar with stars +
+  points, states ⏳/⛔/🔁, one slice per PR, same-PR bookkeeping including
+  est-vs-actual points in the DONE entry, and the grooming rules). Analytics
+  has one today; treat it as authoritative wherever it exists.
 - vendor/polecat-shell/ in app repos is READ-ONLY (changes go to this repo's
   lib/ + VERSION bump + scripts/gen-manifest.mjs in the same commit).
 - Ship a fleet-format js/changelog.js entry in the same commit and STAMP
