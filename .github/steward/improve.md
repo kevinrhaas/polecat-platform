@@ -36,8 +36,18 @@ the picking logic. Otherwise pick, in priority order:
    from an open "UX sweep" / "Tech sweep" issue is a first-class unit.
 
 HARD RULES:
-- Clone the target app repo, branch `steward/<short-topic>` from origin/main.
-  NEVER push to main.
+- PIPELINE REPOS: if the target repo has a `.github/pipeline.json`, it is on
+  the dev → stage → main promotion pipeline (jobtracker + analytics today;
+  see the repo's docs/PIPELINE.md). There, `dev` is the integration branch:
+  branch `steward/<short-topic>` from origin/dev, open the PR with
+  `--base dev`, and merge into dev when the repo's DEV GATE is green (its
+  ci.yml: validate + changelog check + the light boot smoke — you should run
+  those same commands yourself before merging, since bot-opened PRs don't
+  trigger the gate). Merge-to-dev is STAGE, not ship: the nightly
+  promote-to-stage sweep runs the full suite and promotion to main is
+  Kevin's dispatch — do NOT PR into main, do NOT dispatch promote-to-prod.
+- NON-PIPELINE REPOS: branch `steward/<short-topic>` from origin/main.
+  NEVER push to main directly (merge via your green PR).
 - vendor/polecat-shell/ in app repos is READ-ONLY (changes go to this repo's
   lib/ + VERSION bump + scripts/gen-manifest.mjs in the same commit).
 - Ship a fleet-format js/changelog.js entry in the same commit and STAMP
@@ -55,8 +65,10 @@ HARD RULES:
 - Open a PR (what/why/verification) with `gh pr create`, and merge it yourself
   with `gh pr merge --squash --delete-branch` when verification is fully green — merging your
   green PR is REQUIRED (Kevin never manually merges automation output; a
-  janitor also sweeps green steward PRs every 2h). Merge is ship (each app's
-  deploy.yml publishes on merge). Ambiguous, architecturally significant, or
+  janitor also sweeps green steward PRs every 2h — it merges at the PR's own
+  base branch, so dev-based PRs land on dev). On non-pipeline repos merge is
+  ship (deploy.yml publishes on merge); on pipeline repos merge stages to
+  /dev/ and the pipeline ships it. Ambiguous, architecturally significant, or
   not fully verified → leave the PR OPEN with the `hold` label and an
   explanation for Kevin instead; `hold` keeps the janitor away.
 - PROCESS HYGIENE (kills the whole run if violated): you yourself are a Node.js

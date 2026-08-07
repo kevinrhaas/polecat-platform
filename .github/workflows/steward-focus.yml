@@ -75,8 +75,9 @@ jobs:
               continue
             fi
             N=$(node .github/steward/schedule.mjs slices-of "${APP}")
-            echo "→ dispatching ${APP} (slice 1/${N})"
-            gh workflow run steward-improve.yml -R kevinrhaas/polecat-platform -f app="${APP}" -f slice=1 -f slices="${N}"
+            M=$(node .github/steward/schedule.mjs model-of "${APP}")
+            echo "→ dispatching ${APP} (slice 1/${N}${M:+, model ${M}})"
+            gh workflow run steward-improve.yml -R kevinrhaas/polecat-platform -f app="${APP}" -f slice=1 -f slices="${N}" -f model="${M}"
             COUNT=$((COUNT+1))
             sleep 2
           done

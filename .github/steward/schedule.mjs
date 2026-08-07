@@ -90,12 +90,17 @@ if(cmd){
   }else if(cmd === 'slices-of'){
     const lane = (f.apps || {})[process.argv[3]];
     console.log(lane ? slicesOf(lane) : 1);
+  }else if(cmd === 'model-of'){
+    // The lane's pinned Claude model ('' = the CLI default). steward-focus
+    // passes it through to steward-improve as the run's --model.
+    const lane = (f.apps || {})[process.argv[3]];
+    console.log((lane && lane.model) || '');
   }else if(cmd === 'due-jobs'){
     for(const [job, lane] of Object.entries(f.jobs || {})) if(isDueAt(lane, now)) console.log(job);
   }else if(cmd === 'next'){
     for(const [app, lane] of Object.entries(f.apps || {})) console.log(`${app}\t${nextRunAt(lane, now)?.toISOString() || 'never'}`);
     for(const [job, lane] of Object.entries(f.jobs || {})) console.log(`job:${job}\t${nextRunAt(lane, now)?.toISOString() || 'never'}`);
   }else{
-    console.error('usage: schedule.mjs due|slices-of <app>|due-jobs|next'); process.exit(2);
+    console.error('usage: schedule.mjs due|slices-of <app>|model-of <app>|due-jobs|next'); process.exit(2);
   }
 }
