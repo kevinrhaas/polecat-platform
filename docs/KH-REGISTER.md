@@ -52,6 +52,7 @@ v833; shipped items were deliberately not back-numbered).
 - **KH-020** [process] Recurring docs/tour/marketing currency: keep welcome, Help, marketing and screenshots current with the app (periodic refresh, never big-bang) — analytics · reported 2026-07-27 · implements: LF58 / DOCS-CURRENCY track
 - **KH-021** [feature] View Builder chart-type parity with Studio, majors first (open-ended catalog backlog beyond the shipped choropleth/stacked/scatter/KPI) — analytics · reported 2026-07-30 · implements: VB-4 (open-ended)
 - **KH-022** [feature] Private/public visibility toggle beyond dashboards: datasets, Views, connections, jobs — analytics · reported 2026-07-21 · implements: M4.2 residual
+- **KH-023** [bug] List rows crushed long names to a letter-per-line sliver on a phone (Admin users) — analytics · reported 2026-08-07 · SHIPPED v867 (fixed on the shared `.cx-row`, the third sighting of this bug class)
 
 ## Closed
 
