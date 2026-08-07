@@ -91,8 +91,9 @@ if(cmd){
     const lane = (f.apps || {})[process.argv[3]];
     console.log(lane ? slicesOf(lane) : 1);
   }else if(cmd === 'model-of'){
-    // The lane's pinned Claude model ('' = the CLI default). steward-focus
-    // passes it through to steward-improve as the run's --model.
+    // The lane's pinned Claude model ('' = the fleet default, opus — applied
+    // in steward-improve.yml). steward-focus passes it through to
+    // steward-improve as the run's --model.
     const lane = (f.apps || {})[process.argv[3]];
     console.log((lane && lane.model) || '');
   }else if(cmd === 'due-jobs'){
