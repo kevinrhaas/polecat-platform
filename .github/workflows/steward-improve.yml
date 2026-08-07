@@ -143,8 +143,9 @@ jobs:
           ---
           FOCUS_APP: ${FOCUS_APP:-'(none — fleet pick)'}"
           # Per-lane model pin (focus.json `model` via the dispatch input);
-          # empty means the Claude Code CLI default.
+          # empty falls back to the fleet default: opus.
           MODEL="${{ github.event.inputs.model }}"
+          MODEL="${MODEL:-claude-opus-5}"
           claude -p "$PROMPT" \
             ${MODEL:+--model "$MODEL"} \
             --dangerously-skip-permissions \
