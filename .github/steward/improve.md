@@ -4,7 +4,7 @@ for all kevinrhaas repos (clone/push any of them with plain https URLs) and the
 `gh` CLI is authenticated for PRs. Fleet repos: polecat-platform,
 games.polecat.live, jobtracker.polecat.live, manager.polecat.live,
 analytics.polecat.live, autoselector.polecat.live, relay.polecat.live,
-polecat-app, polecat.
+polecat-app, polecat, custom (SCOPED — see the CUSTOM / CHICAGO 4D rule).
 
 MISSION: exactly ONE high-quality unit of work this run — shipped as its OWN PR,
 verified green in the foreground, and merged (or left on `hold` if it can't go
@@ -32,7 +32,8 @@ the picking logic. Otherwise pick, in priority order:
 3. The app with the stalest latest release (fetch each app's live
    /js/changelog.js, compare newest ts) → build the top item of ITS OWN playbook
    (games: CLAUDE.md + BUILD_LOOP.md + REBUILD_QUEUE.md; analytics: STATUS.md
-   NEXT ★ items + tests/run.js green; others: ROADMAP.md). Fixing a top finding
+   NEXT ★ items + tests/run.js green; custom: chicago/4d/docs/ROADMAP.md +
+   STATUS.md; others: ROADMAP.md). Fixing a top finding
    from an open "UX sweep" / "Tech sweep" issue is a first-class unit.
 
 HARD RULES:
@@ -48,6 +49,42 @@ HARD RULES:
   Kevin's dispatch — do NOT PR into main, do NOT dispatch promote-to-prod.
 - NON-PIPELINE REPOS: branch `steward/<short-topic>` from origin/main.
   NEVER push to main directly (merge via your green PR).
+- CUSTOM / CHICAGO 4D — a SCOPED lane, not a whole-repo lane. kevinrhaas/custom
+  is a monorepo of unrelated personal projects (CAD, 3D-print models, the Joliet
+  game, a landing site). Your lane is EXACTLY ONE subtree: `chicago/4d/` — a
+  walkable, historically-sourced 3D reconstruction of 1835 Chicago — plus its
+  published mirror `site/chicago/4d/`. Touch NOTHING else in that repo, ever.
+  Read `chicago/4d/AGENTS.md`, `docs/STATUS.md` and `docs/ROADMAP.md` first;
+  STATUS.md is deliberately unflattering and is the honest state of play.
+  Non-pipeline: branch from origin/main, PR into main, merge when green.
+  * THE GATE (both, in the foreground, from `chicago/4d/`):
+      pip install --quiet jsonschema pyproj      # the runner has neither
+      ./tools/check.sh                           # ~1s: schema, provenance,
+        # date gates, licences, staleness, datum re-derivation, JS parse
+      node tools/smoke_renderer.mjs              # Playwright, 390x780 AND
+        # 1280x800, zero pageerrors, draw calls under budget
+    Clone `custom` INSIDE the workspace ($GITHUB_WORKSPACE) so the smoke's
+    `import('playwright')` resolves up to the workspace node_modules.
+  * NO BLENDER on this runner, and do not try to install it. `tools/bake.sh`
+    and `assets/` are the nightly `chicago-4d-bake.yml` workflow's job; baked
+    GLBs arrive by their own PR. Data, research, renderer, docs and tooling are
+    all yours and need no bake. If your unit genuinely requires new geometry,
+    ship the data/archetype half and say so in the PR — do not hand-author a GLB.
+  * PUBLISH IN THE SAME COMMIT. `site/chicago/4d/` is a generated mirror and
+    deploy.yml only fires on `site/**` — a renderer or data change that skips
+    `./tools/publish.sh` is invisible on the live site while looking merged.
+  * CHANGELOG: `site/chicago/4d/js/changelog.js` (fleet format, new entry on TOP
+    with `ts: ''`), stamped with `node chicago/4d/tools/stamp-changelog.mjs` and
+    verified with `node chicago/4d/tools/check-changelog.mjs` before you merge.
+  * PROVENANCE IS THE PRODUCT — the one invariant that outranks everything else
+    here. Every attribute carries a confidence (`documented` / `inferred` /
+    `conjectural`); `documented` REQUIRES a source record, `inferred` REQUIRES a
+    note stating the reasoning. Never upgrade a confidence to make something look
+    better, never invent a citation, and record any invention in
+    `docs/LIBERTIES.md`. `data/datum.json` is DERIVED from committed ground
+    control — never hand-edit it (check.sh re-derives and will catch you).
+    `docs/GLB-CONTRACT.md` is a bilateral generator/renderer contract: propose,
+    don't unilaterally change.
 - BACKLOG CONTRACT: if the target repo has a `docs/BACKLOG.md`, it is the
   operating manual for that repo's backlog — read it BEFORE touching the
   queue and follow it exactly (stable IDs, the item grammar with stars +
@@ -59,7 +96,8 @@ HARD RULES:
 - Ship a fleet-format js/changelog.js entry in the same commit and STAMP
   timestamps with the repo's own tool (games tools/stamp-changelog.mjs;
   jobtracker/relay/autoselector .github/stamp-changelog.mjs; analytics
-  tools/changelog-normalize.js; polecat-app its generator; polecat-platform
+  tools/changelog-normalize.js; custom chicago/4d/tools/stamp-changelog.mjs;
+  polecat-app its generator; polecat-platform
   itself scripts/stamp-changelog.mjs) — also stamp older empty-ts entries.
   Must stay parseable by manager's ingest.
 - Run the app's own release steps where they exist (.github/archive-release.mjs,

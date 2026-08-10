@@ -88,7 +88,8 @@ the design ports back one-to-one if the infrastructure matures (the prompts in
 2. Every user-visible change ships a fleet-format changelog entry, and the shipping
    agent STAMPS timestamps itself with the repo's own tool (nothing stamps after
    merge) — games `tools/stamp-changelog.mjs`, jobtracker/relay/autoselector
-   `.github/stamp-changelog.mjs`, analytics `tools/changelog-normalize.js`, this
+   `.github/stamp-changelog.mjs`, analytics `tools/changelog-normalize.js`,
+   custom `chicago/4d/tools/stamp-changelog.mjs`, this
    repo's own `site/js/changelog.js` via `scripts/stamp-changelog.mjs`.
 3. Smoke before merge: 390×780 + desktop, zero pageerrors. Mobile is a gate.
 4. Never break `/js/changelog.js` parseability — Manager and the launcher read it live.
@@ -108,10 +109,29 @@ the design ports back one-to-one if the infrastructure matures (the prompts in
 Hourly × 8 repos was paused for token cost. The steward improve loop is now driven
 entirely by `.github/steward/focus.json` (2026-07-15): each app opts in with
 `enabled` + an `everyHours` cadence, and `steward-focus.yml` dispatches only the
-apps due that hour. Currently enabled: (none) — autoselector.polecat.live ran a
-~6-hour burst on 2026-07-15 (now paused at the end of the window) and
+apps due that hour. Currently enabled: **analytics.polecat.live** and **custom**,
+both continuous (`everyHours: 1`, pinned to opus). Everything else is paused —
+autoselector.polecat.live ran a ~6-hour burst on 2026-07-15 and
 jobtracker.polecat.live was paused the same day at Kevin's request; flip either
 app's `enabled` back to resume. Scheduled spend is
 therefore whatever the roster enables + the two daily sweeps; start/stop/retarget any
 app by editing focus.json (no commit to a workflow, effective next tick). Manual
 `app=<repo>` dispatches and one-off fleet-pick runs remain free to start on demand.
+
+Note that `offset` does nothing on an `everyHours: 1` lane — the evaluator reduces
+it modulo the cadence, so `offset % 1` is always 0. Two hourly lanes therefore fire
+on the same tick, which is fine: different repos dispatch in parallel under separate
+concurrency groups, and only same-app overlap is skipped.
+
+## The `custom` lane is SCOPED (2026-08-10)
+
+`kevinrhaas/custom` is not an app — it is Kevin's monorepo of unrelated personal
+projects (CAD, 3D-print models, the Joliet game, a small landing site). Its steward
+lane exists for exactly one subtree: **`chicago/4d/`**, a walkable,
+historically-sourced 3D reconstruction of 1835 Chicago, plus its published mirror
+`site/chicago/4d/`. `.github/steward/improve.md` carries the full rule — the gate
+(`chicago/4d/tools/check.sh` + `tools/smoke_renderer.mjs`, after
+`pip install jsonschema pyproj`), the no-Blender-on-this-runner constraint (bakes
+belong to the repo's own nightly `chicago-4d-bake.yml`), the
+publish-in-the-same-commit requirement, and the provenance invariant that outranks
+everything else there. A run that edits anything else in that repo is out of scope.

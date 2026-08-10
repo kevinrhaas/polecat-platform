@@ -29,7 +29,7 @@ env:
   FLEET: >-
     games.polecat.live jobtracker.polecat.live manager.polecat.live
     analytics.polecat.live autoselector.polecat.live relay.polecat.live
-    polecat-app polecat polecat-platform
+    polecat-app polecat polecat-platform custom
 
 jobs:
   sweep:
@@ -129,6 +129,19 @@ jobs:
                 GATE="tests/run.js"; npm --prefix tests install --silent >/dev/null 2>&1; node tests/run.js > /tmp/gate.log 2>&1
               elif [ -f scripts/smoke-test.mjs ]; then
                 GATE="scripts/smoke-test.mjs"; node scripts/smoke-test.mjs > /tmp/gate.log 2>&1
+              elif [ -f chicago/4d/tools/check.sh ]; then
+                # kevinrhaas/custom is a monorepo whose only stewarded subtree is
+                # chicago/4d, and its repo root is CAD sources with no index.html
+                # — the generic "serve / at two widths" gate would 404 its way to
+                # a FALSE GREEN and merge broken work. Gate on that project's own
+                # two-part gate instead (dataset+provenance, then the renderer
+                # smoke). The node_modules symlink above sits at the clone root,
+                # which Node still resolves from chicago/4d/tools/.
+                GATE="chicago/4d check.sh + smoke_renderer.mjs"
+                (
+                  python3 -m pip install --quiet --disable-pip-version-check jsonschema pyproj \
+                    && cd chicago/4d && ./tools/check.sh && node tools/smoke_renderer.mjs
+                ) > /tmp/gate.log 2>&1
               else
                 GATE="generic (serve / at 390px+1280px, zero pageerrors)"
                 node /tmp/pwhome/generic-smoke.mjs "$DIR" > /tmp/gate.log 2>&1
