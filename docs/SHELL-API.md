@@ -205,6 +205,51 @@ Literal JS (unquoted keys, single-quoted strings, escaped apostrophes), no `//` 
 item text, `ts` left empty by authors and stamped by CI in ISO-8601 UTC, displayed in
 US Central. Manager's ingest and the launcher both parse this file live.
 
+## Authors write `v: null` — the stamper assigns it (2026-08-10)
+
+**Never hand-write the version number on a new entry.** Prepend `{ v: null, ts: '',
+date: '', … }` and let the repo's stamp tool fill all three. The published file is
+unchanged — every shipped entry still carries a real number — but the *authoring* step
+no longer requires guessing one.
+
+Why: two branches that each prepend an entry both compute the same "top + 1", and the
+one that merges second is silently wrong. On 2026-08-10 that happened three times in
+one evening on `custom` alone, once per steward run overlapping a hand-written change,
+each needing a manual renumber. A number the author cannot know is a number the tool
+should assign.
+
+**This is half the fix. The other half is `.gitattributes`:**
+
+```
+js/changelog.js merge=union
+```
+
+Deriving `v` alone does *not* prevent the conflict — measured, not assumed: two
+branches inserting at the same line collide whatever the content is. `merge=union`
+keeps both insertions instead of raising a conflict, and the stamper then numbers and
+orders them. With both halves, two concurrent entries merge clean and ship correct.
+
+The known hazard of `merge=union` is that two branches editing *the same existing
+entry* differently would keep both copies rather than conflict. The contract check
+catches it: versions must be strictly decreasing, and duplicates fail the gate. Editing
+a shipped entry is rare; prepending is what happens every run.
+
+Stamper obligations: fill empty `ts`; assign `v` **only where it is missing**, never
+renumbering an entry that already has one (Manager stores releases by `v`, and
+`<app>.whatsnew.seen` compares against it — renumbering history would re-notify every
+reader); and refuse to write if the result is not strictly decreasing, because a
+stamper that emits a duplicate is worse than one that stops.
+
+Ordering, stated precisely rather than aspirationally: tools that parse entries into
+objects (most of them) sort the unnumbered head by `ts` before numbering. The two that
+patch text without parsing — this repo's and `custom`'s — number by **position in the
+file**, top being newest. After a union merge that is merge order, not `ts` order, so
+two entries created minutes apart can land in the wrong order relative to each other.
+They are still unique, still strictly decreasing, and still ahead of all history; the
+worst case is that one release shows above another it narrowly followed. Reformatting
+those two files to sort properly would mean re-serialising entries the tool did not
+author, which is a bigger risk than the one it fixes.
+
 # Shell standards (release gates for every app)
 
 - **Tiles link to detail.** Any dashboard stat tile, KPI number, or icon-count is a

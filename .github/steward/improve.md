@@ -74,7 +74,7 @@ HARD RULES:
     deploy.yml only fires on `site/**` — a renderer or data change that skips
     `./tools/publish.sh` is invisible on the live site while looking merged.
   * CHANGELOG: authored at `chicago/4d/renderers/web/js/changelog.js` (fleet
-    format, new entry on TOP with `ts: ''`) — inside the app, because the
+    format, new entry on TOP with `v: null, ts: '', date: ''`) — inside the app, because the
     walkthrough's What's-new tab imports it and a page cannot import from its
     own publish mirror. Stamp with `node chicago/4d/tools/stamp-changelog.mjs`
     and verify with `node chicago/4d/tools/check-changelog.mjs` before merging.
@@ -97,7 +97,12 @@ HARD RULES:
   has one today; treat it as authoritative wherever it exists.
 - vendor/polecat-shell/ in app repos is READ-ONLY (changes go to this repo's
   lib/ + VERSION bump + scripts/gen-manifest.mjs in the same commit).
-- Ship a fleet-format js/changelog.js entry in the same commit and STAMP
+- Ship a fleet-format js/changelog.js entry in the same commit. Author it with
+  `v: null` and `ts: ''` — DO NOT hand-write the version number. You and a
+  concurrent run both compute the same "top + 1" and whichever merges second
+  ships a duplicate; the repo's stamp tool assigns it after the merge, and
+  `.gitattributes` (merge=union) keeps the merge itself conflict-free. See
+  docs/SHELL-API.md § the fleet changelog contract. STAMP
   timestamps with the repo's own tool (games tools/stamp-changelog.mjs;
   jobtracker/relay/autoselector .github/stamp-changelog.mjs; analytics
   tools/changelog-normalize.js; custom chicago/4d/tools/stamp-changelog.mjs;
