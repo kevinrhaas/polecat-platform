@@ -73,9 +73,13 @@ HARD RULES:
   * PUBLISH IN THE SAME COMMIT. `site/chicago/4d/` is a generated mirror and
     deploy.yml only fires on `site/**` — a renderer or data change that skips
     `./tools/publish.sh` is invisible on the live site while looking merged.
-  * CHANGELOG: `site/chicago/4d/js/changelog.js` (fleet format, new entry on TOP
-    with `ts: ''`), stamped with `node chicago/4d/tools/stamp-changelog.mjs` and
-    verified with `node chicago/4d/tools/check-changelog.mjs` before you merge.
+  * CHANGELOG: authored at `chicago/4d/renderers/web/js/changelog.js` (fleet
+    format, new entry on TOP with `ts: ''`) — inside the app, because the
+    walkthrough's What's-new tab imports it and a page cannot import from its
+    own publish mirror. Stamp with `node chicago/4d/tools/stamp-changelog.mjs`
+    and verify with `node chicago/4d/tools/check-changelog.mjs` before merging.
+    `publish.sh` mirrors it to `site/chicago/4d/js/changelog.js`, the URL
+    Manager and the launcher parse — that path is a contract and must not move.
   * PROVENANCE IS THE PRODUCT — the one invariant that outranks everything else
     here. Every attribute carries a confidence (`documented` / `inferred` /
     `conjectural`); `documented` REQUIRES a source record, `inferred` REQUIRES a
