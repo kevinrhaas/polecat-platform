@@ -56,7 +56,18 @@ HARD RULES:
   published mirror `site/chicago/4d/`. Touch NOTHING else in that repo, ever.
   Read `chicago/4d/AGENTS.md`, `docs/STATUS.md` and `docs/ROADMAP.md` first;
   STATUS.md is deliberately unflattering and is the honest state of play.
-  Non-pipeline: branch from origin/main, PR into main, merge when green.
+  PIPELINE (since 2026-08-14): this app is on a TWO-TIER dev -> main pipeline —
+  read `chicago/4d/docs/PIPELINE.md`. Branch from origin/DEV, PR into DEV, merge
+  when the dev gate is green. Merging to dev is STAGE, not ship: it publishes only
+  the preview at /custom/chicago/4d/dev/walk/?year=1835. PRODUCTION MOVES ONLY WHEN
+  THE OWNER DISPATCHES `chicago-4d-promote-to-prod.yml` — never promote, never push
+  to main, and never merge a 4D PR into main. (If `dev` does not exist yet the
+  pipeline is not activated; say so in the PR and target main as before.)
+  * START WITH `docs/ROADMAP.md` -> "THE OVERNIGHT LANES". Two lanes, disjoint by
+    construction: LANE 1 RENDERING (renderer + tools, phases from
+    `docs/RENDERING.md`, ACTIVE since 2026-08-14) and LANE 2 TOWN COMPLETION
+    (data only). Parcels marked NEXT UP are the unambiguous picks. Claim your
+    parcel in a small first commit before working it — two runs must not collide.
   * THE GATE (both, in the foreground, from `chicago/4d/`):
       pip install --quiet jsonschema pyproj      # the runner has neither
       ./tools/check.sh                           # ~1s: schema, provenance,
