@@ -65,7 +65,29 @@ concurrency:
 jobs:
   improve:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    # 150, raised from 90 on 2026-08-14, because 90 had started DISCARDING
+    # FINISHED WORK rather than protecting anything.
+    #
+    # Measured on kevinrhaas/custom, the only lane enabled that day. Eight runs
+    # completed: five succeeded at 31, 48, 50, 56, 57, 60, 70 and 81 minutes —
+    # and three were cancelled at exactly 90. Every cancellation is the ceiling,
+    # not a hang: the successes cluster right underneath it, and 81 minutes of
+    # genuine work sits four minutes from being thrown away.
+    #
+    # A cancelled run costs more than its own hour. The scheduler's skip-if-busy
+    # rule holds the next tick while a run is in flight, so a run that dies at
+    # minute 89 with nothing committed loses the work AND the following slot.
+    # Three cancellations cost roughly three hours of lane time in a day.
+    #
+    # The parcels grew, which is why the old ceiling stopped fitting. A unit of
+    # work was "add a block of roofs" when the lanes opened; the queue now holds
+    # parcels whose acceptance requires the renderer smoke TWICE at two viewports
+    # to prove a measured before-and-after, and that alone is most of an hour.
+    #
+    # Raising this does not let two runs of one app overlap — `concurrency`
+    # above and the scheduler's skip-if-busy both still hold. It only stops the
+    # clock killing work that was about to land.
+    timeout-minutes: 150
     steps:
       - name: Check secrets
         env:
