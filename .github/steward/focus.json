@@ -19,8 +19,8 @@
       "model": "claude-opus-5"
     },
     "custom": {
-      "enabled": false,
-      "everyHours": 2,
+      "enabled": true,
+      "everyHours": 1,
       "model": "claude-opus-5"
     },
     "autoselector.polecat.live": {
