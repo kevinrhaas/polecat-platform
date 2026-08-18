@@ -32,8 +32,8 @@ the picking logic. Otherwise pick, in priority order:
 3. The app with the stalest latest release (fetch each app's live
    /js/changelog.js, compare newest ts) → build the top item of ITS OWN playbook
    (games: CLAUDE.md + BUILD_LOOP.md + REBUILD_QUEUE.md; analytics: STATUS.md
-   NEXT ★ items + tests/run.js green; custom: chicago/4d/docs/ROADMAP.md +
-   STATUS.md; others: ROADMAP.md). Fixing a top finding
+   NEXT ★ items + tests/run.js green; custom: chicago/4d/tickets/QUEUE.md —
+   the ROADMAP is NO LONGER the backlog there; others: ROADMAP.md). Fixing a top finding
    from an open "UX sweep" / "Tech sweep" issue is a first-class unit.
 
 HARD RULES:
@@ -54,7 +54,7 @@ HARD RULES:
   game, a landing site). Your lane is EXACTLY ONE subtree: `chicago/4d/` — a
   walkable, historically-sourced 3D reconstruction of 1835 Chicago — plus its
   published mirror `site/chicago/4d/`. Touch NOTHING else in that repo, ever.
-  Read `chicago/4d/AGENTS.md`, `docs/STATUS.md` and `docs/ROADMAP.md` first;
+  Read `chicago/4d/AGENTS.md` (§ THE QUEUE) and `tickets/README.md` first;
   STATUS.md is deliberately unflattering and is the honest state of play.
   PIPELINE (since 2026-08-14): this app is on a TWO-TIER dev -> main pipeline —
   read `chicago/4d/docs/PIPELINE.md`. Branch from origin/DEV, PR into DEV, merge
@@ -63,11 +63,27 @@ HARD RULES:
   THE OWNER DISPATCHES `chicago-4d-promote-to-prod.yml` — never promote, never push
   to main, and never merge a 4D PR into main. (If `dev` does not exist yet the
   pipeline is not activated; say so in the PR and target main as before.)
-  * START WITH `docs/ROADMAP.md` -> "THE OVERNIGHT LANES". Two lanes, disjoint by
-    construction: LANE 1 RENDERING (renderer + tools, phases from
-    `docs/RENDERING.md`, ACTIVE since 2026-08-14) and LANE 2 TOWN COMPLETION
-    (data only). Parcels marked NEXT UP are the unambiguous picks. Claim your
-    parcel in a small first commit before working it — two runs must not collide.
+  * START WITH `chicago/4d/tickets/QUEUE.md` — THE TICKET QUEUE IS THE BACKLOG
+    since 2026-08-17, on the owner's direct request, and `docs/ROADMAP.md` is now
+    only the reasoning ARCHIVE (its NEXT UP table is frozen under a tombstone; do
+    not pick from it, do not add rows to it). Read `chicago/4d/tickets/README.md`
+    and `AGENTS.md` § THE QUEUE — one page, and it is the contract. In short:
+      - TAKE THE TOPMOST ticket in QUEUE.md you can actually run. `needs_bake:
+        true` cannot go green on this runner — skip it and SAY SO in the PR.
+        `node tools/ticket.mjs list --workable` prints the same order.
+      - THE OWNER ORDERS QUEUE.md. You append (new work, at the BOTTOM) and
+        remove (on close). NEVER reorder it — his ranking is the point.
+      - CLAIM in your first commit: `node tools/ticket.mjs claim T-NNNN`. That is
+        the collision lock two runs must not race.
+      - CLOSE in the merging PR: `node tools/ticket.mjs done T-NNNN --pr N`, or
+        `block --owner --on "the question"` if it is genuinely his call.
+      - SIZE BEFORE YOU CLAIM. Effort is measured in RUNS (XS part of one, S one,
+        M one tight or one plus a bake, L more than one). `claim` REFUSES an L.
+        If you discover mid-run that your ticket needs more than one
+        demonstration, `ticket.mjs split T-NNNN "piece" "piece"` — do NOT ship a
+        self-invented "(1/2)" and leave the ticket claimed.
+      - FOUND SOMETHING NEW? `ticket.mjs new "title" --by loop`. An owner report
+        becomes a ticket `--by owner` the moment it is made.
   * THE GATE (both, in the foreground, from `chicago/4d/`):
       pip install --quiet jsonschema pyproj      # the runner has neither
       ./tools/check.sh                           # ~1s: schema, provenance,
