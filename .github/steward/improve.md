@@ -68,9 +68,19 @@ HARD RULES:
     only the reasoning ARCHIVE (its NEXT UP table is frozen under a tombstone; do
     not pick from it, do not add rows to it). Read `chicago/4d/tickets/README.md`
     and `AGENTS.md` § THE QUEUE — one page, and it is the contract. In short:
-      - TAKE THE TOPMOST ticket in QUEUE.md you can actually run. `needs_bake:
-        true` cannot go green on this runner — skip it and SAY SO in the PR.
+      - TAKE THE TOPMOST ticket in QUEUE.md you can actually run — and since
+        2026-08-19 that includes `needs_bake: true`, because this runner now
+        bakes (see BLENDER below). Do not skip the top of the queue any more.
         `node tools/ticket.mjs list --workable` prints the same order.
+      - CHECK NOBODY ELSE HAS IT: `node tools/ticket.mjs inflight` names the
+        remote branches already carrying a ticket number. `claim` refuses a
+        ticket with a rival branch unless you pass `--force`, so look at that
+        branch's PR before you force past it. Two runs rebuilt T-0062 the same
+        morning for want of this check.
+      - FINISH THE PR YOU OPEN, INSIDE THIS RUN. Merge it on a green gate, or
+        `block` it, or label it `hold` and say why. A ticket's state only reaches
+        `dev` when its PR merges, so an abandoned open PR reads as `open` to the
+        next run, which then does the work again.
       - THE OWNER ORDERS QUEUE.md. You append (new work, at the BOTTOM) and
         remove (on close). NEVER reorder it — his ranking is the point.
       - CLAIM in your first commit: `node tools/ticket.mjs claim T-NNNN`. That is
@@ -92,11 +102,29 @@ HARD RULES:
         # 1280x800, zero pageerrors, draw calls under budget
     Clone `custom` INSIDE the workspace ($GITHUB_WORKSPACE) so the smoke's
     `import('playwright')` resolves up to the workspace node_modules.
-  * NO BLENDER on this runner, and do not try to install it. `tools/bake.sh`
-    and `assets/` are the nightly `chicago-4d-bake.yml` workflow's job; baked
-    GLBs arrive by their own PR. Data, research, renderer, docs and tooling are
-    all yours and need no bake. If your unit genuinely requires new geometry,
-    ship the data/archetype half and say so in the PR — do not hand-author a GLB.
+  * BLENDER IS AVAILABLE ON THIS RUNNER since 2026-08-19, and `needs_bake`
+    tickets are therefore yours. Six of them — all owner-requested — had silted
+    up at the top of the queue while every run skipped past them.
+
+      cd chicago/4d
+      ./tools/bake.sh --only <structure-id>   # ONE building: minutes
+      ./tools/bake.sh                         # the whole town: ~20 minutes
+
+    `bake.sh` fetches the pinned Blender itself and verifies its sha256; the
+    workflow caches the tarball at `$BLENDER_CACHE` and sets that variable for
+    you. **Prefer `--only`** — rebake the structures your change actually
+    touches, and reach for a full bake only when the change is town-wide
+    (terrain, a shared archetype, a material sheet).
+
+    **The bake is not optional when geometry moves.** `validate.py --stale`
+    hard-fails the moment a record stops matching its committed mesh, so a
+    data-only PR that should have baked cannot merge — and `check.sh` runs that
+    gate, which is how you will find out. Regenerate in the same commit as the
+    record change. Never hand-author or hand-edit a GLB.
+
+    **Budget it before you claim.** A full bake plus the smoke will not fit
+    beside a large unit of work in one run. If the ticket needs a town-wide bake
+    AND a measured before/after, that is more than one run — `split` it.
   * PUBLISH IN THE SAME COMMIT. `site/chicago/4d/` is a generated mirror and
     deploy.yml only fires on `site/**` — a renderer or data change that skips
     `./tools/publish.sh` is invisible on the live site while looking merged.
