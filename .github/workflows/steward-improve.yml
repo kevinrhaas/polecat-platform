@@ -123,12 +123,38 @@ jobs:
           key: pw-${{ runner.os }}-${{ steps.pw.outputs.version }}-chromium-webkit
 
       - name: Install Claude Code + browsers
+        # A HUNG INSTALL USED TO EAT THE WHOLE JOB CAP. On 2026-08-19 runs 939 and
+        # 940 (custom) each sat in `playwright install` for the full 150 minutes and
+        # were cancelled with `Run steward` never starting — the orphan-process line
+        # at the kill names it: `npm exec playwright install --with-deps chromium
+        # webkit`. Between them they held the lane from 00:00 to 05:04 CT and shipped
+        # nothing, because skip-if-busy hands the next tick to a run that is already
+        # dying.
+        #
+        # Raising `timeout-minutes` is the wrong lever for this: the step is 40-70
+        # SECONDS on a warm browser cache, so a step still running at four minutes is
+        # stalled, not slow, and no amount of extra ceiling makes a stalled download
+        # finish. Cap each command, retry it once — most registry stalls clear on the
+        # second attempt — and if it still will not go, fail the job in ~10 minutes
+        # and leave the slot to the next hourly fire.
+        timeout-minutes: 25
         run: |
-          npm install -g @anthropic-ai/claude-code
-          npm install --no-save playwright
+          set -euo pipefail
+          try() {                      # try <minutes> <command...> — twice, then fail
+            local m=$1; shift
+            for i in 1 2; do
+              if timeout "${m}m" "$@"; then return 0; fi
+              echo "::warning::install attempt $i of 2 stalled or failed: $*"
+              sleep 15
+            done
+            echo "::error::install gave up after 2 attempts: $*"
+            return 1
+          }
+          try 4 npm install -g @anthropic-ai/claude-code
+          try 4 npm install --no-save playwright
           # webkit too: several app smoke tests (jobtracker) run the iOS engine
           # (~215MB of downloads skipped on a warm browser cache)
-          npx playwright install --with-deps chromium webkit
+          try 4 npx playwright install --with-deps chromium webkit
 
       - name: Run steward
         env:
