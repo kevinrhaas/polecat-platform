@@ -21,8 +21,7 @@
     "custom": {
       "enabled": true,
       "everyHours": 1,
-      "model": "claude-opus-5",
-      "slices": 2
+      "model": "claude-opus-5"
     },
     "autoselector.polecat.live": {
       "enabled": false,
