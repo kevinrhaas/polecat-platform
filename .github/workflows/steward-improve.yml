@@ -156,6 +156,64 @@ jobs:
           # (~215MB of downloads skipped on a warm browser cache)
           try 4 npx playwright install --with-deps chromium webkit
 
+      # ---- the chicago/4d lane can bake geometry ------------------------------
+      #
+      # WHY THIS EXISTS. chicago/4d's queue carries tickets flagged `needs_bake`:
+      # their work changes geometry, and geometry comes out of a pinned Blender.
+      # This runner had none, so every such ticket was skipped, every run, and by
+      # 2026-08-19 SIX of them had silted up at the top of the queue — all six
+      # requested by the owner himself (walkable bridges, weathered facades, the
+      # fort-reach banks, the sloughs, the Green Tree and Sauganash fabric). The
+      # queue was working; the runner simply could not do that kind of work.
+      #
+      # There is no way around it by being clever with the data, either:
+      # `validate.py --stale` hard-fails the moment a record stops matching its
+      # committed mesh, so "change the record and let the nightly catch up" does
+      # not merge. The bake has to happen inside the run that makes the change.
+      #
+      # WHAT THIS IS. Only a warm cache. `tools/bake.sh` is self-contained — it
+      # sources `generators/blender.pin`, fetches the pinned tarball, verifies its
+      # sha256 and refuses to run on a mismatch. All this adds is somewhere to keep
+      # the ~380 MB tarball between runs, and a writable path to keep it in (the
+      # bake workflow uses /opt/blender-dl, which needs root; $HOME does not).
+      # `--only <structure-id>` rebakes one building rather than the town.
+      #
+      # Custom-lane only, and skipped for a fleet pick: the other seven apps are
+      # static sites with no geometry, and a cache miss on their lanes would be
+      # pure cost.
+      - name: Read chicago/4d's Blender pin
+        id: blender
+        if: github.event.inputs.app == 'custom'
+        run: |
+          # From dev, where the pipeline keeps it — the pin is the cache key, so a
+          # bump misses naturally and re-fetches instead of running a stale binary.
+          if pin=$(gh api "repos/kevinrhaas/custom/contents/chicago/4d/generators/blender.pin?ref=dev" \
+                     --jq .content 2>/dev/null | base64 -d); then
+            version=$(printf '%s\n' "$pin" | sed -n 's/^BLENDER_VERSION=//p' | head -1)
+            [ -n "$version" ] && echo "version=$version" >> "$GITHUB_OUTPUT"
+          fi
+          # No pin, no cache key — the bake still works, it just pays the download.
+          echo "${version:-unresolved}"
+
+      - name: Cache Blender (chicago/4d geometry bakes)
+        if: github.event.inputs.app == 'custom' && steps.blender.outputs.version != ''
+        uses: actions/cache@v4
+        with:
+          path: ~/blender-dl
+          key: blender-${{ steps.blender.outputs.version }}
+
+      - name: Point bake.sh at the cache, and install what it bakes with
+        if: github.event.inputs.app == 'custom'
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/blender-dl"
+          echo "BLENDER_CACHE=$HOME/blender-dl" >> "$GITHUB_ENV"
+          # build.py's dependencies. Blender's own bundled Python does not see
+          # these, but the generators and validate.py that run beside it do.
+          timeout 4m pip install --quiet jsonschema pyproj \
+            || echo "::warning::pip install failed — a bake will report the missing module"
+
       - name: Run steward
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
