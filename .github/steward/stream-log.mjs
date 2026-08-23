@@ -69,15 +69,39 @@ const gist = (name, input) => {
 
 let tools = 0
 let words = 0
+let lastLimit = ''
 
 function handle (ev) {
   switch (ev.type) {
     case 'system':
       if (ev.subtype === 'init') {
         say('◆', `session ${ev.session_id || '?'} · model ${ev.model || '?'} · cwd ${ev.cwd || '?'}`)
-      } else {
-        say('◆', `${ev.subtype || 'system'} ${flat(ev.message || '', 200)}`)
+      } else if (ev.message) {
+        say('◆', `${ev.subtype || 'system'} ${flat(ev.message, 200)}`)
       }
+      // Bookkeeping subtypes with nothing to say (status, commands_changed,
+      // post_turn_summary) are dropped rather than printed as a bare label.
+      break
+
+    // WORTH ITS OWN LINE: a rate-limited agent is one of the few things that
+    // genuinely CAN produce a long silence, which makes this the first thing
+    // to look for in a run that went quiet. Emitted every turn, so print only
+    // when the state actually changes.
+    case 'rate_limit_event': {
+      const r = ev.rate_limit_info || {}
+      const now = `${r.status || '?'} · ${r.rateLimitType || '?'}`
+      if (now !== lastLimit) {
+        lastLimit = now
+        const resets = r.resetsAt ? new Date(r.resetsAt * 1000).toISOString().slice(11, 19) + 'Z' : '?'
+        say('%', `rate limit: ${now} · resets ${resets}`)
+      }
+      break
+    }
+
+    // Housekeeping the CLI emits on its own account — no bearing on what the
+    // run is doing. Kept in RAW, never rendered.
+    case 'active_goal':
+    case 'autocompact_state':
       break
 
     case 'assistant': {
