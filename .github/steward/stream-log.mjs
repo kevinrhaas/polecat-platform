@@ -151,6 +151,21 @@ function handle (ev) {
     case 'stream_event':
       break
 
+    // A LIVENESS BEAT FROM INSIDE A LONG TOOL CALL, every 30s. This is finer
+    // than the workflow's five-minute heartbeat and better targeted: it names
+    // WHICH tool is still going, so a run wedged inside one `Bash` command is
+    // distinguishable from one merely thinking. Observed on run #979 during a
+    // smoke that ran for three minutes.
+    //
+    // It rendered as a raw-JSON dump there, because this event type was not
+    // known when the renderer was written — a one-turn verification run never
+    // produces a tool call long enough to emit one.
+    case 'tool_progress': {
+      const secs = ev.elapsed_time_seconds
+      say('⋯', `${ev.tool_name || 'tool'} still running${secs != null ? ` (${secs}s)` : ''}`)
+      break
+    }
+
     default:
       say('?', `${ev.type} ${flat(JSON.stringify(ev), 200)}`)
   }
