@@ -252,11 +252,74 @@ jobs:
           # empty falls back to the fleet default: opus.
           MODEL="${{ github.event.inputs.model }}"
           MODEL="${MODEL:-claude-opus-5}"
+
+          # A HEARTBEAT, SO SILENCE IS ITSELF REPORTED. The stream below prints
+          # as the agent works, but a WEDGED agent prints nothing — and "nothing
+          # in the log" is precisely the state we could not previously tell
+          # apart from "log arrives at the end". This says so out loud every
+          # five minutes, and escalates to an annotation once the stream has
+          # been quiet for ten, which is far longer than any real tool call.
+          ( started=$SECONDS
+            while :; do
+              sleep 300
+              elapsed=$(( (SECONDS - started) / 60 ))
+              quiet=$(( $(date +%s) - $(stat -c %Y /tmp/steward-stream.jsonl 2>/dev/null || date +%s) ))
+              line="♥ ${elapsed} min elapsed · last agent event ${quiet}s ago"
+              if [ "$quiet" -ge 600 ]; then
+                echo "::warning::steward has emitted nothing for $((quiet / 60)) minutes at ${elapsed} min elapsed — likely stalled"
+              fi
+              echo "$line"
+            done ) &
+          HEARTBEAT=$!
+          disown "$HEARTBEAT" 2>/dev/null || true   # no stray "Terminated" in the log
+          # Kill the `sleep` BEFORE the shell around it. A subshell blocked on a
+          # foreground child defers SIGTERM until that child returns, so killing
+          # only $HEARTBEAT leaves the step hanging for up to the sleep interval
+          # after the agent has already finished.
+          trap 'pkill -P "$HEARTBEAT" 2>/dev/null || true; kill "$HEARTBEAT" 2>/dev/null || true' EXIT
+
+          # STREAMED, NOT BUFFERED. `--output-format text` (the old default)
+          # emits the entire transcript in one write at process exit, so this
+          # step was silent for its whole life and a cancellation destroyed both
+          # the work AND the evidence — see .github/steward/stream-log.mjs and
+          # issue #139. stream-json emits one JSON event per action; stream-log
+          # renders it live, keeps the raw trail on disk, and still leaves the
+          # run's closing summary in /tmp/steward-out.txt for journal.sh.
           claude -p "$PROMPT" \
             ${MODEL:+--model "$MODEL"} \
             --dangerously-skip-permissions \
             --max-turns 200 \
-            --allowedTools "Bash,Edit,Write,Read,Glob,Grep" | tee /tmp/steward-out.txt
+            --output-format stream-json --verbose \
+            --allowedTools "Bash,Edit,Write,Read,Glob,Grep" \
+            | node .github/steward/stream-log.mjs /tmp/steward-out.txt /tmp/steward-stream.jsonl
+
+      # RESCUE WHAT THE RUN DID NOT GET TO PUSH. The runner is destroyed with
+      # the job, so a run cancelled at the cap used to lose every commit it had
+      # not already pushed — and #977 lost 149 minutes that way with nothing to
+      # resume from. This runs FIRST among the always() steps, before the
+      # journal's API calls, because a cancelled job's grace period is short and
+      # the work is worth more than its write-up. On a successful run it is a
+      # no-op that costs a few seconds and prints the trees for the record.
+      - name: Salvage unpushed work
+        if: always()
+        continue-on-error: true
+        timeout-minutes: 5
+        run: bash .github/steward/salvage.sh "${{ github.run_id }}" "${{ job.status }}"
+
+      # The machine-readable trail: one JSON event per action the agent took,
+      # written as it went. This is the artefact to download when a run needs
+      # explaining after the fact — the rendered log above is a summary of it.
+      - name: Keep the agent's event stream
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: steward-stream-${{ github.run_id }}
+          path: |
+            /tmp/steward-stream.jsonl
+            /tmp/steward-out.txt
+          if-no-files-found: ignore
+          retention-days: 14
 
       # The run's own account of what it did (the prompt ends by printing a
       # summary) goes to the Steward journal issue — Manager's Fleet Ops shows
