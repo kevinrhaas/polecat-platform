@@ -65,10 +65,16 @@ jobs:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
         run: |
           set -o pipefail
+          # Streamed, not buffered — `--output-format text` prints nothing until
+          # the process exits, so this step used to be silent for its whole life
+          # and a cancellation destroyed the evidence along with the work
+          # (issue #139). See .github/steward/stream-log.mjs.
           claude -p "$(cat .github/steward/sweep-tech.md)" \
             --dangerously-skip-permissions \
             --max-turns 120 \
-            --allowedTools "Bash,Read,Glob,Grep,Write" | tee /tmp/steward-out.txt
+            --output-format stream-json --verbose \
+            --allowedTools "Bash,Read,Glob,Grep,Write" \
+            | node .github/steward/stream-log.mjs /tmp/steward-out.txt /tmp/steward-stream.jsonl
 
       - name: Journal the run
         if: always()

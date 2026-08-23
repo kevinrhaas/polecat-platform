@@ -57,6 +57,28 @@ on the always-open `Steward journal` issue (label `steward-journal`, posted by
 matches the tag to show each run's narrative in its in-panel review. Don't close the
 issue; a new one is auto-created if it goes missing.
 
+**Watching a run while it happens** (2026-08-23, issue #139): every Claude-driven
+steward workflow runs the agent with `--output-format stream-json` piped through
+`.github/steward/stream-log.mjs`, which renders one line per action **as it
+happens** — `[mm:ss] · Bash: node tools/check.sh`, `[mm:ss] ▸ <what it said>`.
+Before this, `--output-format text` buffered the whole transcript until the process
+exited, so a run's log stayed EMPTY for its entire life and a cancellation threw
+away the evidence with the work: improve run #977 sat silent for 149 minutes, was
+killed at the cap, and journalled "(no summary captured)". Alongside the live log:
+- a **heartbeat** every five minutes in `steward-improve.yml` reporting elapsed time
+  and how long the stream has been quiet, escalating to a `::warning::` past ten
+  minutes of silence — so a genuinely wedged run is visible *while it is wedged*;
+- the raw NDJSON event stream, uploaded as the `steward-stream-<run-id>` artifact
+  (14 days) — the thing to download when a run needs explaining afterwards;
+- `.github/steward/salvage.sh` (`if: always()`), which pushes any branch holding
+  commits the remote never saw, and — only when the job did **not** succeed —
+  parks a dirty tree on `steward/salvage/<run-id>`. A cancelled run no longer takes
+  its work to the grave. Those salvage branches are unreviewed and ungated: read
+  them, take what is useful, delete them. Nothing should ever be built on one.
+
+The 150-minute cap was deliberately left alone. Whether it is too low was exactly
+the question there was no evidence to answer; now there will be.
+
 **How a run ships (the whole process):** steward works on a `steward/*` branch →
 stamps changelog timestamps with the repo's own tool → runs the repo's smoke gate →
 opens a PR → **merges it itself when green** → the merge triggers that app's
