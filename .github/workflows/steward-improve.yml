@@ -269,9 +269,14 @@ jobs:
                 echo "::warning::steward has emitted nothing for $((quiet / 60)) minutes at ${elapsed} min elapsed — likely stalled"
               fi
               echo "$line"
-            done ) &
+            done ) 2>/dev/null &
           HEARTBEAT=$!
-          disown "$HEARTBEAT" 2>/dev/null || true   # no stray "Terminated" in the log
+          # `2>/dev/null` on the subshell, NOT `disown` on the job. Run #979 still
+          # printed a bare "Terminated" into the log after the agent finished:
+          # the notice comes from the SUBSHELL reporting the death of its own
+          # foreground `sleep`, which the trap below kills first, so disowning
+          # the job in the parent's table was aimed at the wrong process. The
+          # heartbeat's own output goes to stdout and is unaffected.
           # Kill the `sleep` BEFORE the shell around it. A subshell blocked on a
           # foreground child defers SIGTERM until that child returns, so killing
           # only $HEARTBEAT leaves the step hanging for up to the sleep interval
