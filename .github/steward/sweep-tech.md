@@ -33,7 +33,9 @@ docs/AUTOMATION.md § Rules for any agent touching the fleet, rule 7).
 
 OUTPUT (read-only — NO code changes, NO merges):
 - One GitHub issue PER APP titled "Tech sweep YYYY-MM-DD" (skip if clean),
-  prioritized, with exact paths/URLs/run links (`gh issue create`).
+  prioritized, with exact paths/URLs/run links, filed with
+  `bash "$GHREST" issue-create kevinrhaas/<repo> "<title>" <body-file>` — NOT
+  `gh issue create`, which spends the GraphQL bucket the fleet exhausts.
 - Close or update the previous sweep issue per its actual state.
 - Print a fleet health table (app / errors / contract / drift / CI) and the
   single most urgent item for the next steward-improve run.

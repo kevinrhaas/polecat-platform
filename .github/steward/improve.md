@@ -197,8 +197,11 @@ HARD RULES:
   analytics tests/run.js, platform scripts/smoke-test.mjs) — Playwright headless
   at 390x780 AND desktop, zero pageerrors. Playwright + chromium (and webkit
   where the app's smoke needs it) are pre-installed by the workflow.
-- Open a PR (what/why/verification) with `gh pr create`, and merge it yourself
-  with `gh pr merge --squash --delete-branch` when verification is fully green — merging your
+- Open a PR (what/why/verification) with **`bash "$GHREST" pr-create <owner/repo>
+  <head-branch> <base-branch> "<title>" <body-file>`**, which prints the PR
+  number, and merge it yourself with **`bash "$GHREST" pr-merge <owner/repo> <N>
+  squash "<commit title>"`** followed by **`bash "$GHREST" branch-delete
+  <owner/repo> <head-branch>`** when verification is fully green — merging your
   green PR is REQUIRED (Kevin never manually merges automation output; a
   janitor also sweeps green steward PRs every 2h — it merges at the PR's own
   base branch, so dev-based PRs land on dev). On non-pipeline repos merge is
@@ -206,6 +209,18 @@ HARD RULES:
   /dev/ and the pipeline ships it. Ambiguous, architecturally significant, or
   not fully verified → leave the PR OPEN with the `hold` label and an
   explanation for Kevin instead; `hold` keeps the janitor away.
+- **NEVER `gh pr ...` OR `gh issue ...` — they spend the wrong budget, and it
+  runs out.** `gh pr create|merge|comment|view|list` and `gh issue
+  create|comment|list` all go through GitHub's **GraphQL** API, which is a
+  SEPARATE hourly bucket from REST and is the one the fleet exhausts. Measured
+  on run 1140, 2026-08-27, mid-run: `graphql remaining 0 of 5000` while `core
+  remaining 4969 of 5000`. `gh pr create` failed outright on a unit of work that
+  was finished, gated and pushed; that run kept its PR only because it worked
+  out the REST call by hand. **`$GHREST` is that call, already written**: REST
+  paths, and retried with backoff when GitHub returns a rate limit (which it
+  also does on burst *concurrency*, independently of quota — five slices run at
+  once). `bash "$GHREST"` with no arguments prints its usage. `gh api <REST
+  path>` directly is fine; `gh api graphql` is not.
 - PROCESS HYGIENE (kills the whole run if violated): you yourself are a Node.js
   process. NEVER run broad process kills — no `pkill node`, `pkill -f node`,
   `killall node`, `pkill chrome`, or pattern kills that could match your own

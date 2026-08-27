@@ -13,20 +13,26 @@
 set -e
 RUN_ID="$1"; TITLE="$2"; STATUS="$3"; FILE="${4:-}"
 REPO="kevinrhaas/polecat-platform"
-gh label create steward-journal -R "$REPO" --description "The steward's run journal" --color 1f6feb --force >/dev/null 2>&1 || true
-# REST, not `gh issue list` (GraphQL): the GraphQL quota is shared fleet-wide
-# and can be exhausted by unrelated runs. Distinguish "API call failed" (skip
-# entirely — do NOT fall through to minting a duplicate journal issue) from
-# "call succeeded, no open issue exists yet" (create one, as before).
-if ! JR=$(gh api "repos/${REPO}/issues?state=open&labels=steward-journal&per_page=1" --jq '.[0].number // empty' 2>/tmp/journal-lookup-err.txt); then
-  echo "warning: steward-journal lookup failed (rate limit or API error) — skipping journal entry, not creating a duplicate issue" >&2
+GHREST="$(cd "$(dirname "$0")" && pwd)/gh-rest.sh"
+# Every call here goes through gh-rest.sh: REST rather than GraphQL, and RETRIED
+# on a rate limit. The lookup was already on REST for the first reason — and on
+# 2026-08-27 it failed anyway, on a SECONDARY limit, thirty-seven seconds after
+# core read 5000/5000 remaining. Picking the right bucket was never going to be
+# enough on its own; see gh-rest.sh's header for both measurements.
+bash "$GHREST" label-create "$REPO" steward-journal 1f6feb "The steward's run journal"
+# Distinguish "API call failed" (skip entirely — do NOT fall through to minting
+# a duplicate journal issue) from "call succeeded, no open issue exists yet"
+# (create one, as before).
+if ! JR=$(bash "$GHREST" issue-find "$REPO" steward-journal 2>/tmp/journal-lookup-err.txt); then
+  echo "warning: steward-journal lookup failed after retries — skipping journal entry, not creating a duplicate issue" >&2
   cat /tmp/journal-lookup-err.txt >&2
   exit 0
 fi
 if [ -z "$JR" ]; then
-  JR=$(gh issue create -R "$REPO" --title "Steward journal" --label steward-journal \
-    --body "Every steward run posts a comment here saying what it actually did — Manager's Fleet Ops reads this journal for its in-panel run reviews. Keep this issue open." \
-    | grep -oE '[0-9]+$')
+  cat > /tmp/journal-seed.md <<'SEED'
+Every steward run posts a comment here saying what it actually did — Manager's Fleet Ops reads this journal for its in-panel run reviews. Keep this issue open.
+SEED
+  JR=$(bash "$GHREST" issue-create "$REPO" "Steward journal" /tmp/journal-seed.md steward-journal)
 fi
 {
   echo "<!-- steward-run:${RUN_ID} -->"
@@ -36,5 +42,5 @@ fi
   echo
   echo "[Run log](https://github.com/${REPO}/actions/runs/${RUN_ID})"
 } > /tmp/journal-body.md
-gh issue comment "$JR" -R "$REPO" --body-file /tmp/journal-body.md >/dev/null
+bash "$GHREST" issue-comment "$REPO" "$JR" /tmp/journal-body.md
 echo "journaled run ${RUN_ID} → issue #${JR}"

@@ -67,6 +67,10 @@ jobs:
             cd /tmp/app
             VENDOR="$(vendor_dir "$APP")"
             BRANCH="chore/polecat-shell-v${VERSION}"
+            # The clone is on the app's default branch; that is the PR base.
+            # Read it here rather than asking the API, which `gh pr create` used
+            # to do implicitly.
+            BASE="$(git rev-parse --abbrev-ref HEAD)"
             git checkout -b "$BRANCH"
             rm -rf "$VENDOR"
             mkdir -p "$VENDOR"
@@ -81,22 +85,29 @@ jobs:
             git push -u origin "$BRANCH" --force
             # Create the PR, but never swallow a real failure: a rate-limited
             # `gh pr create` once left branches pushed with NO PRs while the
-            # job reported success. Retry once, then verify a PR actually
-            # exists for the branch; a pushed-but-PR-less app fails the job.
-            if ! gh pr create --title "chore: polecat-shell v${VERSION}" \
-              --body "Vendored shell update from polecat-platform@${{ github.event.inputs.ref }} into ${VENDOR}/. Review after this app's smoke passes. The vendored shell is read-only in app repos — see docs/SHELL-API.md in polecat-platform." \
-              --head "$BRANCH"; then
-              echo "pr create failed — retrying in 30s"
-              sleep 30
-              gh pr create --title "chore: polecat-shell v${VERSION}" \
-                --body "Vendored shell update from polecat-platform@${{ github.event.inputs.ref }} into ${VENDOR}/. Review after this app's smoke passes. The vendored shell is read-only in app repos — see docs/SHELL-API.md in polecat-platform." \
-                --head "$BRANCH" || true
-              if [ -z "$(gh pr list --head "$BRANCH" --state open --json number --jq '.[].number' 2>/dev/null)" ]; then
-                echo "::error::${APP}: branch ${BRANCH} pushed but no open PR exists — open it manually or re-dispatch."
-                FAILED="${FAILED} ${APP}"
-              else
-                echo "PR exists for ${BRANCH}."
-              fi
+            # job reported success. That is the failure this file already
+            # carried a hand-rolled retry-once for — and the same one that cost
+            # steward-improve run 1140 its PR on 2026-08-27, because
+            # `gh pr create` goes through GraphQL and the GraphQL bucket was at
+            # 0/5000 while REST sat at 4969/5000.
+            #
+            # `gh-rest.sh` replaces both halves: REST rather than GraphQL, and a
+            # retry driven by GitHub's own `retry-after`/`x-ratelimit-reset`
+            # rather than a flat 30 s guess. The verify-a-PR-exists check stays,
+            # because "the call returned" and "the PR is there" are different
+            # claims and this job learned that the hard way.
+            # printf, not a heredoc: this is a YAML block scalar, so every line
+            # is indented and a heredoc terminator with leading spaces never
+            # closes — `bash -n` catches it, but only if someone runs it.
+            printf '%s\n' "Vendored shell update from polecat-platform@${{ github.event.inputs.ref }} into ${VENDOR}/. Review after this app's smoke passes. The vendored shell is read-only in app repos — see docs/SHELL-API.md in polecat-platform." > /tmp/sync-pr-body.md
+            bash "$GITHUB_WORKSPACE/.github/steward/gh-rest.sh" pr-create \
+              "kevinrhaas/${APP}" "$BRANCH" "$BASE" "chore: polecat-shell v${VERSION}" \
+              /tmp/sync-pr-body.md >/dev/null || echo "pr-create reported a failure for ${APP}"
+            if [ -z "$(bash "$GITHUB_WORKSPACE/.github/steward/gh-rest.sh" pr-find "kevinrhaas/${APP}" "$BRANCH")" ]; then
+              echo "::error::${APP}: branch ${BRANCH} pushed but no open PR exists — open it manually or re-dispatch."
+              FAILED="${FAILED} ${APP}"
+            else
+              echo "PR exists for ${BRANCH}."
             fi
             cd -; rm -rf /tmp/app
           done

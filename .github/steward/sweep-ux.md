@@ -44,7 +44,9 @@ docs/AUTOMATION.md § Rules for any agent touching the fleet, rule 7).
 OUTPUT (read-only run — NO code changes, NO merges):
 - One GitHub issue PER APP titled "UX sweep YYYY-MM-DD" (skip if clean):
   prioritized findings, worst first, each with viewport/theme where seen.
-  Use `gh issue create -R kevinrhaas/<repo>`.
+  File them with `bash "$GHREST" issue-create kevinrhaas/<repo> "<title>" <body-file> [label]`
+  — NOT `gh issue create`, which spends the GraphQL bucket the fleet exhausts
+  (see `.github/steward/gh-rest.sh`).
 - Close or update the previous sweep issue per its actual state.
 - Print a final summary ranking the fleet best→worst and naming the single
   highest-impact fix (steward-improve runs read these issues).
