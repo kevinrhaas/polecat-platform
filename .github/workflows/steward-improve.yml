@@ -53,6 +53,7 @@ env:
 
 permissions:
   contents: read
+  actions: write   # lets the last slice of a batch kick steward-focus (see the final step)
 
 # Per-app-PER-SLICE concurrency. Runs on DIFFERENT apps have always proceeded in
 # parallel (separate repos — no contention); as of 2026-08 a lane's `slices: N`
@@ -358,11 +359,47 @@ jobs:
         continue-on-error: true
         run: bash .github/steward/journal.sh "${{ github.run_id }}" "Steward improve — ${{ github.event.inputs.app || 'fleet pick' }}" "${{ job.status }}" /tmp/steward-out.txt
 
-      # NO "chain next slice" step — REMOVED 2026-08 when slices went parallel.
-      # focus.json's `slices: N` now fires all N runs AT ONCE from steward-focus
-      # (each with its own `-s<k>` concurrency group, so GitHub no longer cancels
-      # the surplus — that cancellation was the only reason they were ever
-      # chained). A run therefore ends when its own unit ends: it dispatches
-      # nothing, and a failed run can no longer strand or extend a chain.
-      # The next batch is gated by steward-focus's skip-if-busy check, which
-      # waits for every slice of this batch to finish.
+      # KEEP THE LOOP MOVING — do not wait for the cron.
+      #
+      # There is no "chain next slice" step any more: slices fire together, so a
+      # run never dispatches WORK. But the loop still needs something to start
+      # the NEXT batch, and the `*/10` cron cannot be trusted to do it. Measured
+      # 2026-08-27: scheduled steward-focus ticks arrived 99, 110, 135, 193 and
+      # 214 minutes apart, then stopped for ~6 hours. GitHub queues schedule
+      # events at low priority and drops them under load — a busy Actions
+      # account (this one) gets throttled hardest. The old chain accidentally
+      # hid this, because each run dispatched the next itself and only the FIRST
+      # slice of a batch needed a tick.
+      #
+      # So the last slice out turns the lights back on: when no sibling of this
+      # batch is still running, dispatch steward-focus (Claude-free, seconds,
+      # roster-gated). The next batch then starts within a minute of the last
+      # one finishing instead of whenever GitHub feels like it, and the cron
+      # becomes a backstop rather than the mechanism.
+      #
+      # Gated on job.status == 'success', exactly as the old chain was: an
+      # unconditional re-dispatch is what let a week of failing analytics runs
+      # burn the fleet's shared quota (tech-sweep issue #106). A wholly failed
+      # batch waits for the cron, which is the safe direction. Any single
+      # succeeding slice is enough to keep the lane alive.
+      - name: Kick the scheduler when this batch finishes
+        if: always() && job.status == 'success' && github.event.inputs.app != '' && github.event.inputs.app != 'fleet'
+        continue-on-error: true   # a rate-limited kick must not fail a shipped run; the cron still backstops
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APP: ${{ github.event.inputs.app }}
+          SELF: ${{ github.run_id }}
+        run: |
+          # Any OTHER slice of this app still going? Exclude this run — it is
+          # still "in_progress" while this step executes. Defaults to 1 (assume a
+          # sibling is alive) if the query fails, so a hiccup can't double-fire a
+          # batch; the cron covers that case.
+          SIBS=$(gh run list -R kevinrhaas/polecat-platform --workflow steward-improve.yml \
+            --limit 60 --json status,displayTitle,databaseId \
+            -q "[.[] | select(.databaseId != ${SELF}) | select(.status==\"in_progress\" or .status==\"queued\") | .displayTitle] | map(select(. == \"Steward improve — ${APP}\" or startswith(\"Steward improve — ${APP} [\"))) | length" 2>/dev/null || echo 1)
+          if [ "${SIBS:-1}" -gt 0 ]; then
+            echo "↷ ${SIBS} sibling slice(s) still running — the last one out kicks the scheduler"
+            exit 0
+          fi
+          echo "→ last slice of the batch; kicking steward-focus so the next batch starts now"
+          gh workflow run steward-focus.yml -R kevinrhaas/polecat-platform
