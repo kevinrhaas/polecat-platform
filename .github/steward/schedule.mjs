@@ -19,7 +19,7 @@
 //   until       ISO datetime — the lane expires at this moment ("run every
 //               X until Y"); expired lanes simply stop matching. Flip
 //               `enabled` off (or clear `until`) to tidy up later.
-//   slices      int 1..5 (default 1) — how many independent improve runs the
+//   slices      int 1..10 (default 1) — how many independent improve runs the
 //               lane fires IN PARALLEL each time it is due. Each slice is a
 //               full, separate unit of work (its own PR + smoke gate) running
 //               at the same time as its siblings; each is told "slice k of N"
@@ -47,11 +47,11 @@ export function isDueAt(lane, date){
 }
 
 // How many independent improve runs a lane fires in parallel per fired tick
-// (default 1, clamped to 1..5). Slices don't change WHEN a lane fires — only
+// (default 1, clamped to 1..10). Slices don't change WHEN a lane fires — only
 // how many units it kicks off at once — so nextRunAt/isDueAt ignore it.
 export function slicesOf(lane){
   const n = Math.floor(Number(lane && lane.slices) || 1);
-  return Math.max(1, Math.min(5, n));
+  return Math.max(1, Math.min(10, n));
 }
 
 // The loop's heartbeat: the scheduler ticks every TICK_MINUTES (steward-focus's
@@ -78,7 +78,7 @@ export function nextRunAt(lane, from = new Date(), tick = TICK_MINUTES){
 //   due       → app lane names due at THIS tick, one per line (ONCE per app;
 //               steward-focus reads the lane's slice count via `slices-of` and
 //               dispatches that many runs AT ONCE, slice=1..N)
-//   slices-of → the slice count (1..5, default 1) for one app lane — how many
+//   slices-of → the slice count (1..10, default 1) for one app lane — how many
 //               parallel improve runs its batch should fire
 //   due-jobs  → platform job names due at THIS tick (focus.json `jobs`)
 //   next      → "name<TAB>iso-or-never" for every app lane AND job

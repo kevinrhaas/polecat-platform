@@ -37,7 +37,7 @@ on:
         required: false
         default: '1'
       slices:
-        description: 'How many slices fired together in this batch (focus.json slices; capped at 5). 1 = a lone run.'
+        description: 'How many slices fired together in this batch (focus.json slices; capped at 10). 1 = a lone run.'
         required: false
         default: '1'
       model:

@@ -7,7 +7,7 @@ name: Steward focus scheduler
 # as its runs finish; 2 = even UTC hours…); the skip-if-busy check below is what
 # turns "eligible every tick" into "one unit at a time, next one within ~10 min
 # of the last finishing."
-# An app's `slices` (1..5, default 1) runs as that many PARALLEL units: this job
+# An app's `slices` (1..10, default 1) runs as that many PARALLEL units: this job
 # dispatches ALL N runs in one tick (slice=1..N, slices=N), and they work at the
 # same time — N agent lanes on that app at once, each its own unit of work with
 # its own PR + smoke gate. Each run is told "SLICE: k of N" and takes the k-th
