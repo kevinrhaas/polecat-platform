@@ -7,18 +7,25 @@ name: Steward focus scheduler
 # as its runs finish; 2 = even UTC hours…); the skip-if-busy check below is what
 # turns "eligible every tick" into "one unit at a time, next one within ~10 min
 # of the last finishing."
-# An app's `slices` (1..5, default 1) runs as that many SEQUENTIAL units: this
-# job dispatches ONE run per due app with slice=1/slices=N, and each
-# steward-improve run chains the next on completion (see its "Chain next slice"
-# step). Firing them all up front would overflow the per-app concurrency queue
-# (one running + one pending) and GitHub would cancel the surplus; chaining
-# serializes them one-at-a-time, each its own PR + smoke gate, and a chain that
-# outruns the hour just continues (the skip-if-busy check below keeps this tick
-# from injecting a competing chain).
+# An app's `slices` (1..5, default 1) runs as that many PARALLEL units: this job
+# dispatches ALL N runs in one tick (slice=1..N, slices=N), and they work at the
+# same time — N agent lanes on that app at once, each its own unit of work with
+# its own PR + smoke gate. Each run is told "SLICE: k of N" and takes the k-th
+# topmost workable item from the app's queue, so siblings starting from an
+# identical repo state don't all grab the same one (see improve.md § PARALLEL
+# SLICES; chicago/4d additionally locks via `ticket.mjs claim`/`inflight`).
 #
-# Different apps run in PARALLEL (steward-improve uses a per-app concurrency
-# group and each app is its own repo, so there's no contention); the same app
-# never overlaps itself. Turn apps on/off or change cadence by editing
+# This used to CHAIN instead — one run dispatching the next on completion —
+# because all slices shared one concurrency group and a GitHub group holds only
+# one running + one pending, so the surplus was cancelled. steward-improve's
+# group now carries the slice number (`…-s<k>`), which is what makes the
+# simultaneous fan-out safe.
+#
+# Batch semantics: the skip-if-busy check below means a new batch fires only
+# when the lane is due again AND no slice of the previous batch is still in
+# flight — the lane tops up as a whole, never mid-batch.
+#
+# Different apps run in PARALLEL too (separate repos — no contention). Turn apps on/off or change cadence by editing
 # focus.json — from the GitHub UI, any Claude session, or (roadmap) the
 # Manager console. No workflow edits, takes effect next tick.
 #
@@ -30,11 +37,11 @@ name: Steward focus scheduler
 
 on:
   schedule:
-    # Every 10 minutes: the tick is the loop's heartbeat. Each tick fires one
-    # unit per IDLE enabled lane (skip-if-busy below waits out an active run),
-    # so a lane advances to its next unit within ~10 min of going idle — and a
-    # chain that broke mid-way restarts on the next tick instead of stalling an
-    # hour. Drop to '*/5 * * * *' to run more aggressively. (GitHub may delay a
+    # Every 10 minutes: the tick is the loop's heartbeat. Each tick fires a full
+    # BATCH per IDLE enabled lane (skip-if-busy below waits out every slice of
+    # the batch before), so a lane starts its next batch within ~10 min of going
+    # idle — and a batch that died mid-way restarts on the next tick instead of
+    # stalling an hour. Drop to '*/5 * * * *' to run more aggressively. (GitHub may delay a
     # scheduled tick under load, so treat 10 min as the floor, not a guarantee.)
     - cron: '*/10 * * * *'
   workflow_dispatch: {}         # manual tick for testing
@@ -62,24 +69,38 @@ jobs:
           # schedule.mjs is the canonical lane evaluator (cadence, offset,
           # window, startAt, until — see its header). `due` prints the apps
           # whose lanes fire this hour.
-          # `due` prints each due app ONCE. Dispatch a single slice-1 run per app
-          # with the lane's slice count; the run chains the rest itself. Skip an
-          # app that already has a steward-improve run in flight (a chain from an
-          # earlier tick still going) so we don't inject a competing chain.
+          # `due` prints each due app ONCE. Dispatch the lane's FULL BATCH: N
+          # parallel runs, slice=1..N, all at this tick. Skip an app that still
+          # has any steward-improve run in flight — that is the batch gate (a
+          # lane tops up as a whole, never mid-batch).
+          #
+          # The busy check matches the run TITLE exactly, not as a substring:
+          # `contains("polecat")` also matched "…— polecat-platform" and every
+          # "…— polecat.live" run, so those lanes silently skipped each other.
+          # steward-improve's run-name is "Steward improve — <app>" plus an
+          # optional " [k/N]" suffix, so anchor on both forms.
           for APP in $(node .github/steward/schedule.mjs due); do
             BUSY=$(gh run list -R kevinrhaas/polecat-platform --workflow steward-improve.yml \
-              --limit 40 --json status,displayTitle \
-              -q "[.[] | select(.status==\"in_progress\" or .status==\"queued\") | .displayTitle] | map(select(contains(\"${APP}\"))) | length" 2>/dev/null || echo 0)
+              --limit 60 --json status,displayTitle \
+              -q "[.[] | select(.status==\"in_progress\" or .status==\"queued\") | .displayTitle] | map(select(. == \"Steward improve — ${APP}\" or startswith(\"Steward improve — ${APP} [\"))) | length" 2>/dev/null || echo 0)
             if [ "${BUSY:-0}" -gt 0 ]; then
-              echo "↷ skipping ${APP} — a run is already in flight; its chain continues"
+              echo "↷ skipping ${APP} — ${BUSY} run(s) still in flight; the batch finishes first"
               continue
             fi
             N=$(node .github/steward/schedule.mjs slices-of "${APP}")
             M=$(node .github/steward/schedule.mjs model-of "${APP}")
-            echo "→ dispatching ${APP} (slice 1/${N}${M:+, model ${M}})"
-            gh workflow run steward-improve.yml -R kevinrhaas/polecat-platform -f app="${APP}" -f slice=1 -f slices="${N}" -f model="${M}"
-            COUNT=$((COUNT+1))
-            sleep 2
+            echo "→ dispatching ${APP} — ${N} parallel slice(s)${M:+, model ${M}}"
+            K=1
+            while [ "$K" -le "$N" ]; do
+              gh workflow run steward-improve.yml -R kevinrhaas/polecat-platform \
+                -f app="${APP}" -f slice="${K}" -f slices="${N}" -f model="${M}" \
+                && echo "  ✓ slice ${K}/${N}" || echo "::warning::dispatch failed for ${APP} slice ${K}/${N}"
+              COUNT=$((COUNT+1))
+              K=$((K+1))
+              # GitHub's secondary rate limit trips on bursts of writes; space
+              # the fan-out out rather than firing 5 dispatches back-to-back.
+              sleep 3
+            done
           done
           # Platform-level jobs (focus.json `jobs`) ride the same tick and the
           # same lane schema: fleet-improve → suite-wide steward pick;

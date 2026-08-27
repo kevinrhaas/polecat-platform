@@ -10,10 +10,10 @@ MISSION: exactly ONE high-quality unit of work this run — shipped as its OWN P
 verified green in the foreground, and merged (or left on `hold` if it can't go
 green). Then finish. How many units the fleet does per hour is set ELSEWHERE, NOT
 by you: focus.json's per-lane `slices` field fans a lane out into that many
-INDEPENDENT runs (each a separate process with its own PR + verification,
-serialized per-app so the app never overlaps itself). So do NOT try to do several
-— one run, one unit. (Chaining multiple units in a single run is what exhausts
-the turn budget and trips the "Reached max turns" failure.) Read
+INDEPENDENT runs, fired AT THE SAME TIME as yours (each a separate process with
+its own PR + verification — see PARALLEL SLICES below). So do NOT try to do
+several — one run, one unit. (Chaining multiple units in a single run is what
+exhausts the turn budget and trips the "Reached max turns" failure.) Read
 docs/AUTOMATION.md, docs/MIGRATION.md and docs/SHELL-API.md in this checkout FIRST
 — they are the authority.
 
@@ -35,6 +35,26 @@ the picking logic. Otherwise pick, in priority order:
    NEXT ★ items + tests/run.js green; custom: chicago/4d/tickets/QUEUE.md —
    the ROADMAP is NO LONGER the backlog there; others: ROADMAP.md). Fixing a top finding
    from an open "UX sweep" / "Tech sweep" issue is a first-class unit.
+
+PARALLEL SLICES (from the workflow input, printed below as `SLICE: k of N`):
+when N > 1 you are ONE OF N RUNS STARTED AT THE SAME MOMENT on the same app,
+from an identical repo state. Your siblings cannot see your work yet and you
+cannot see theirs — nothing has been committed, no branch exists, no PR is open.
+If all N follow "take the topmost item", all N build the SAME thing and N-1 get
+thrown away. So:
+- **TAKE THE k-TH TOPMOST WORKABLE ITEM, 1-based** — slice 1 takes the top one,
+  slice 2 the second, slice 3 the third. Same queue, same order, different row.
+  Count only items you could actually run (skip ones you'd reject anyway), so
+  the N of you land on N distinct units.
+- If your app has a real claim mechanism, still use it after choosing (it is what
+  catches the residual race — chicago/4d's `ticket.mjs inflight` + `claim` below).
+- If there are fewer workable items than N, or the k-th is blocked, take the next
+  one BELOW your position (never above — that is a sibling's row). If nothing is
+  left below, say so and finish rather than duplicating a sibling.
+- Everything else is unchanged: ONE unit, your own branch + PR, your own green
+  gate. `SLICE: 1 of 1` means you are a lone run — just take the top item.
+- Expect siblings to be merging while you work. Your rebase-and-retry budget
+  (below) is unchanged; a busy `main` is normal here, not a signal to bail early.
 
 HARD RULES:
 - PIPELINE REPOS: if the target repo has a `.github/pipeline.json`, it is on
@@ -72,11 +92,18 @@ HARD RULES:
         2026-08-19 that includes `needs_bake: true`, because this runner now
         bakes (see BLENDER below). Do not skip the top of the queue any more.
         `node tools/ticket.mjs list --workable` prints the same order.
+        WITH `SLICE: k of N` AND N > 1, take the **k-th** ticket in that
+        `--workable` list instead of the 1st (see PARALLEL SLICES above): your
+        N-1 siblings started at the same instant against this same queue, and
+        the ordering is identical for all of you, so the k-th is yours.
       - CHECK NOBODY ELSE HAS IT: `node tools/ticket.mjs inflight` names the
         remote branches already carrying a ticket number. `claim` refuses a
         ticket with a rival branch unless you pass `--force`, so look at that
         branch's PR before you force past it. Two runs rebuilt T-0062 the same
-        morning for want of this check.
+        morning for want of this check. Under parallel slices this is the
+        backstop for the race the k-th-ticket rule already avoids: a sibling
+        dispatched seconds ahead of you may have claimed by the time you look —
+        if so, take the next workable ticket BELOW yours and claim that.
       - FINISH THE PR YOU OPEN, INSIDE THIS RUN. Merge it on a green gate, or
         `block` it, or label it `hold` and say why. A ticket's state only reaches
         `dev` when its PR merges, so an abandoned open PR reads as `open` to the
@@ -240,10 +267,10 @@ HARD RULES:
     defect, not efficiency.
   * Do NOT start a second unit after finishing the first — even if run
     budget/time seems to remain. Fleet throughput is controlled by focus.json,
-    NOT by this prompt: a lane with `slices: N` is already dispatched as N
-    independent runs (serialized per-app), and the hourly tick starts the next
-    batch. A single run chaining multiple units is exactly what exhausts the
-    turn budget and trips the max-turns failure.
+    NOT by this prompt: a lane with `slices: N` already has N independent runs
+    going in parallel right now (yours is one of them), and the next tick starts
+    the next batch. A single run chaining multiple units is exactly what exhausts
+    the turn budget and trips the max-turns failure.
   * If the unit is large or architecturally risky (a shell migration, a
     cross-cutting refactor, anything touching an export/byte-identity invariant),
     that is fine — it is still one unit; do it and stop.

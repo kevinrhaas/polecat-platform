@@ -19,11 +19,12 @@
 //   until       ISO datetime — the lane expires at this moment ("run every
 //               X until Y"); expired lanes simply stop matching. Flip
 //               `enabled` off (or clear `until`) to tidy up later.
-//   slices      int 1..5 (default 1) — how many independent improve runs to
-//               dispatch each time the lane fires. Each slice is a full,
-//               separate unit of work (its own PR + smoke gate), serialized by
-//               steward-improve's per-app concurrency group so the app never
-//               overlaps itself. Raise it to grind an app harder for a while.
+//   slices      int 1..5 (default 1) — how many independent improve runs the
+//               lane fires IN PARALLEL each time it is due. Each slice is a
+//               full, separate unit of work (its own PR + smoke gate) running
+//               at the same time as its siblings; each is told "slice k of N"
+//               and takes the k-th topmost workable item so they don't collide.
+//               Raise it to grind an app harder for a while.
 //
 // Manager's Fleet Ops mirrors this logic for its next-run previews in
 // js/schedule.js — KEEP THE TWO IN SYNC (they are deliberately tiny).
@@ -45,9 +46,9 @@ export function isDueAt(lane, date){
   return true;
 }
 
-// How many independent improve runs a lane dispatches per fired tick (default
-// 1, clamped to 1..5). Slices don't change WHEN a lane fires — only how many
-// units of work it kicks off that hour — so nextRunAt/isDueAt ignore it.
+// How many independent improve runs a lane fires in parallel per fired tick
+// (default 1, clamped to 1..5). Slices don't change WHEN a lane fires — only
+// how many units it kicks off at once — so nextRunAt/isDueAt ignore it.
 export function slicesOf(lane){
   const n = Math.floor(Number(lane && lane.slices) || 1);
   return Math.max(1, Math.min(5, n));
@@ -76,9 +77,9 @@ export function nextRunAt(lane, from = new Date(), tick = TICK_MINUTES){
 // ---- CLI (used by steward-focus.yml; handy for humans too) -----------------
 //   due       → app lane names due at THIS tick, one per line (ONCE per app;
 //               steward-focus reads the lane's slice count via `slices-of` and
-//               passes it so steward-improve CHAINS that many sequential runs)
+//               dispatches that many runs AT ONCE, slice=1..N)
 //   slices-of → the slice count (1..5, default 1) for one app lane — how many
-//               sequential improve runs its chain should produce
+//               parallel improve runs its batch should fire
 //   due-jobs  → platform job names due at THIS tick (focus.json `jobs`)
 //   next      → "name<TAB>iso-or-never" for every app lane AND job
 const cmd = process.argv[2];

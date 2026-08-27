@@ -33,11 +33,11 @@ on:
         required: false
         default: ''
       slice:
-        description: 'Which slice of the chain this run is (1-based). Set by the chain; leave 1 for a manual run.'
+        description: 'Which slice of the parallel batch this run is (1-based). Set by steward-focus; leave 1 for a manual run.'
         required: false
         default: '1'
       slices:
-        description: 'Total sequential slices in this chain (focus.json slices; capped at 5). 1 = no chaining.'
+        description: 'How many slices fired together in this batch (focus.json slices; capped at 5). 1 = a lone run.'
         required: false
         default: '1'
       model:
@@ -53,13 +53,17 @@ env:
 
 permissions:
   contents: read
-  actions: write   # lets a run chain the next slice via GITHUB_TOKEN dispatch
 
-# Per-app concurrency: focus runs on DIFFERENT apps proceed in parallel
-# (separate repos — no contention); runs on the SAME app queue behind each
-# other; the scheduled fleet/variable-driven run has its own lane.
+# Per-app-PER-SLICE concurrency. Runs on DIFFERENT apps have always proceeded in
+# parallel (separate repos — no contention); as of 2026-08 a lane's `slices: N`
+# fires N runs AT ONCE and they must too, so the slice number is part of the
+# group. Without it all N share one group, and a GitHub concurrency group holds
+# only one running + one pending — it would CANCEL every slice past the second.
+# That cancellation is the whole reason slices used to be chained sequentially.
+# Same app + same slice still queues (never overlaps itself), which is what makes
+# a re-dispatch of slice k safe.
 concurrency:
-  group: steward-improve-${{ github.event.inputs.app || 'fleet' }}
+  group: steward-improve-${{ github.event.inputs.app || 'fleet' }}-s${{ github.event.inputs.slice || '1' }}
   cancel-in-progress: false
 
 jobs:
@@ -84,9 +88,11 @@ jobs:
     # parcels whose acceptance requires the renderer smoke TWICE at two viewports
     # to prove a measured before-and-after, and that alone is most of an hour.
     #
-    # Raising this does not let two runs of one app overlap — `concurrency`
-    # above and the scheduler's skip-if-busy both still hold. It only stops the
-    # clock killing work that was about to land.
+    # Raising this does not make an app's lane fire more work than it is set to:
+    # the batch size is `slices` and nothing else, `concurrency` above still
+    # queues a re-dispatch of the same slice, and the scheduler's skip-if-busy
+    # holds the next batch while any slice of this one is in flight. It only
+    # stops the clock killing work that was about to land.
     timeout-minutes: 150
     steps:
       - name: Check secrets
@@ -245,9 +251,16 @@ jobs:
           set -o pipefail
           # an explicit 'fleet' input (or an empty app) means the suite-wide pick
           [ "$FOCUS_APP" = "fleet" ] && FOCUS_APP=""
+          # Which slice of a parallel batch this run is. `slices: N` fires N runs
+          # AT ONCE from an identical repo state, so the agent has to be told its
+          # position or all N pick the same top-of-queue item (see improve.md
+          # § PARALLEL SLICES — slice k takes the k-th workable item).
+          SLICE="${{ github.event.inputs.slice }}"; SLICE="${SLICE:-1}"
+          SLICES="${{ github.event.inputs.slices }}"; SLICES="${SLICES:-1}"
           PROMPT="$(cat .github/steward/improve.md)
           ---
-          FOCUS_APP: ${FOCUS_APP:-'(none — fleet pick)'}"
+          FOCUS_APP: ${FOCUS_APP:-'(none — fleet pick)'}
+          SLICE: ${SLICE} of ${SLICES}"
           # Per-lane model pin (focus.json `model` via the dispatch input);
           # empty falls back to the fleet default: opus.
           MODEL="${{ github.event.inputs.model }}"
@@ -339,38 +352,11 @@ jobs:
         continue-on-error: true
         run: bash .github/steward/journal.sh "${{ github.run_id }}" "Steward improve — ${{ github.event.inputs.app || 'fleet pick' }}" "${{ job.status }}" /tmp/steward-out.txt
 
-      # Chain the next slice. focus.json's `slices: N` runs as N SEQUENTIAL units,
-      # each dispatched by the previous run on completion — NOT all fired up front
-      # (that overflows the per-app concurrency queue, which holds only one running
-      # + one pending, so GitHub cancels the surplus). Hard-capped at 5 so a bug
-      # can never loop forever. The per-app concurrency group serializes the
-      # handoff, and steward-focus skips an app that still has a run in flight, so
-      # a chain that outruns the hour just continues without a competing chain.
-      #
-      # Gated on job.status == 'success': the "Run steward" step has no
-      # continue-on-error, so it alone determines job.status here. A run that
-      # errors out (e.g. "Reached max turns") must NOT hand off to the next
-      # slice — that unconditional handoff is what let a week of failing
-      # analytics runs burn through the fleet's shared GraphQL quota (see
-      # tech-sweep issue #106). A held-but-not-crashed run (exit 0, PR left
-      # open with `hold`) still chains, same as before.
-      - name: Chain next slice
-        if: always() && job.status == 'success'
-        continue-on-error: true   # a rate-limited handoff shouldn't fail a shipped run; the next tick's skip-if-busy sees no in-flight run and restarts the chain
-        env:
-          GH_TOKEN: ${{ github.token }}
-          APP: ${{ github.event.inputs.app }}
-          SLICE: ${{ github.event.inputs.slice || '1' }}
-          SLICES: ${{ github.event.inputs.slices || '1' }}
-          MODEL: ${{ github.event.inputs.model }}
-        run: |
-          SLICE=${SLICE:-1}; SLICES=${SLICES:-1}
-          if [ -n "$APP" ] && [ "$APP" != "fleet" ] \
-             && [ "$SLICE" -lt "$SLICES" ] && [ "$SLICE" -lt 5 ]; then
-            NEXT=$((SLICE + 1))
-            echo "→ chaining slice ${NEXT}/${SLICES} for ${APP}"
-            gh workflow run steward-improve.yml -R kevinrhaas/polecat-platform \
-              -f app="${APP}" -f slice="${NEXT}" -f slices="${SLICES}" -f model="${MODEL}"
-          else
-            echo "no chain (app='${APP}' slice=${SLICE} slices=${SLICES})"
-          fi
+      # NO "chain next slice" step — REMOVED 2026-08 when slices went parallel.
+      # focus.json's `slices: N` now fires all N runs AT ONCE from steward-focus
+      # (each with its own `-s<k>` concurrency group, so GitHub no longer cancels
+      # the surplus — that cancellation was the only reason they were ever
+      # chained). A run therefore ends when its own unit ends: it dispatches
+      # nothing, and a failed run can no longer strand or extend a chain.
+      # The next batch is gated by steward-focus's skip-if-busy check, which
+      # waits for every slice of this batch to finish.
