@@ -10,13 +10,14 @@ STEPS:
    additive = patch), run `node scripts/gen-manifest.mjs`, run
    `node scripts/smoke-test.mjs` (must be fully green). Branch
    steward/shell-release-vX.Y.Z, commit `release: polecat-shell vX.Y.Z`,
-   `gh pr create`, merge when green, tag `shell-vX.Y.Z` on the merge commit
+   `bash "$GHREST" pr-create` (never `gh pr create` — wrong API bucket, see
+   `.github/steward/gh-rest.sh`), merge when green, tag `shell-vX.Y.Z` on the merge commit
    and push the tag.
 2. For EACH app repo with vendor/polecat-shell/ (check all fleet repos):
    branch `chore/polecat-shell-vX.Y.Z`, replace vendor/polecat-shell/ with the
    released lib/ (minus demo/), bump the sw.js cache name if the app has one,
    PR titled `chore: polecat-shell vX.Y.Z`.
-3. Run each app's own smoke test against its PR branch; `gh pr merge --squash
+3. Run each app's own smoke test against its PR branch; `bash "$GHREST" pr-merge --squash
    --delete-branch` ONLY the green ones. Leave failures OPEN with a comment
    describing exactly what broke.
 4. Print: version shipped, apps merged, apps left open and why.

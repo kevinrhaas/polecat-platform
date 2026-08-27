@@ -247,6 +247,12 @@ jobs:
           # for hygiene; never echo it. NOT the sb_secret_… key (server-only).
           SUPABASE_URL: https://lnngiprrrcxtsawamqei.supabase.co
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          # The steward's GitHub helper: REST rather than GraphQL, and retried on
+          # a rate limit. ABSOLUTE, because the agent works inside the cloned app
+          # repo (a subdirectory) and cds around freely — a relative path would
+          # resolve differently depending on where it happened to be standing.
+          # improve.md tells it to use this for every PR and issue operation.
+          GHREST: ${{ github.workspace }}/.github/steward/gh-rest.sh
         run: |
           set -o pipefail
           # an explicit 'fleet' input (or an empty app) means the suite-wide pick
