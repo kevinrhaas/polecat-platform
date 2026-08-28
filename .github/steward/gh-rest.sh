@@ -8,6 +8,8 @@
 #   gh-rest.sh pr-get      <repo> <number> [--jq FILTER]
 #   gh-rest.sh issue-create  <repo> <title> <body-file> [label]       → prints the issue number
 #   gh-rest.sh issue-comment <repo> <number> <body-file>
+#   gh-rest.sh comment-find    <repo> <number> <marker>          → comment id, or empty
+#   gh-rest.sh comment-update  <repo> <comment-id> <body-file>
 #   gh-rest.sh issue-find    <repo> <label>                           → first open number, or empty
 #   gh-rest.sh label-create  <repo> <name> <color> [description]
 #   gh-rest.sh budget                                                 → both meters, one line
@@ -184,6 +186,23 @@ for p in json.load(sys.stdin):
 import json,sys
 d=json.load(sys.stdin)
 print(d[0]["number"] if d else "")' ;;
+  comment-find)
+    # First comment on <number> whose body contains <marker>, by id. Empty when
+    # there is none — a caller must be able to tell "no comment yet" from "the
+    # lookup failed", so a genuine API failure exits non-zero via api().
+    repo="$1"; number="$2"; marker="$3"
+    api GET "repos/${repo}/issues/${number}/comments?per_page=100" \
+      | python3 -c '
+import json,sys
+m=sys.argv[1]
+for c in json.load(sys.stdin):
+    if m in (c.get("body") or ""):
+        print(c["id"]); break' "$marker" ;;
+  comment-update)
+    repo="$1"; cid="$2"; bodyfile="$3"
+    python3 -c 'import json,sys;json.dump({"body":open(sys.argv[1],encoding="utf-8").read()},sys.stdout)' \
+      "$bodyfile" > /tmp/gh-rest-cupd.json
+    api PATCH "repos/${repo}/issues/comments/${cid}" --input /tmp/gh-rest-cupd.json >/dev/null ;;
   comments-list)
     # Issue and PR comments share one REST collection.
     repo="$1"; number="$2"

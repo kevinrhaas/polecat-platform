@@ -254,6 +254,10 @@ jobs:
           # resolve differently depending on where it happened to be standing.
           # improve.md tells it to use this for every PR and issue operation.
           GHREST: ${{ github.workspace }}/.github/steward/gh-rest.sh
+          # Announce the claimed ticket into the Actions run page and the
+          # journal, so a batch of N slices is not anonymous while it runs.
+          # improve.md tells the agent to call this right after claiming.
+          CLAIM_NOTICE: ${{ github.workspace }}/.github/steward/claim-notice.sh
         run: |
           set -o pipefail
           # an explicit 'fleet' input (or an empty app) means the suite-wide pick
