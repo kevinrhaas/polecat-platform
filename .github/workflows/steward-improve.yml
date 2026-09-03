@@ -299,6 +299,12 @@ jobs:
           # § PARALLEL SLICES — slice k takes the k-th workable item).
           SLICE="${{ github.event.inputs.slice }}"; SLICE="${SLICE:-1}"
           SLICES="${{ github.event.inputs.slices }}"; SLICES="${SLICES:-1}"
+          # The later steps run in their own shells, so the slice has to be
+          # handed forward: the journal entry has to say WHICH of five parallel
+          # runs it is, and until it did, five slices posted five entries under
+          # one heading and none of them could be told apart.
+          { echo "SLICE=${SLICE}"; echo "SLICES=${SLICES}";
+            echo "STEWARD_APP=${FOCUS_APP:-fleet}"; } >> "$GITHUB_ENV"
           PROMPT="$(cat .github/steward/improve.md)
           ---
           FOCUS_APP: ${FOCUS_APP:-'(none — fleet pick)'}
@@ -410,7 +416,36 @@ jobs:
         if: always()
         continue-on-error: true
         timeout-minutes: 5
-        run: bash .github/steward/salvage.sh "${{ github.run_id }}" "${{ job.status }}"
+        run: bash .github/steward/salvage.sh "${{ github.run_id }}" "${{ job.status }}" | tee /tmp/steward-salvage.txt
+
+      # WHAT THE RUN ACTUALLY PICKED UP. Read from the event stream, not from the
+      # agent's prose: the claim, the branch, the pr-create's number and the
+      # pr-merge's sha are all in there verbatim. Before this, the journal was
+      # the last 4000 characters of free text and no two entries were comparable
+      # — five parallel slices posted five entries under one heading and the
+      # owner could not tell which ticket any of them had taken.
+      - name: Record what the run did (ticket, branch, PR, outcome)
+        if: always()
+        continue-on-error: true
+        run: |
+          node .github/steward/run-record.mjs \
+            --stream /tmp/steward-stream.jsonl --resume /tmp/steward-stream.resume.jsonl \
+            --salvage /tmp/steward-salvage.txt \
+            --app "${STEWARD_APP:-fleet}" --slice "${SLICE:-1}" --slices "${SLICES:-1}" \
+            --run-id "${{ github.run_id }}" \
+            --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            --status "${{ job.status }}" \
+            --json /tmp/steward-record.json --md /tmp/steward-record.md
+          # The journal body: the record first (it survives any truncation),
+          # then the run's own words. The tail is applied HERE so the header
+          # cannot be the thing that gets cut.
+          {
+            cat /tmp/steward-record.md
+            echo; echo '---'; echo
+            if [ -s /tmp/steward-out.txt ]; then tail -c 3500 /tmp/steward-out.txt
+            else echo '_(no summary captured)_'; fi
+          } > /tmp/steward-journal.md
+          cat /tmp/steward-record.md >> "$GITHUB_STEP_SUMMARY"
 
       # The machine-readable trail: one JSON event per action the agent took,
       # written as it went. This is the artefact to download when a run needs
@@ -426,6 +461,8 @@ jobs:
             /tmp/steward-out.txt
             /tmp/steward-stream.resume.jsonl
             /tmp/steward-out.first.txt
+            /tmp/steward-record.json
+            /tmp/steward-record.md
           if-no-files-found: ignore
           retention-days: 14
 
@@ -440,7 +477,14 @@ jobs:
       - name: Journal the run
         if: always()
         continue-on-error: true
-        run: bash .github/steward/journal.sh "${{ github.run_id }}" "Steward improve — ${{ github.event.inputs.app || 'fleet pick' }}" "${{ job.status }}" /tmp/steward-out.txt
+        run: |
+          # The record-led body when the record step produced one; the raw
+          # summary when it did not, so a journal entry is never lost to it.
+          F=/tmp/steward-journal.md; MODE=--whole
+          [ -s "$F" ] || { F=/tmp/steward-out.txt; MODE=tail; }
+          bash .github/steward/journal.sh "${{ github.run_id }}" \
+            "Steward improve — ${{ github.event.inputs.app || 'fleet pick' }}${{ github.event.inputs.slices != '' && github.event.inputs.slices != '1' && format(' [{0}/{1}]', github.event.inputs.slice, github.event.inputs.slices) || '' }}" \
+            "${{ job.status }}" "$F" "$MODE"
 
       # KEEP THE LOOP MOVING — do not wait for the cron.
       #

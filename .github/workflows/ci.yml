@@ -23,6 +23,9 @@ jobs:
           for f in $(git ls-files 'scripts/*.mjs'); do
             node --check "$f"
           done
+      - name: The steward's run record parses its fixtures
+        run: node .github/steward/run-record.mjs --self-test
+
       - name: Manifest freshness
         run: |
           node scripts/gen-manifest.mjs

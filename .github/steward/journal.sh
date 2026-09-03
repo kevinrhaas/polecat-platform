@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # journal.sh — post a steward run's summary to the "Steward journal" issue.
 #
-#   journal.sh <run-id> <title> <status> [summary-file]
+#   journal.sh <run-id> <title> <status> [summary-file] [--whole]
 #
 # Every steward workflow calls this (if: always()) after its run step, passing
 # the captured stdout of the run (for Claude-driven jobs that's the final
@@ -9,9 +9,12 @@
 # journal is a single always-open issue labeled `steward-journal` in
 # polecat-platform — API-readable, so Manager's Fleet Ops shows each run's
 # narrative in its in-panel run review by matching the
-# `<!-- steward-run:ID -->` marker. Comments are capped at ~4KB of tail.
+# `<!-- steward-run:ID -->` marker. Comments are capped at ~4KB of tail —
+# EXCEPT with `--whole`, which posts the file as given (to 12KB). The improve
+# workflow passes a body whose first lines are the machine-readable run record;
+# tailing that would cut off the very header the entry exists for.
 set -e
-RUN_ID="$1"; TITLE="$2"; STATUS="$3"; FILE="${4:-}"
+RUN_ID="$1"; TITLE="$2"; STATUS="$3"; FILE="${4:-}"; MODE="${5:-tail}"
 REPO="kevinrhaas/polecat-platform"
 GHREST="$(cd "$(dirname "$0")" && pwd)/gh-rest.sh"
 # Every call here goes through gh-rest.sh: REST rather than GraphQL, and RETRIED
@@ -38,7 +41,9 @@ fi
   echo "<!-- steward-run:${RUN_ID} -->"
   echo "### ${TITLE} · ${STATUS}"
   echo
-  if [ -n "$FILE" ] && [ -s "$FILE" ]; then tail -c 4000 "$FILE"; else echo "_(no summary captured)_"; fi
+  if [ -n "$FILE" ] && [ -s "$FILE" ]; then
+    if [ "$MODE" = "--whole" ]; then head -c 12000 "$FILE"; else tail -c 4000 "$FILE"; fi
+  else echo "_(no summary captured)_"; fi
   echo
   echo "[Run log](https://github.com/${REPO}/actions/runs/${RUN_ID})"
 } > /tmp/journal-body.md
