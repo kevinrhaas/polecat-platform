@@ -143,6 +143,23 @@ HARD RULES:
         # state.mjs ask --viewport <v> --stage <n>` says whether dev was
         # already red there; file what you ran with `dev-smoke-state.mjs record`.
         # AGENTS.md § the smoke budget and docs/SMOKE-BUDGET.md are the rule.
+  * THE BUDGET IS TOOL CALLS, NOT MINUTES. This lane's run has 400 tool calls
+    (`--max-turns`; the clock is 150 minutes and is rarely the bound). Reading
+    ONE census sheet costs about 60 calls of crop-and-Read; size the unit to
+    fit — two sheets, not four — and COMMIT EACH SHEET'S PAGE FILE TO THE
+    BRANCH AS YOU FINISH IT, never at the end: #1459 hit the ceiling at 39
+    minutes with a reading that lived only in /tmp, and it is gone.
+  * THE ORDER OF THE ENDGAME: gate → the `--for-diff` legs → push → PR →
+    MERGE → close the ticket. Merge BEFORE any optional bookkeeping (filing
+    smoke readings, README polish, a second look at a footing). #1466 spent
+    its 200th call on the merge itself, with the gate green and the PR open.
+  * WHEN `--for-diff` NAMES PARTS 1-13 because `site/chicago/4d/walk/index.html`
+    or the mirror as a whole changed, that is the publish stamp every PR
+    rewrites: run desktop part 1 as the scaffold check and nothing more. Never
+    run more than four legs in one run — the smoke is a check on YOUR diff,
+    not the whole gate re-proved (#1464 ran seven legs and lost the run).
+  * A TRANSIENT API 5xx does not end the unit: the workflow resumes you once
+    with `--continue` and 120 calls. Pick up where you were; do not start over.
     Clone `custom` INSIDE the workspace ($GITHUB_WORKSPACE) so the smoke's
     `import('playwright')` resolves up to the workspace node_modules.
   * BLENDER IS AVAILABLE ON THIS RUNNER since 2026-08-19, and `needs_bake`
