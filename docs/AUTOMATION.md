@@ -57,6 +57,19 @@ on the always-open `Steward journal` issue (label `steward-journal`, posted by
 matches the tag to show each run's narrative in its in-panel review. Don't close the
 issue; a new one is auto-created if it goes missing.
 
+**What a run picked up** (2026-09-03): an improve entry now OPENS with a machine-readable
+record — `<!-- steward-record: {…} -->` followed by a one-row table of ticket, branch, PR,
+outcome, tool calls, turns, minutes and cost. `.github/steward/run-record.mjs` builds it by
+reading the run's own event stream (the `ticket.mjs claim`, `git push`, `pr-create` and
+`pr-merge` calls, with the PR number and merge sha from their results), so it is right even
+when a run dies mid-sentence and it cannot claim a merge that did not happen. `outcome` is
+one of `merged | open | hold | blocked | died | no-pr`. The same table goes to the run's
+Actions summary, the JSON to the `steward-record.json` artifact, and Manager reads the
+marker to label each run in its Steward log. The heading now carries the slice
+(`Steward improve — custom [2/5]`), because five parallel runs used to post five entries
+under one title. `--self-test` covers the parser against fixtures in
+`.github/steward/fixtures/`.
+
 **Watching a run while it happens** (2026-08-23, issue #139): every Claude-driven
 steward workflow runs the agent with `--output-format stream-json` piped through
 `.github/steward/stream-log.mjs`, which renders one line per action **as it

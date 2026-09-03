@@ -337,4 +337,9 @@ HARD RULES:
     that is fine — it is still one unit; do it and stop.
   Update the app's ROADMAP/queue file in the SAME PR as the unit. No model
   identifiers in repo artifacts. Do all work synchronously and finish by printing
-  a summary: app picked, why, what shipped, verification run, and the PR URL.
+  a summary whose FIRST line is
+      Ticket: T-NNNN · PR: <url or none> · Outcome: merged|hold|blocked|no-pr
+  and which then says: app picked, why, what shipped, verification run, and the
+  PR URL. That first line is for a person reading fast; the journal's own record
+  of the ticket, branch, PR and outcome is read from your tool calls, so it stays
+  right even when a run ends mid-sentence.
