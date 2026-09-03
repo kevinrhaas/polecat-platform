@@ -104,6 +104,15 @@ HARD RULES:
         backstop for the race the k-th-ticket rule already avoids: a sibling
         dispatched seconds ahead of you may have claimed by the time you look —
         if so, take the next workable ticket BELOW yours and claim that.
+      - A RIVAL BRANCH CAN BE A CORPSE. A branch on your ticket that is older
+        than a run, has no PR, and whose only commits past `origin/dev` touch
+        `tickets/` alone (`git log --stat origin/dev..origin/<branch>`) is what a
+        run leaves when it dies right after claiming — #1459 left
+        `steward/t-0531-census-1840-sheets-210-215-219` that way on 2026-09-03
+        and it locked T-0531 for every run after. Delete it (`git push origin
+        --delete <branch>`; this runner's token may, a session's proxy may not)
+        and claim `--force`. A branch with real work past the claim is a
+        salvage, not a corpse: leave it and take the next ticket.
       - FINISH THE PR YOU OPEN, INSIDE THIS RUN. Merge it on a green gate, or
         `block` it, or label it `hold` and say why. A ticket's state only reaches
         `dev` when its PR merges, so an abandoned open PR reads as `open` to the

@@ -367,20 +367,36 @@ jobs:
           }
           RC=0; run_steward "$PROMPT" /tmp/steward-stream.jsonl || RC=$?
 
-          # ONE RESUME ON A TRANSIENT API 5xx. Run #1464 (2026-09-03) had read two
-          # census sheets, pushed them and was on its smoke legs when the API
-          # answered a 500; the CLI wrote the error as its final summary and
-          # exited 1, and 85 minutes of a finishable run ended with no PR. The
-          # marker text is the guard: a run that ended any other way never
-          # re-enters. `--continue` resumes the most recent conversation in this
-          # working directory, so the agent keeps its context; the budget is a
-          # fresh 120 calls, enough for the endgame and not for a second unit.
-          if grep -qE 'API Error: 5[0-9][0-9]' /tmp/steward-out.txt 2>/dev/null && [ "$SECONDS" -lt 7200 ]; then
-            echo "::warning::the run ended on a transient API 5xx at $((SECONDS / 60)) min — resuming it once"
-            cp /tmp/steward-out.txt /tmp/steward-out.first.txt
-            MAX_TURNS=120
-            RC=0; run_steward "Your previous turn ended on a transient API error (5xx). Continue exactly where you left off — do not start over, and do not re-run verification that already passed. Finish the unit: push, PR, merge (or hold, with the reason), close the ticket." /tmp/steward-stream.resume.jsonl --continue || RC=$?
-          fi
+          # RESUME ON A TRANSIENT API 5xx — up to twice, after a wait. Run #1464
+          # (2026-09-03) had read two census sheets, pushed them and was on its
+          # smoke legs when the API answered a 500; the CLI wrote the error as its
+          # final summary and exited 1, and 85 minutes of a finishable run ended
+          # with no PR. Later the same day two whole batches — nine runs at 13:33Z
+          # and 13:43Z — died inside four minutes on `API Error: 529 Overloaded`
+          # with ZERO tool calls: the API itself was overloaded, and a resume in
+          # the same second would have met the same answer. So: wait five minutes
+          # first. Then, if the attempt did no work at all, start the unit FRESH on
+          # the original prompt with the full budget (`--continue` into a session
+          # that never began is a continuation of nothing); otherwise `--continue`
+          # the conversation with 120 calls, enough for the endgame and not for a
+          # second unit. The marker text is the guard: a run that ended any other
+          # way never re-enters. Two retries, never past two hours of the job.
+          attempt=0
+          while grep -qE 'API Error: 5[0-9][0-9]' /tmp/steward-out.txt 2>/dev/null \
+                && [ "$attempt" -lt 2 ] && [ "$SECONDS" -lt 7200 ]; do
+            attempt=$((attempt + 1))
+            calls=$(grep -c '"type":"tool_use"' /tmp/steward-stream.jsonl 2>/dev/null || true)
+            calls=${calls:-0}
+            echo "::warning::the run ended on a transient API 5xx at $((SECONDS / 60)) min after ${calls} tool call(s) — retry ${attempt} of 2 in five minutes"
+            { echo "----- attempt ${attempt} ended on -----"; cat /tmp/steward-out.txt; } >> /tmp/steward-out.first.txt
+            sleep 300
+            if [ "$calls" -eq 0 ]; then
+              RC=0; run_steward "$PROMPT" /tmp/steward-stream.jsonl || RC=$?
+            else
+              MAX_TURNS=120
+              RC=0; run_steward "Your previous turn ended on a transient API error (5xx). Continue exactly where you left off — do not start over, and do not re-run verification that already passed. Finish the unit: push, PR, merge (or hold, with the reason), close the ticket." /tmp/steward-stream.resume.jsonl --continue || RC=$?
+            fi
+          done
           exit "$RC"
 
       # RESCUE WHAT THE RUN DID NOT GET TO PUSH. The runner is destroyed with
