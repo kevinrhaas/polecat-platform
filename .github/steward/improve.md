@@ -123,6 +123,11 @@ HARD RULES:
         becomes a ticket `--by owner` the moment it is made.
   * THE GATE (both, in the foreground, from `chicago/4d/`):
       pip install --quiet jsonschema pyproj      # the runner has neither
+        # The custom lane ALSO pre-installs, since 2026-09-03, what the resident
+        # source sweep (T-0491..T-0518) reads with: pdftotext + pdftoppm
+        # (poppler-utils), tesseract, openpyxl and pypdf. Check with
+        # `command -v pdftotext tesseract` before falling back to page reads;
+        # a missing one is a ::warning in the install step, not a surprise.
       ./tools/check.sh                           # ~1s: schema, provenance,
         # date gates, licences, staleness, datum re-derivation, JS parse
       node tools/smoke_renderer.mjs              # Playwright, 390x780 AND
