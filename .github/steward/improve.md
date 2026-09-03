@@ -130,8 +130,19 @@ HARD RULES:
         # a missing one is a ::warning in the install step, not a surprise.
       ./tools/check.sh                           # ~1s: schema, provenance,
         # date gates, licences, staleness, datum re-derivation, JS parse
-      node tools/smoke_renderer.mjs              # Playwright, 390x780 AND
-        # 1280x800, zero pageerrors, draw calls under budget
+      node tools/smoke_budget.mjs --for-diff     # THEN the smoke, BY PARTS:
+        # this prints the parts that cover YOUR diff and the exact commands,
+        # each packed under the 600 s foreground ceiling. Run THOSE, in the
+        # foreground, each redirected to a FILE (never a pipe). NEVER run
+        # `node tools/smoke_renderer.mjs` bare: the whole gate is ~25 min per
+        # viewport, the foreground cap is 10 min, and on 2026-09-03 two runs
+        # (#1456, #1457) lost their entire budget waiting on it — one hit the
+        # 200-tool-call ceiling, the other the 150-minute clock — with real
+        # census readings finished and no PR opened. Before re-running a part
+        # to learn whose red it is, ASK THE RECORD: `node tools/dev-smoke-
+        # state.mjs ask --viewport <v> --stage <n>` says whether dev was
+        # already red there; file what you ran with `dev-smoke-state.mjs record`.
+        # AGENTS.md § the smoke budget and docs/SMOKE-BUDGET.md are the rule.
     Clone `custom` INSIDE the workspace ($GITHUB_WORKSPACE) so the smoke's
     `import('playwright')` resolves up to the workspace node_modules.
   * BLENDER IS AVAILABLE ON THIS RUNNER since 2026-08-19, and `needs_bake`
@@ -251,7 +262,11 @@ HARD RULES:
   SAME turn; read the result, THEN open and merge the PR — all before you yield.
   If a suite is too slow to finish inside one run, cut the SCOPE of the unit
   (smaller slice), NEVER the synchrony. Your one unit runs its full foreground
-  verification before it merges.
+  verification before it merges. "Full" means the parts that cover your diff:
+  where an app prices its suite by part (custom's `smoke_budget.mjs --for-diff`),
+  run the parts it names, each inside the 600 s cap, and do NOT start a command
+  you already know cannot finish in 600 s — a backgrounded suite is the same
+  failure as a backgrounded suite you meant to background.
 - THE OUTCOMES when your unit hits something (this is what "keep going" does
   and does NOT mean — it does NOT mean pushing through failures):
   * Verification PASSES → merge the green PR. The run is done.
