@@ -139,7 +139,7 @@ jobs:
                 # which Node still resolves from chicago/4d/tools/.
                 GATE="chicago/4d check.sh + smoke_renderer.mjs"
                 (
-                  python3 -m pip install --quiet --disable-pip-version-check jsonschema pyproj \
+                  python3 -m pip install --quiet --disable-pip-version-check jsonschema pyproj openpyxl pypdf \
                     && cd chicago/4d && ./tools/check.sh && node tools/smoke_renderer.mjs
                 ) > /tmp/gate.log 2>&1
               else

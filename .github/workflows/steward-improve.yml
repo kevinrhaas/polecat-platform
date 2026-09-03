@@ -214,6 +214,37 @@ jobs:
           timeout 4m pip install --quiet jsonschema pyproj \
             || echo "::warning::pip install failed — a bake will report the missing module"
 
+      # ---- the chicago/4d resident source sweep reads scans and writes workbooks --
+      #
+      # WHY THIS EXISTS. On 2026-09-03 the owner queued the resident-source sweep
+      # (custom T-0491..T-0518): the Hubbard and H. H. Porter autobiographies are
+      # PDF scans, the 1840 census and the St Mary's baptismal register are page
+      # images, and every research package ships an XLSX beside its CSV. A run
+      # that lands on one of those tickets needs a PDF text extractor, a
+      # rasteriser for the odd garbled page, an OCR fallback, and a workbook
+      # writer — and ubuntu-latest carries none of them, so the first run would
+      # have spent its budget discovering that. The owner asked for them on the
+      # runner. Custom-lane only, like Blender: no other app reads a scan.
+      #
+      # Best-effort by construction: a package mirror hiccup must not cost the
+      # run — the tickets say "CSV always, XLSX when openpyxl imports", and the
+      # warning below is what a run reads to know which fallback it is on.
+      - name: Install the research tools the chicago/4d resident sweep reads with
+        if: github.event.inputs.app == 'custom'
+        timeout-minutes: 8
+        run: |
+          set -uo pipefail
+          # poppler-utils: pdftotext + pdftoppm. tesseract-ocr: the OCR fallback.
+          if timeout 5m sudo apt-get install -y --no-install-recommends poppler-utils tesseract-ocr >/dev/null; then
+            echo "pdftotext $(pdftotext -v 2>&1 | head -1); tesseract $(tesseract --version 2>&1 | head -1)"
+          else
+            echo "::warning::apt-get install of poppler-utils/tesseract-ocr failed — the run falls back to pypdf and page reads"
+          fi
+          # openpyxl: the XLSX half of every reference package. pypdf: the pure-python PDF fallback.
+          timeout 3m pip install --quiet openpyxl pypdf \
+            || echo "::warning::pip install of openpyxl/pypdf failed — packages ship CSV only this run"
+          python3 -c "import openpyxl, pypdf; print('openpyxl', openpyxl.__version__, 'pypdf', pypdf.__version__)" || true
+
       - name: Run steward
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
