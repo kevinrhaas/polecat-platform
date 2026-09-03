@@ -97,12 +97,19 @@ if(cmd){
     // steward-improve as the run's --model.
     const lane = (f.apps || {})[process.argv[3]];
     console.log((lane && lane.model) || '');
+  }else if(cmd === 'max-turns-of'){
+    // The lane's tool-call ceiling ('' = the workflow default, 200). Two custom
+    // runs on 2026-09-03 (#1459, #1466) hit 200 with the clock barely half
+    // spent — reading one census sheet costs ~60 calls — so the custom lane
+    // carries 400; steward-focus passes it through as --max-turns.
+    const lane = (f.apps || {})[process.argv[3]];
+    console.log((lane && lane.max_turns) || '');
   }else if(cmd === 'due-jobs'){
     for(const [job, lane] of Object.entries(f.jobs || {})) if(isDueAt(lane, now)) console.log(job);
   }else if(cmd === 'next'){
     for(const [app, lane] of Object.entries(f.apps || {})) console.log(`${app}\t${nextRunAt(lane, now)?.toISOString() || 'never'}`);
     for(const [job, lane] of Object.entries(f.jobs || {})) console.log(`job:${job}\t${nextRunAt(lane, now)?.toISOString() || 'never'}`);
   }else{
-    console.error('usage: schedule.mjs due|slices-of <app>|model-of <app>|due-jobs|next'); process.exit(2);
+    console.error('usage: schedule.mjs due|slices-of <app>|model-of <app>|max-turns-of <app>|due-jobs|next'); process.exit(2);
   }
 }

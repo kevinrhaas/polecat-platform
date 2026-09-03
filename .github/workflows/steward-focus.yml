@@ -89,11 +89,12 @@ jobs:
             fi
             N=$(node .github/steward/schedule.mjs slices-of "${APP}")
             M=$(node .github/steward/schedule.mjs model-of "${APP}")
-            echo "→ dispatching ${APP} — ${N} parallel slice(s)${M:+, model ${M}}"
+            T=$(node .github/steward/schedule.mjs max-turns-of "${APP}")
+            echo "→ dispatching ${APP} — ${N} parallel slice(s)${M:+, model ${M}}${T:+, ${T} tool calls}"
             K=1
             while [ "$K" -le "$N" ]; do
               gh workflow run steward-improve.yml -R kevinrhaas/polecat-platform \
-                -f app="${APP}" -f slice="${K}" -f slices="${N}" -f model="${M}" \
+                -f app="${APP}" -f slice="${K}" -f slices="${N}" -f model="${M}" -f max_turns="${T}" \
                 && echo "  ✓ slice ${K}/${N}" || echo "::warning::dispatch failed for ${APP} slice ${K}/${N}"
               COUNT=$((COUNT+1))
               K=$((K+1))

@@ -44,6 +44,10 @@ on:
         description: 'Claude model for this run (focus.json lane `model`; empty = CLI default).'
         required: false
         default: ''
+      max_turns:
+        description: 'Tool-call ceiling for this run (focus.json lane `max_turns`; empty = 200).'
+        required: false
+        default: ''
 
 env:
   # The app to work on comes from the dispatch input (focus.json passes it per
@@ -303,6 +307,16 @@ jobs:
           # empty falls back to the fleet default: opus.
           MODEL="${{ github.event.inputs.model }}"
           MODEL="${MODEL:-claude-opus-5}"
+          # Per-lane tool-call ceiling (focus.json `max_turns` via the dispatch
+          # input). The clock below is 150 minutes; this is the OTHER bound, and
+          # on 2026-09-03 it was the binding one twice on the custom lane: #1459
+          # hit 200 calls at 39 minutes mid-reading (one census sheet is ~60
+          # calls of crop-and-Read), and #1466 hit it at 81 minutes on the merge
+          # itself, with the gate green, the PR open and 70 minutes of clock
+          # left. The owner raised custom to 400 the same day; other lanes keep
+          # the default.
+          MAX_TURNS="${{ github.event.inputs.max_turns }}"
+          MAX_TURNS="${MAX_TURNS:-200}"
 
           # A HEARTBEAT, SO SILENCE IS ITSELF REPORTED. The stream below prints
           # as the agent works, but a WEDGED agent prints nothing — and "nothing
@@ -341,13 +355,33 @@ jobs:
           # issue #139. stream-json emits one JSON event per action; stream-log
           # renders it live, keeps the raw trail on disk, and still leaves the
           # run's closing summary in /tmp/steward-out.txt for journal.sh.
-          claude -p "$PROMPT" \
-            ${MODEL:+--model "$MODEL"} \
-            --dangerously-skip-permissions \
-            --max-turns 200 \
-            --output-format stream-json --verbose \
-            --allowedTools "Bash,Edit,Write,Read,Glob,Grep" \
-            | node .github/steward/stream-log.mjs /tmp/steward-out.txt /tmp/steward-stream.jsonl
+          run_steward() {  # $1 = the prompt, $2 = the stream file, $3... = extra flags
+            local prompt="$1" stream="$2"; shift 2
+            claude -p "$prompt" \
+              ${MODEL:+--model "$MODEL"} \
+              --dangerously-skip-permissions \
+              --max-turns "$MAX_TURNS" \
+              --output-format stream-json --verbose \
+              --allowedTools "Bash,Edit,Write,Read,Glob,Grep" "$@" \
+              | node .github/steward/stream-log.mjs /tmp/steward-out.txt "$stream"
+          }
+          RC=0; run_steward "$PROMPT" /tmp/steward-stream.jsonl || RC=$?
+
+          # ONE RESUME ON A TRANSIENT API 5xx. Run #1464 (2026-09-03) had read two
+          # census sheets, pushed them and was on its smoke legs when the API
+          # answered a 500; the CLI wrote the error as its final summary and
+          # exited 1, and 85 minutes of a finishable run ended with no PR. The
+          # marker text is the guard: a run that ended any other way never
+          # re-enters. `--continue` resumes the most recent conversation in this
+          # working directory, so the agent keeps its context; the budget is a
+          # fresh 120 calls, enough for the endgame and not for a second unit.
+          if grep -qE 'API Error: 5[0-9][0-9]' /tmp/steward-out.txt 2>/dev/null && [ "$SECONDS" -lt 7200 ]; then
+            echo "::warning::the run ended on a transient API 5xx at $((SECONDS / 60)) min — resuming it once"
+            cp /tmp/steward-out.txt /tmp/steward-out.first.txt
+            MAX_TURNS=120
+            RC=0; run_steward "Your previous turn ended on a transient API error (5xx). Continue exactly where you left off — do not start over, and do not re-run verification that already passed. Finish the unit: push, PR, merge (or hold, with the reason), close the ticket." /tmp/steward-stream.resume.jsonl --continue || RC=$?
+          fi
+          exit "$RC"
 
       # RESCUE WHAT THE RUN DID NOT GET TO PUSH. The runner is destroyed with
       # the job, so a run cancelled at the cap used to lose every commit it had
@@ -374,6 +408,8 @@ jobs:
           path: |
             /tmp/steward-stream.jsonl
             /tmp/steward-out.txt
+            /tmp/steward-stream.resume.jsonl
+            /tmp/steward-out.first.txt
           if-no-files-found: ignore
           retention-days: 14
 
