@@ -13,6 +13,7 @@ on:
 
 permissions:
   contents: read
+  issues: write    # lets GITHUB_TOKEN journal to THIS repo (see "Journal the run")
 
 concurrency:
   group: steward-sweep-tech
@@ -78,4 +79,10 @@ jobs:
 
       - name: Journal the run
         if: always()
+        env:
+          # Same-repo only: journal.sh hardcodes kevinrhaas/polecat-platform,
+          # so this never needed the cross-repo PAT. GITHUB_TOKEN bills to a
+          # per-repository pool instead of the account-wide one the PAT shares
+          # with every parallel slice and with Manager.
+          GH_TOKEN: ${{ github.token }}
         run: bash .github/steward/journal.sh "${{ github.run_id }}" "Steward sweep (tech)" "${{ job.status }}" /tmp/steward-out.txt

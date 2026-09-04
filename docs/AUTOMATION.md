@@ -40,6 +40,37 @@ and `STEWARD_PAT` (classic PAT, repo scope on kevinrhaas/* — powers cross-repo
 clone/push and `gh` PRs/issues). Every workflow fails fast with a clear error if
 either is missing.
 
+### Which token pays for a call
+
+Two tokens, two meters, and the rule is simply *where the call lands*:
+
+| | reaches | metered | use for |
+|---|---|---|---|
+| `STEWARD_PAT` | every `kevinrhaas/*` repo | **account-wide** — one pool shared by every parallel slice, the janitor, the sweeps AND Manager's Fleet Ops | anything touching an APP repo |
+| `${{ github.token }}` | this repo only | **per repository** (1,000/h), its own bucket | anything that stays in polecat-platform |
+
+The PAT's pool is the scarce one, and `slices: N` multiplies the demand on it by
+N. So a call that never leaves this repo should not be paid for out of it:
+
+- **Journalling** (`journal.sh`, which hardcodes `kevinrhaas/polecat-platform`)
+  runs on `github.token` in improve, janitor and both sweeps — each needs
+  `issues: write`. This also makes the write-up independent of PR traffic: a
+  starved PAT can no longer lose a shipped run's journal entry.
+- **Dispatch** (steward-focus firing improve, and the last slice kicking
+  steward-focus) runs on `github.token` with `actions: write`. Safe despite the
+  "GITHUB_TOKEN events don't start workflow runs" rule, because
+  `workflow_dispatch` is an explicit exception to it.
+- Everything cross-repo — clone/push, PRs and issues on app repos, the
+  chicago/4d blender pin — stays on the PAT. It has no alternative.
+
+Two things that are NOT the REST pool, and mislead if you assume they are:
+git over HTTPS (clone/fetch/push) is metered separately and does not spend it,
+and **GraphQL has its own 5,000-point hourly bucket** — which `gh pr` and
+`gh issue` used to drain to zero while REST sat nearly untouched (see the
+measurement in `.github/steward/gh-rest.sh`, the reason those calls are now
+REST). `bash .github/steward/gh-rest.sh budget` prints core and GraphQL
+together.
+
 Optional secrets — per-app admin tokens: `MANAGER_ADMIN_TOKEN`,
 `ANALYTICS_ADMIN_TOKEN`, `JOBTRACKER_ADMIN_TOKEN`, `RELAY_ADMIN_TOKEN`,
 `MODELSERVER_ADMIN_TOKEN`. Each unlocks that app's client-side invite/admin

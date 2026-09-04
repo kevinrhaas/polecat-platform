@@ -58,6 +58,7 @@ env:
 permissions:
   contents: read
   actions: write   # lets the last slice of a batch kick steward-focus (see the final step)
+  issues: write    # lets GITHUB_TOKEN journal to THIS repo (see "Journal the run")
 
 # Per-app-PER-SLICE concurrency. Runs on DIFFERENT apps have always proceeded in
 # parallel (separate repos — no contention); as of 2026-08 a lane's `slices: N`
@@ -511,6 +512,19 @@ jobs:
       - name: Journal the run
         if: always()
         continue-on-error: true
+        env:
+          # The journal is the one thing here that never leaves THIS repo —
+          # journal.sh hardcodes kevinrhaas/polecat-platform — so it has no
+          # business spending the cross-repo PAT's budget. GITHUB_TOKEN is
+          # metered per REPOSITORY (1,000/hour) and is a different bucket
+          # entirely from the account-wide pool that STEWARD_PAT, five parallel
+          # slices and Manager's Fleet Ops all draw on.
+          #
+          # This is the fix the step's own comment below was asking for: it
+          # already noted that a rate-limited journal loses a shipped run's
+          # write-up. Now journaling cannot be starved by PR traffic, and it
+          # stops adding to the pressure that starves the PR traffic.
+          GH_TOKEN: ${{ github.token }}
         run: |
           # The record-led body when the record step produced one; the raw
           # summary when it did not, so a journal entry is never lost to it.
