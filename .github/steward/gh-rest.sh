@@ -221,8 +221,12 @@ json.dump({"name":sys.argv[1],"color":sys.argv[2],"description":sys.argv[3]},sys
     # A label that already exists is a 422, which is success for our purposes.
     api POST "repos/${repo}/labels" --input /tmp/gh-rest-label.json >/dev/null 2>&1 || true ;;
   budget)
+    # All THREE pools. Reporting core+graphql only repeated the mistake this
+    # file exists to correct — a meter that omits a pool reads "fine" during the
+    # outage that pool is causing. Free to call: /rate_limit is not itself
+    # metered.
     gh api rate_limit --jq \
-      '"core \(.resources.core.remaining)/\(.resources.core.limit)  graphql \(.resources.graphql.remaining)/\(.resources.graphql.limit)"' ;;
+      '"core \(.resources.core.remaining)/\(.resources.core.limit)  graphql \(.resources.graphql.remaining)/\(.resources.graphql.limit)  search \(.resources.search.remaining)/\(.resources.search.limit)"' ;;
   *)
     sed -n '2,12p' "$0" >&2; exit 2 ;;
 esac
