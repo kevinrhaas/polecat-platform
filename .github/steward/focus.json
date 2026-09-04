@@ -19,7 +19,7 @@
       "model": "claude-opus-5"
     },
     "custom": {
-      "enabled": true,
+      "enabled": false,
       "everyHours": 1,
       "model": "claude-opus-5",
       "slices": 10,
