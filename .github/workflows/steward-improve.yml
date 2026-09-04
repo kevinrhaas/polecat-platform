@@ -291,6 +291,25 @@ jobs:
             || echo "::warning::pip install of openpyxl/pypdf failed — packages ship CSV only this run"
           python3 -c "import openpyxl, pypdf; print('openpyxl', openpyxl.__version__, 'pypdf', pypdf.__version__)" || true
 
+      # BUDGET, BEFORE AND AFTER — the measurement nobody was taking.
+      #
+      # The GraphQL exhaustion that shaped this whole design (run 1140,
+      # 2026-08-27: graphql 0/5000 while core sat at 4969) was a ONE-OFF
+      # reading, taken by hand, mid-incident. gh-rest.sh and the playbook ban on
+      # `gh pr`/`gh issue` were written to fix it, and then nothing ever checked
+      # whether they had — so "are we still short of budget?" has been answered
+      # by argument rather than data ever since, including when deciding whether
+      # to buy more capacity.
+      #
+      # Two cheap lines fix that. /rate_limit is free (it is not itself
+      # metered), so bracketing the agent costs nothing and turns every run into
+      # a datapoint: what this slice found, and what it left behind.
+      # Deliberately never fatal — a budget probe must not fail a run.
+      - name: Budget before the run
+        if: always()
+        continue-on-error: true
+        run: bash .github/steward/gh-rest.sh budget || echo "budget probe unavailable"
+
       - name: Run steward
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -447,6 +466,13 @@ jobs:
       # journal's API calls, because a cancelled job's grace period is short and
       # the work is worth more than its write-up. On a successful run it is a
       # no-op that costs a few seconds and prints the trees for the record.
+      # The other half of the bracket. Read BEFORE salvage/journal so it
+      # measures what the AGENT spent, not what the wrap-up steps then added.
+      - name: Budget after the run
+        if: always()
+        continue-on-error: true
+        run: bash .github/steward/gh-rest.sh budget || echo "budget probe unavailable"
+
       - name: Salvage unpushed work
         if: always()
         continue-on-error: true
