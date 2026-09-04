@@ -151,20 +151,54 @@ jobs:
         timeout-minutes: 25
         run: |
           set -euo pipefail
-          try() {                      # try <minutes> <command...> — twice, then fail
+          try() {                      # try <minutes> <command...> — thrice, then fail
             local m=$1; shift
-            for i in 1 2; do
+            local backoff=15
+            for i in 1 2 3; do
               if timeout "${m}m" "$@"; then return 0; fi
-              echo "::warning::install attempt $i of 2 stalled or failed: $*"
-              sleep 15
+              echo "::warning::install attempt $i of 3 stalled or failed: $*"
+              [ "$i" -lt 3 ] && { sleep "$backoff"; backoff=$((backoff * 3)); }
             done
-            echo "::error::install gave up after 2 attempts: $*"
+            echo "::error::install gave up after 3 attempts: $*"
             return 1
           }
+
+          # WAIT FOR THE dpkg LOCK RATHER THAN RETRY INTO IT.
+          #
+          # Run 1553 (custom [1/5], 2026-09-04) died here and never claimed a ticket:
+          # `--with-deps` shells out to apt-get, ANOTHER apt-get on the runner held
+          # /var/lib/dpkg/lock-frontend, and playwright exited 100 in under a second.
+          # The retry slept 15 s, hit the same lock, and the job gave up FIFTEEN
+          # SECONDS after it started — while that other apt was still fetching
+          # fonts-wqy-zenhei and would have released the lock shortly after.
+          #
+          # THIS IS NOT THE STALL THE TIMEOUT ABOVE IS FOR, and the distinction is the
+          # whole fix. A stall is slow, so capping it and retrying is right. A held
+          # dpkg lock is an IMMEDIATE refusal that clears on its own in well under a
+          # minute, so the lever is to WAIT for it, not to retry into it faster.
+          #
+          # Degrades safely: if `fuser` is absent the probe fails, the loop does not
+          # run, and the behaviour is exactly what it was before this existed.
+          wait_for_apt() {
+            local waited=0 cap=300
+            while sudo fuser /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock \
+                             /var/lib/apt/lists/lock >/dev/null 2>&1; do
+              if [ "$waited" -ge "$cap" ]; then
+                echo "::warning::dpkg lock still held after ${waited}s — going ahead anyway"
+                return 0
+              fi
+              [ $((waited % 30)) -eq 0 ] && echo "another apt holds the dpkg lock; waited ${waited}s"
+              sleep 5; waited=$((waited + 5))
+            done
+            [ "$waited" -gt 0 ] && echo "dpkg lock free after ${waited}s"
+            return 0
+          }
+
           try 4 npm install -g @anthropic-ai/claude-code
           try 4 npm install --no-save playwright
           # webkit too: several app smoke tests (jobtracker) run the iOS engine
           # (~215MB of downloads skipped on a warm browser cache)
+          wait_for_apt
           try 4 npx playwright install --with-deps chromium webkit
 
       # ---- the chicago/4d lane can bake geometry ------------------------------
