@@ -22,7 +22,7 @@
       "enabled": true,
       "everyHours": 1,
       "model": "claude-opus-5",
-      "slices": 5,
+      "slices": 2,
       "max_turns": 400
     },
     "autoselector.polecat.live": {
