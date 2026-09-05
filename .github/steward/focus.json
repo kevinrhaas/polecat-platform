@@ -19,7 +19,7 @@
       "model": "claude-opus-5"
     },
     "custom": {
-      "enabled": false,
+      "enabled": true,
       "everyHours": 1,
       "model": "claude-opus-5",
       "slices": 10,
@@ -61,7 +61,7 @@
       "offset": 3
     },
     "janitor": {
-      "enabled": false,
+      "enabled": true,
       "everyHours": 1
     }
   }
