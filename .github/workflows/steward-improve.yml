@@ -149,7 +149,31 @@ jobs:
         # finish. Cap each command, retry it once — most registry stalls clear on the
         # second attempt — and if it still will not go, fail the job in ~10 minutes
         # and leave the slot to the next hourly fire.
-        timeout-minutes: 25
+        #
+        # THE RETRY MUST WAIT FOR THE LOCK TOO, BECAUSE THE THING HOLDING IT IS US.
+        # Run 1582 (custom [5/10], 2026-09-05) died here in five minutes:
+        #
+        #   01:13:05  attempt 1 starts apt-get — 114 MB, 183 packages
+        #   01:15:05  one 5.6 MB file has taken two minutes (the mirror is crawling)
+        #   01:16:47  attempt 1 hits the 4-minute cap and is killed
+        #   01:17:04  attempt 2 → lock-frontend held by process 2731 (apt-get)
+        #   01:17:49  attempt 3 → held by process 2731
+        #   01:17:51  gives up — while Get:31 is still downloading
+        #
+        # Process 2731 IS attempt 1. `--with-deps` runs apt-get under sudo, so the
+        # apt-get is root-owned and this unprivileged step cannot signal it: the cap
+        # kills the npx wrapper, the root apt-get survives, and every retry then slams
+        # into the orphan its own predecessor left holding the lock. Three attempts
+        # bought three collisions with one process.
+        #
+        # So `wait_for_apt` runs before EACH retry, not once before the first. The
+        # orphan is installing exactly the dependencies we want, so waiting for it is
+        # not merely polite — when it finishes, the next attempt finds the deps present
+        # and returns fast. The retry cap is longer than the opening one for the same
+        # reason: we are waiting on known work, not on a stall. `timeout-minutes` rises
+        # to cover the worst case (4 + 10 + 4 + 10 + 4 = 32 min) and still fails far
+        # below the 150-minute job cap that runs 939/940 ate.
+        timeout-minutes: 35
         run: |
           set -euo pipefail
           try() {                      # try <minutes> <command...> — thrice, then fail
@@ -158,7 +182,9 @@ jobs:
             for i in 1 2 3; do
               if timeout "${m}m" "$@"; then return 0; fi
               echo "::warning::install attempt $i of 3 stalled or failed: $*"
-              [ "$i" -lt 3 ] && { sleep "$backoff"; backoff=$((backoff * 3)); }
+              # Wait out whatever holds the dpkg lock — very often the attempt that
+              # just timed out, whose root-owned apt-get we cannot kill (see above).
+              [ "$i" -lt 3 ] && { sleep "$backoff"; backoff=$((backoff * 3)); wait_for_apt 600; }
             done
             echo "::error::install gave up after 3 attempts: $*"
             return 1
@@ -180,8 +206,12 @@ jobs:
           #
           # Degrades safely: if `fuser` is absent the probe fails, the loop does not
           # run, and the behaviour is exactly what it was before this existed.
+          # The cap is an argument because the two callers wait on different things:
+          # 300 s before the first attempt (an UNRELATED apt, run 1553's case, which
+          # clears in well under a minute), 600 s between retries (our own orphaned
+          # apt-get, run 1582's case, which is fetching 114 MB and deserves the room).
           wait_for_apt() {
-            local waited=0 cap=300
+            local waited=0 cap=${1:-300}
             while sudo fuser /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock \
                              /var/lib/apt/lists/lock >/dev/null 2>&1; do
               if [ "$waited" -ge "$cap" ]; then
