@@ -142,6 +142,42 @@ got=$(bash "$SUT" pr-sweepable o/r '^(steward/|chore/polecat-shell)' 2>/dev/null
 check "pr-sweepable keeps only the sweepable PRs (drops draft, hold, foreign branch)" "$got" "1,5,"
 check "…in a single request, so the per-PR view is retired" "$(calls)" "1"
 
+# ── 7b. pr-automerge arms, and falls back to a plain merge when it cannot ──
+# Auto-merge is the only thing here with no REST endpoint, so it is the only
+# GraphQL call in the file. What matters is that it is never WORSE than
+# pr-merge: if GitHub will not queue the PR, the merge still has to happen.
+newplan automerge_ok
+cat > "$FAKE_PLAN/1.txt" <<'EOF'
+HTTP/2.0 200 OK
+
+{"number":7,"node_id":"PR_kwDO"}
+EOF
+cat > "$FAKE_PLAN/2.txt" <<'EOF'
+{"data":{"enablePullRequestAutoMerge":{"pullRequest":{"number":7,"autoMergeRequest":{"enabledAt":"2026-09-05T18:00:00Z"}}}}}
+EOF
+got=$(bash "$SUT" pr-automerge o/r 7 squash 2>/dev/null)
+check "pr-automerge arms auto-merge and says so" "$got" "armed"
+check "…in exactly two calls: one REST for the node id, one mutation" "$(calls)" "2"
+
+newplan automerge_clean
+cat > "$FAKE_PLAN/1.txt" <<'EOF'
+HTTP/2.0 200 OK
+
+{"number":8,"node_id":"PR_kwDO"}
+EOF
+# What GitHub says when there is nothing left to wait for, or when the repo has
+# no required check on the base branch — both mean "merge it now".
+cat > "$FAKE_PLAN/2.txt" <<'EOF'
+GraphQL: Pull request is in clean status (enablePullRequestAutoMerge)
+EOF
+cat > "$FAKE_PLAN/3.txt" <<'EOF'
+HTTP/2.0 200 OK
+
+{"sha":"deadbee"}
+EOF
+got=$(bash "$SUT" pr-automerge o/r 8 squash "title" 2>/dev/null)
+check "pr-automerge that cannot arm falls back to merging, and still merges" "$got" "deadbee"
+
 # ── 8. No steward subcommand shells out to a GraphQL-backed `gh pr|issue` ───
 if grep -nE '^[^#]*gh (pr|issue|search) ' "$SUT" >/dev/null; then
   bad "gh-rest.sh itself still calls a GraphQL-backed gh subcommand"
