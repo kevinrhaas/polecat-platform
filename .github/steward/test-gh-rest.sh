@@ -142,7 +142,45 @@ got=$(bash "$SUT" pr-sweepable o/r '^(steward/|chore/polecat-shell)' 2>/dev/null
 check "pr-sweepable keeps only the sweepable PRs (drops draft, hold, foreign branch)" "$got" "1,5,"
 check "…in a single request, so the per-PR view is retired" "$(calls)" "1"
 
-# ── 8. No steward subcommand shells out to a GraphQL-backed `gh pr|issue` ───
+# ── 8. comment-find returns the marked comment, and nothing when unmarked ──
+# journal.sh decides between REPLACE and POST on this answer. Getting it wrong
+# in the empty direction doubles the journal; in the other it overwrites someone
+# else's comment.
+newplan cfind
+cat > "$FAKE_PLAN/last.txt" <<'EOF'
+HTTP/2.0 200 OK
+
+[{"id":11,"body":"unrelated chatter"},
+ {"id":22,"body":"<!-- steward-run:999 -->\n### slice 3 of 8"},
+ {"id":33,"body":"<!-- steward-run:1000 -->"}]
+EOF
+got=$(bash "$SUT" comment-find o/r 5 "steward-run:999" 2>/dev/null)
+check "comment-find returns the id of the comment carrying the marker" "$got" "22"
+got=$(bash "$SUT" comment-find o/r 5 "steward-run:absent" 2>/dev/null)
+check "…and empty when no comment carries it (so journal.sh POSTs)" "$got" ""
+
+# ── 9. claim-notice announces without the journal, and never fails the run ───
+# It runs inside a live agent run; a failure here must cost an annotation, never
+# the unit of work. Both no-journal and API-down are asserted to exit 0.
+newplan claim
+cat > "$FAKE_PLAN/last.txt" <<'EOF'
+HTTP/2.0 403 Forbidden
+
+{"message":"Resource not accessible by integration"}
+EOF
+export GITHUB_RUN_ID=999 GITHUB_STEP_SUMMARY="$TMP/summary.md" FOCUS_APP=custom
+: > "$GITHUB_STEP_SUMMARY"
+out=$(bash "$HERE/claim-notice.sh" 3 8 T-0191 "Randolph gets the street edge" 2>&1); rc=$?
+check "claim-notice exits 0 even when every API call is refused" "$rc" "0"
+if grep -q '::notice title=T-0191::' <<<"$out"; then ok "…and still emits the Actions annotation"; else bad "no ::notice:: annotation"; fi
+if grep -q 'T-0191' "$GITHUB_STEP_SUMMARY"; then ok "…and still writes the step summary"; else bad "step summary not written"; fi
+if grep -q 'slice 3/8 · custom · T-0191' "$GITHUB_STEP_SUMMARY"; then ok "…naming slice, app and ticket"; else bad "summary line malformed"; fi
+
+out=$(bash "$HERE/claim-notice.sh" 3 8 "" "no ticket" 2>&1); rc=$?
+check "claim-notice with no ticket is a no-op, not a failure" "$rc" "0"
+unset GITHUB_RUN_ID GITHUB_STEP_SUMMARY FOCUS_APP
+
+# ── 10. No steward subcommand shells out to a GraphQL-backed `gh pr|issue` ──
 if grep -nE '^[^#]*gh (pr|issue|search) ' "$SUT" >/dev/null; then
   bad "gh-rest.sh itself still calls a GraphQL-backed gh subcommand"
 else

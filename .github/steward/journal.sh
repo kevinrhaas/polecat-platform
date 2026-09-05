@@ -47,5 +47,18 @@ fi
   echo
   echo "[Run log](https://github.com/${REPO}/actions/runs/${RUN_ID})"
 } > /tmp/journal-body.md
-bash "$GHREST" issue-comment "$REPO" "$JR" /tmp/journal-body.md
-echo "journaled run ${RUN_ID} → issue #${JR}"
+# claim-notice.sh may already have posted a comment carrying this run's marker
+# when it claimed its ticket, so that Fleet Ops could show the ticket while the
+# run was still going. Replace that one rather than adding a second: two
+# comments per run would double the journal, and `journalFor` takes the NEWEST
+# match, so a stale "in progress" line surviving next to the real summary is
+# only ever confusing. Falls back to posting when there is nothing to replace —
+# the claim notice is best-effort and may never have run.
+CID="$(bash "$GHREST" comment-find "$REPO" "$JR" "steward-run:${RUN_ID}" 2>/dev/null || true)"
+if [ -n "$CID" ]; then
+  bash "$GHREST" comment-update "$REPO" "$CID" /tmp/journal-body.md
+  echo "journaled run ${RUN_ID} → issue #${JR} (replaced the claim notice, comment ${CID})"
+else
+  bash "$GHREST" issue-comment "$REPO" "$JR" /tmp/journal-body.md
+  echo "journaled run ${RUN_ID} → issue #${JR}"
+fi
