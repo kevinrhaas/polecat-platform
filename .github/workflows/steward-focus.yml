@@ -1,29 +1,29 @@
 name: Steward focus scheduler
 
 # Multi-app focus runs, driven by .github/steward/focus.json (the roster).
-# Every 10 MINUTES this cheap, Claude-free job reads the roster and dispatches a
-# "Steward improve" run per enabled app that is due AND idle. everyHours still
-# gates coarse cadence (everyHours:1 = eligible every tick, so it runs ~as fast
-# as its runs finish; 2 = even UTC hours…); the skip-if-busy check below is what
-# turns "eligible every tick" into "one unit at a time, next one within ~10 min
-# of the last finishing."
-# An app's `slices` (1..10, default 1) runs as that many PARALLEL units: this job
-# dispatches ALL N runs in one tick (slice=1..N, slices=N), and they work at the
-# same time — N agent lanes on that app at once, each its own unit of work with
-# its own PR + smoke gate. Each run is told "SLICE: k of N" and takes the k-th
-# topmost workable item from the app's queue, so siblings starting from an
-# identical repo state don't all grab the same one (see improve.md § PARALLEL
+# Every 10 MINUTES this cheap, Claude-free job reads the roster and TOPS UP each
+# enabled lane that is due. everyHours gates coarse eligibility (everyHours:1 =
+# eligible every tick, which is what continuous operation wants; 2 = even UTC
+# hours…).
+#
+# SLOTS, NOT BATCHES. An app's `slices` (1..10, default 1) is a standing
+# CONCURRENCY TARGET: the lane should have N runs going at all times. Each tick
+# counts how many of the lane's N slots are occupied and dispatches only the
+# empty ones, so one run finishing frees one slot and one replacement starts
+# while its siblings carry on. Each run is told "SLICE: k of N" and takes the
+# k-th topmost workable item from the app's queue (see improve.md § PARALLEL
 # SLICES; chicago/4d additionally locks via `ticket.mjs claim`/`inflight`).
 #
-# This used to CHAIN instead — one run dispatching the next on completion —
-# because all slices shared one concurrency group and a GitHub group holds only
-# one running + one pending, so the surplus was cancelled. steward-improve's
-# group now carries the slice number (`…-s<k>`), which is what makes the
-# simultaneous fan-out safe.
+# It used to be a BATCH GATE: fire all N, then skip the lane entirely until every
+# one had finished. That made a lane move at the pace of its slowest run — nine
+# finished slices idling while the tenth ran on, so a lane set to 10 spent much
+# of its time running one. Slots keep it at N.
 #
-# Batch semantics: the skip-if-busy check below means a new batch fires only
-# when the lane is due again AND no slice of the previous batch is still in
-# flight — the lane tops up as a whole, never mid-batch.
+# Before that it CHAINED — one run dispatching the next on completion — because
+# all slices shared one concurrency group and a GitHub group holds only one
+# running + one pending, so the surplus was cancelled. steward-improve's group
+# now carries the slice number (`…-s<k>`), which is what makes both the
+# simultaneous fan-out and the per-slot refill safe.
 #
 # Different apps run in PARALLEL too (separate repos — no contention). Turn apps on/off or change cadence by editing
 # focus.json — from the GitHub UI, any Claude session, or (roadmap) the
@@ -37,12 +37,13 @@ name: Steward focus scheduler
 
 on:
   schedule:
-    # Every 10 minutes: the tick is the loop's heartbeat. Each tick fires a full
-    # BATCH per IDLE enabled lane (skip-if-busy below waits out every slice of
-    # the batch before), so a lane starts its next batch within ~10 min of going
-    # idle — and a batch that died mid-way restarts on the next tick instead of
-    # stalling an hour. Drop to '*/5 * * * *' to run more aggressively. (GitHub may delay a
-    # scheduled tick under load, so treat 10 min as the floor, not a guarantee.)
+    # Every 10 minutes: the tick is the loop's BACKSTOP, not the mechanism. A
+    # finishing run kicks this workflow itself (steward-improve's last step), so
+    # a freed slot normally refills within a minute; the cron catches slots freed
+    # by a run that FAILED (which deliberately does not kick) and any kick that
+    # went missing. Drop to '*/5 * * * *' to close that gap faster. GitHub delays
+    # scheduled ticks badly under load — measured 99 to 214 minutes apart, then a
+    # ~6 hour gap — which is exactly why the loop does not depend on them.
     - cron: '*/10 * * * *'
   workflow_dispatch: {}         # manual tick for testing
 
@@ -67,39 +68,84 @@ jobs:
         run: |
           COUNT=0
           # schedule.mjs is the canonical lane evaluator (cadence, offset,
-          # window, startAt, until — see its header). `due` prints the apps
-          # whose lanes fire this hour.
-          # `due` prints each due app ONCE. Dispatch the lane's FULL BATCH: N
-          # parallel runs, slice=1..N, all at this tick. Skip an app that still
-          # has any steward-improve run in flight — that is the batch gate (a
-          # lane tops up as a whole, never mid-batch).
+          # window, startAt, until — see its header). `due` prints each app
+          # whose lane is eligible this tick, once.
           #
-          # The busy check matches the run TITLE exactly, not as a substring:
-          # `contains("polecat")` also matched "…— polecat-platform" and every
-          # "…— polecat.live" run, so those lanes silently skipped each other.
-          # steward-improve's run-name is "Steward improve — <app>" plus an
-          # optional " [k/N]" suffix, so anchor on both forms.
+          # SLOTS, NOT BATCHES. `slices: N` is a standing concurrency TARGET, not
+          # a batch size: the lane should have N runs going at all times. So each
+          # tick asks "which of this lane's N slots are empty?" and fills exactly
+          # those. One run finishing frees one slot, and the next tick (or that
+          # run's own kick — see steward-improve's final step) starts one
+          # replacement, while its siblings carry on undisturbed.
+          #
+          # This replaced a batch GATE, which skipped the lane entirely while ANY
+          # slice was in flight. That made the whole lane move at the pace of its
+          # slowest run: nine finished slices sat idle waiting for the tenth, and
+          # a lane set to 10 spent much of its time running one.
+          #
+          # WHY REFILL THE SPECIFIC SLICE NUMBER rather than just "start another
+          # one". The slice index is load-bearing twice over. It is in
+          # steward-improve's concurrency group (`…-s<k>`), so reusing a LIVE
+          # slice's number would queue behind it instead of running. And slice k
+          # takes the k-th topmost workable item, which stays stable precisely
+          # because a claimed ticket keeps its place in the list (chicago/4d's
+          # ticket.mjs: WORKABLE = open|claimed|review). Refilling slot k means
+          # the replacement resumes that position instead of colliding with a
+          # sibling's.
+          #
+          # Title matching is EXACT, not substring: `contains("polecat")` also
+          # matched "…— polecat-platform" and every "…— polecat.live" run, so
+          # those lanes silently skipped each other. run-name is
+          # "Steward improve — <app>", plus " [k/N]" when N > 1 — hence both forms.
           for APP in $(node .github/steward/schedule.mjs due); do
-            BUSY=$(gh run list -R kevinrhaas/polecat-platform --workflow steward-improve.yml \
-              --limit 60 --json status,displayTitle \
-              -q "[.[] | select(.status==\"in_progress\" or .status==\"queued\") | .displayTitle] | map(select(. == \"Steward improve — ${APP}\" or startswith(\"Steward improve — ${APP} [\"))) | length" 2>/dev/null || echo 0)
-            if [ "${BUSY:-0}" -gt 0 ]; then
-              echo "↷ skipping ${APP} — ${BUSY} run(s) still in flight; the batch finishes first"
+            N=$(node .github/steward/schedule.mjs slices-of "${APP}")
+            RUNS=$(gh run list -R kevinrhaas/polecat-platform --workflow steward-improve.yml \
+              --limit 60 --json status,displayTitle 2>/dev/null || echo '[]')
+            # Which slice numbers are occupied right now? A run with no "[k/N]"
+            # suffix is a lone slice 1.
+            BUSY_SLICES=$(printf '%s' "$RUNS" | jq -r --arg app "$APP" '
+              [ .[]
+                | select(.status == "in_progress" or .status == "queued")
+                | .displayTitle
+                | select(. == "Steward improve — \($app)" or startswith("Steward improve — \($app) ["))
+                | if test("\\[[0-9]+/[0-9]+\\]$")
+                  then (capture("\\[(?<k>[0-9]+)/[0-9]+\\]$").k | tonumber)
+                  else 1 end
+              ] | unique | join(" ")' 2>/dev/null || echo "")
+            # If that query FAILS, BUSY_SLICES is empty and every slot looks
+            # free — this tick would then re-dispatch slices that are already
+            # running. Deliberately not guarded here, because the guard already
+            # exists one layer down and is stronger: steward-improve's
+            # concurrency group is per-app-per-SLICE with cancel-in-progress
+            # false, so a duplicate slice k QUEUES behind the live slice k
+            # instead of running beside it. A blind tick can therefore
+            # over-SCHEDULE, never over-RUN — the lane still executes N at a
+            # time, and the queued duplicate just starts when its slot frees.
+            RUNNING=$(printf '%s' "$BUSY_SLICES" | wc -w | tr -d ' ')
+            # Cap by HEAD COUNT as well as by index. If the roster's N was just
+            # lowered, slices above the new N may still be in flight; counting
+            # them keeps the lane from briefly running more than it is set to.
+            FREE=$(( N - RUNNING ))
+            if [ "$FREE" -le 0 ]; then
+              echo "↷ ${APP} — ${RUNNING}/${N} slot(s) busy, none free"
               continue
             fi
-            N=$(node .github/steward/schedule.mjs slices-of "${APP}")
             M=$(node .github/steward/schedule.mjs model-of "${APP}")
             T=$(node .github/steward/schedule.mjs max-turns-of "${APP}")
-            echo "→ dispatching ${APP} — ${N} parallel slice(s)${M:+, model ${M}}${T:+, ${T} tool calls}"
+            echo "→ ${APP} — ${RUNNING}/${N} running, filling ${FREE} free slot(s)${M:+, model ${M}}${T:+, ${T} tool calls}"
             K=1
-            while [ "$K" -le "$N" ]; do
+            while [ "$K" -le "$N" ] && [ "$FREE" -gt 0 ]; do
+              case " ${BUSY_SLICES} " in
+                *" ${K} "*) K=$((K+1)); continue ;;   # slot k is occupied
+              esac
               gh workflow run steward-improve.yml -R kevinrhaas/polecat-platform \
                 -f app="${APP}" -f slice="${K}" -f slices="${N}" -f model="${M}" -f max_turns="${T}" \
                 && echo "  ✓ slice ${K}/${N}" || echo "::warning::dispatch failed for ${APP} slice ${K}/${N}"
               COUNT=$((COUNT+1))
+              FREE=$((FREE-1))
               K=$((K+1))
               # GitHub's secondary rate limit trips on bursts of writes; space
-              # the fan-out out rather than firing 5 dispatches back-to-back.
+              # the fan-out out rather than firing N dispatches back-to-back.
               sleep 3
             done
           done
