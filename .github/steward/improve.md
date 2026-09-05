@@ -257,8 +257,8 @@ HARD RULES:
   where the app's smoke needs it) are pre-installed by the workflow.
 - Open a PR (what/why/verification) with **`bash "$GHREST" pr-create <owner/repo>
   <head-branch> <base-branch> "<title>" <body-file>`**, which prints the PR
-  number, and merge it yourself with **`bash "$GHREST" pr-merge <owner/repo> <N>
-  squash "<commit title>"`** followed by **`bash "$GHREST" branch-delete
+  number, and merge it yourself with **`bash "$GHREST" pr-automerge <owner/repo>
+  <N> squash "<commit title>"`** followed by **`bash "$GHREST" branch-delete
   <owner/repo> <head-branch>`** when verification is fully green — merging your
   green PR is REQUIRED (Kevin never manually merges automation output; a
   janitor also sweeps green steward PRs every 2h — it merges at the PR's own
@@ -267,6 +267,16 @@ HARD RULES:
   /dev/ and the pipeline ships it. Ambiguous, architecturally significant, or
   not fully verified → leave the PR OPEN with the `hold` label and an
   explanation for Kevin instead; `hold` keeps the janitor away.
+- **`pr-automerge` ARMS GitHub's auto-merge and returns**, so the PR lands the
+  moment its required checks go green and you are not holding the slice open to
+  watch for it. If it cannot arm — no required check on the base branch, or the
+  PR is already clean with nothing to wait for — it merges immediately instead,
+  so it is never worse than `pr-merge` and `pr-merge` needs no separate call.
+  **Do not then sit and wait for the merge**: arm it, delete the branch, write
+  the journal and finish. Two things this buys, both measured: a slice stops
+  spending minutes of its cap watching its own gate, and it stops LOSING the
+  merge to a base branch that moved underneath it — that cost eleven rebuild-
+  and-regate laps on 2026-09-05 while `dev` advanced between push and merge.
 - **NEVER `gh pr ...` OR `gh issue ...` — they spend the wrong budget, and it
   runs out.** `gh pr create|merge|comment|view|list` and `gh issue
   create|comment|list` all go through GitHub's **GraphQL** API, which is a
@@ -278,7 +288,15 @@ HARD RULES:
   paths, and retried with backoff when GitHub returns a rate limit (which it
   also does on burst *concurrency*, independently of quota — five slices run at
   once). `bash "$GHREST"` with no arguments prints its usage. `gh api <REST
-  path>` directly is fine; `gh api graphql` is not.
+  path>` directly is fine; `gh api graphql` is not — with ONE exception, which
+  `$GHREST` already owns so you never write it yourself: `pr-automerge` runs a
+  single `enablePullRequestAutoMerge` mutation, because auto-merge has no REST
+  endpoint at all. That is one mutation against one object, once per unit of
+  work — about five points of five thousand an hour across five slices. What
+  emptied the meter on run 1140 was `gh pr view|list|create`, which fetch nested
+  objects and are billed by COMPLEXITY; that is why `used: 6690` was nowhere
+  near 6,690 commands. The rule is unchanged: no `gh pr`, no `gh issue`, and no
+  GraphQL of your own.
 - PROCESS HYGIENE (kills the whole run if violated): you yourself are a Node.js
   process. NEVER run broad process kills — no `pkill node`, `pkill -f node`,
   `killall node`, `pkill chrome`, or pattern kills that could match your own

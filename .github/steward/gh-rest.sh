@@ -3,6 +3,7 @@
 #
 #   gh-rest.sh pr-create   <repo> <head> <base> <title> <body-file>   → prints the PR number
 #   gh-rest.sh pr-merge    <repo> <number> <method> [commit-title]    → prints the merge sha
+#   gh-rest.sh pr-automerge <repo> <number> [method] [commit-title]   → 'armed', or merges now
 #   gh-rest.sh pr-comment  <repo> <number> <body-file>
 #   gh-rest.sh pr-list     <repo> [state] [per-page]                  → number<TAB>head<TAB>base<TAB>title
 #   gh-rest.sh pr-get      <repo> <number> [--jq FILTER]
@@ -140,6 +141,48 @@ if len(sys.argv)>2 and sys.argv[2]: d["commit_title"]=sys.argv[2]
 json.dump(d,sys.stdout)' "$method" "$ctitle")
     printf '%s' "$payload" > /tmp/gh-rest-merge.json
     api PUT "repos/${repo}/pulls/${number}/merge" --input /tmp/gh-rest-merge.json | jqf sha ;;
+  pr-automerge)
+    # Arm GitHub's auto-merge, so the PR lands the moment its required checks go
+    # green and nobody has to hold a run open watching for it. Falls back to an
+    # ordinary merge whenever auto-merge cannot be armed, so it is never worse
+    # than `pr-merge` — the caller can always use this instead.
+    #
+    # THIS IS THE ONE GraphQL CALL IN THIS FILE, and the header's rule is being
+    # applied rather than bent. `enablePullRequestAutoMerge` has NO REST
+    # endpoint; there is no other way to arm it. What emptied the meter on run
+    # 1140 was `gh pr view|list|create`, which fetch nested objects and are
+    # billed by COMPLEXITY — that is why `used: 6690` was nowhere near 6,690
+    # commands. This is one mutation against one object, once per unit of work:
+    # five slices spend about five points of five thousand an hour. `gh pr ...`
+    # stays forbidden; a single priced mutation is not what ran the meter down.
+    #
+    # WHY IT IS WORTH THE POINT. Without it a run must either sit through its
+    # own PR's checks — minutes of a capped slice, spent waiting — or merge
+    # before they finish. And the base branch moves underneath it meanwhile:
+    # eleven merge attempts were lost to that on 2026-09-05, each one a rebuild
+    # and a gate, because `dev` advanced between the push and the merge.
+    repo="$1"; number="$2"
+    method=$(printf '%s' "${3:-squash}" | tr '[:lower:]' '[:upper:]')
+    node=$(api GET "repos/${repo}/pulls/${number}" | jqf node_id)
+    if [ -z "$node" ]; then
+      log "pr-automerge: could not read the PR's node id — merging directly instead"
+      bash "$0" pr-merge "$repo" "$number" "${3:-squash}" "${4:-}"; exit $?
+    fi
+    # One line on purpose: the test harness logs one line per call, so a query
+    # broken over six lines reads as six calls and the "how many requests did
+    # this cost" assertion — the whole point of this file — stops meaning anything.
+    out=$(gh api graphql -f query='mutation($id:ID!, $m:PullRequestMergeMethod!) { enablePullRequestAutoMerge(input:{pullRequestId:$id, mergeMethod:$m}) { pullRequest { number autoMergeRequest { enabledAt } } } }' -f id="$node" -f m="$method" 2>&1)
+    if [ $? -eq 0 ] && ! grep -qi '"errors"\|GraphQL:' <<<"$out"; then
+      log "pr-automerge: armed on ${repo}#${number} (${method}) — GitHub will merge it when the gate is green"
+      printf 'armed\n'; exit 0
+    fi
+    # The three ways it legitimately cannot arm, all of which mean "just merge":
+    #   • "Pull request is in clean status" — nothing left to wait for.
+    #   • auto-merge not enabled on the repository.
+    #   • no required status check on the base branch, so a clean PR is
+    #     immediately mergeable and GitHub refuses to queue it.
+    log "pr-automerge: could not arm (${out//$'\n'/ }) — merging directly instead"
+    bash "$0" pr-merge "$repo" "$number" "${3:-squash}" "${4:-}" ;;
   pr-comment|issue-comment)
     repo="$1"; number="$2"; bodyfile="$3"
     python3 -c 'import json,sys;json.dump({"body":open(sys.argv[1],encoding="utf-8").read()},sys.stdout)' \
