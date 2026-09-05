@@ -9,9 +9,10 @@ polecat-app, polecat, custom (SCOPED — see the CUSTOM / CHICAGO 4D rule).
 MISSION: exactly ONE high-quality unit of work this run — shipped as its OWN PR,
 verified green in the foreground, and merged (or left on `hold` if it can't go
 green). Then finish. How many units the fleet does per hour is set ELSEWHERE, NOT
-by you: focus.json's per-lane `slices` field fans a lane out into that many
-INDEPENDENT runs, fired AT THE SAME TIME as yours (each a separate process with
-its own PR + verification — see PARALLEL SLICES below). So do NOT try to do
+by you: focus.json's per-lane `slices` field keeps that many INDEPENDENT runs
+going on the lane at all times — yours is one of them, and a replacement starts
+the moment it ends (each a separate process with its own PR + verification —
+see PARALLEL SLICES below). So do NOT try to do
 several — one run, one unit. (Chaining multiple units in a single run is what
 exhausts the turn budget and trips the "Reached max turns" failure.) Read
 docs/AUTOMATION.md, docs/MIGRATION.md and docs/SHELL-API.md in this checkout FIRST
@@ -37,20 +38,32 @@ the picking logic. Otherwise pick, in priority order:
    from an open "UX sweep" / "Tech sweep" issue is a first-class unit.
 
 PARALLEL SLICES (from the workflow input, printed below as `SLICE: k of N`):
-when N > 1 you are ONE OF N RUNS STARTED AT THE SAME MOMENT on the same app,
-from an identical repo state. Your siblings cannot see your work yet and you
-cannot see theirs — nothing has been committed, no branch exists, no PR is open.
-If all N follow "take the topmost item", all N build the SAME thing and N-1 get
-thrown away. So:
+N is a standing CONCURRENCY TARGET for this app — the lane keeps N runs going at
+all times — and k is which of those N slots you are filling. You are in one of
+two situations, and you can tell them apart by looking:
+  • a COLD FILL — all N started together from an identical repo state. Your
+    siblings cannot see your work and you cannot see theirs: nothing is
+    committed, no branch exists, no PR is open.
+  • a REFILL — a slot came free and you alone were started to take it, while
+    N-1 siblings are already mid-flight. Their branches, claims and PRs ARE
+    visible to you. Use them: they tell you exactly what not to duplicate.
+If everyone follows "take the topmost item", the cold-fill case has all N build
+the SAME thing and N-1 get thrown away. So:
 - **TAKE THE k-TH TOPMOST WORKABLE ITEM, 1-based** — slice 1 takes the top one,
   slice 2 the second, slice 3 the third. Same queue, same order, different row.
   Count only items you could actually run (skip ones you'd reject anyway), so
-  the N of you land on N distinct units.
+  the N of you land on N distinct units. This holds on a refill too: a claimed
+  item KEEPS its place in the workable list (chicago/4d's ticket.mjs counts
+  `open|claimed|review`), so the k-th row is still the one your slot owns.
 - If your app has a real claim mechanism, still use it after choosing (it is what
   catches the residual race — chicago/4d's `ticket.mjs inflight` + `claim` below).
-- If there are fewer workable items than N, or the k-th is blocked, take the next
-  one BELOW your position (never above — that is a sibling's row). If nothing is
-  left below, say so and finish rather than duplicating a sibling.
+- **If the k-th is already taken or blocked, fall to the TOPMOST workable item
+  that no live sibling holds** — check, don't guess: `inflight` names the remote
+  branches carrying a ticket, and `claim` refuses one a rival branch is on. On a
+  refill the rows above you can be genuinely free (the slot that owned a row may
+  have finished it), so "never look above your position" no longer holds; what
+  holds is "never take one somebody is on". If nothing is left, say so and finish
+  rather than duplicating a sibling.
 - Everything else is unchanged: ONE unit, your own branch + PR, your own green
   gate. `SLICE: 1 of 1` means you are a lone run — just take the top item.
 - Expect siblings to be merging while you work. Your rebase-and-retry budget
@@ -93,9 +106,12 @@ HARD RULES:
         bakes (see BLENDER below). Do not skip the top of the queue any more.
         `node tools/ticket.mjs list --workable` prints the same order.
         WITH `SLICE: k of N` AND N > 1, take the **k-th** ticket in that
-        `--workable` list instead of the 1st (see PARALLEL SLICES above): your
-        N-1 siblings started at the same instant against this same queue, and
-        the ordering is identical for all of you, so the k-th is yours.
+        `--workable` list instead of the 1st (see PARALLEL SLICES above): the
+        other N-1 slots are working the other rows, and the ordering is stable
+        for all of you because a `claimed` ticket keeps its place in
+        `--workable`, so the k-th row is the one your slot owns. If a sibling
+        already holds it (`inflight` / a refused `claim`), drop to the topmost
+        workable ticket nobody is on.
       - CHECK NOBODY ELSE HAS IT: `node tools/ticket.mjs inflight` names the
         remote branches already carrying a ticket number. `claim` refuses a
         ticket with a rival branch unless you pass `--force`, so look at that
@@ -328,10 +344,10 @@ HARD RULES:
     defect, not efficiency.
   * Do NOT start a second unit after finishing the first — even if run
     budget/time seems to remain. Fleet throughput is controlled by focus.json,
-    NOT by this prompt: a lane with `slices: N` already has N independent runs
-    going in parallel right now (yours is one of them), and the next tick starts
-    the next batch. A single run chaining multiple units is exactly what exhausts
-    the turn budget and trips the max-turns failure.
+    NOT by this prompt: a lane with `slices: N` keeps N independent runs going at
+    all times (yours is one of them), and the moment yours ends a replacement is
+    started in its place. A single run chaining multiple units is exactly what
+    exhausts the turn budget and trips the max-turns failure.
   * If the unit is large or architecturally risky (a shell migration, a
     cross-cutting refactor, anything touching an export/byte-identity invariant),
     that is fine — it is still one unit; do it and stop.

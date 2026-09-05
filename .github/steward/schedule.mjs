@@ -8,8 +8,9 @@
 //   enabled     bool — master switch for the lane.
 //   everyHours  int ≥1 — coarse cadence gate (1 = eligible EVERY tick, so the
 //               lane runs about as fast as its runs finish; 2 = even UTC hours…).
-//               The skip-if-busy check in steward-focus turns "eligible every
-//               tick" into "one unit at a time, next within ~10 min of the last."
+//               steward-focus tops the lane up to `slices` on each eligible
+//               tick, so 1 is what continuous operation wants; a coarser
+//               cadence only refills on the hours the lane is due.
 //   offset      int — which hours the cadence lands on: runs when
 //               hourUTC % everyHours === offset. This is how "align the next
 //               run to 21:00" works (offset = 21 % everyHours).
@@ -79,7 +80,7 @@ export function nextRunAt(lane, from = new Date(), tick = TICK_MINUTES){
 //               steward-focus reads the lane's slice count via `slices-of` and
 //               dispatches that many runs AT ONCE, slice=1..N)
 //   slices-of → the slice count (1..10, default 1) for one app lane — how many
-//               parallel improve runs its batch should fire
+//               concurrent improve runs the lane should keep going
 //   due-jobs  → platform job names due at THIS tick (focus.json `jobs`)
 //   next      → "name<TAB>iso-or-never" for every app lane AND job
 const cmd = process.argv[2];

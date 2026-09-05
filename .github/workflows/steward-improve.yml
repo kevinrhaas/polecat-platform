@@ -57,7 +57,7 @@ env:
 
 permissions:
   contents: read
-  actions: write   # lets the last slice of a batch kick steward-focus (see the final step)
+  actions: write   # lets a finishing run kick steward-focus to refill its slot (final step)
   issues: write    # lets GITHUB_TOKEN journal to THIS repo (see "Journal the run")
 
 # Per-app-PER-SLICE concurrency. Runs on DIFFERENT apps have always proceeded in
@@ -84,10 +84,11 @@ jobs:
     # not a hang: the successes cluster right underneath it, and 81 minutes of
     # genuine work sits four minutes from being thrown away.
     #
-    # A cancelled run costs more than its own hour. The scheduler's skip-if-busy
-    # rule holds the next tick while a run is in flight, so a run that dies at
-    # minute 89 with nothing committed loses the work AND the following slot.
-    # Three cancellations cost roughly three hours of lane time in a day.
+    # A cancelled run costs more than its own hour. It holds one of the lane's
+    # slots for the full 150 minutes and then hands back nothing — and because a
+    # failed run deliberately does not kick the scheduler, that slot stays empty
+    # until a cron tick notices. (Under the older batch gate it was worse still:
+    # one dying run held the ENTIRE lane, not one slot of it.)
     #
     # The parcels grew, which is why the old ceiling stopped fitting. A unit of
     # work was "add a block of roofs" when the lanes opened; the queue now holds
@@ -95,10 +96,9 @@ jobs:
     # to prove a measured before-and-after, and that alone is most of an hour.
     #
     # Raising this does not make an app's lane fire more work than it is set to:
-    # the batch size is `slices` and nothing else, `concurrency` above still
-    # queues a re-dispatch of the same slice, and the scheduler's skip-if-busy
-    # holds the next batch while any slice of this one is in flight. It only
-    # stops the clock killing work that was about to land.
+    # `slices` is a hard concurrency target the scheduler tops up to and never
+    # past, and `concurrency` above still queues a re-dispatch of the same slice.
+    # It only stops the clock killing work that was about to land.
     timeout-minutes: 150
     steps:
       - name: Check secrets
@@ -140,8 +140,8 @@ jobs:
         # were cancelled with `Run steward` never starting — the orphan-process line
         # at the kill names it: `npm exec playwright install --with-deps chromium
         # webkit`. Between them they held the lane from 00:00 to 05:04 CT and shipped
-        # nothing, because skip-if-busy hands the next tick to a run that is already
-        # dying.
+        # nothing — under the batch gate of the day, a stalled run held the whole
+        # lane; it now holds one slot, but a wasted slot is still a wasted slot.
         #
         # Raising `timeout-minutes` is the wrong lever for this: the step is 40-70
         # SECONDS on a warm browser cache, so a step still running at four minutes is
@@ -592,45 +592,43 @@ jobs:
 
       # KEEP THE LOOP MOVING — do not wait for the cron.
       #
-      # There is no "chain next slice" step any more: slices fire together, so a
-      # run never dispatches WORK. But the loop still needs something to start
-      # the NEXT batch, and the `*/10` cron cannot be trusted to do it. Measured
-      # 2026-08-27: scheduled steward-focus ticks arrived 99, 110, 135, 193 and
-      # 214 minutes apart, then stopped for ~6 hours. GitHub queues schedule
-      # events at low priority and drops them under load — a busy Actions
-      # account (this one) gets throttled hardest. The old chain accidentally
-      # hid this, because each run dispatched the next itself and only the FIRST
-      # slice of a batch needed a tick.
+      # A run never dispatches WORK: `slices` is a concurrency target and only
+      # the scheduler decides what to start. But the scheduler has to be TOLD,
+      # because the `*/10` cron cannot be trusted to notice. Measured 2026-08-27:
+      # scheduled steward-focus ticks arrived 99, 110, 135, 193 and 214 minutes
+      # apart, then stopped for ~6 hours. GitHub queues schedule events at low
+      # priority and drops them under load, and this account is a heavy user.
       #
-      # So the last slice out turns the lights back on: when no sibling of this
-      # batch is still running, dispatch steward-focus (Claude-free, seconds,
-      # roster-gated). The next batch then starts within a minute of the last
-      # one finishing instead of whenever GitHub feels like it, and the cron
-      # becomes a backstop rather than the mechanism.
+      # So a finishing run tells it directly — see the step below for why every
+      # run kicks rather than only the last one out.
       #
-      # Gated on job.status == 'success', exactly as the old chain was: an
-      # unconditional re-dispatch is what let a week of failing analytics runs
-      # burn the fleet's shared quota (tech-sweep issue #106). A wholly failed
-      # batch waits for the cron, which is the safe direction. Any single
-      # succeeding slice is enough to keep the lane alive.
-      - name: Kick the scheduler when this batch finishes
+      - name: Free this slot, and tell the scheduler to refill it
         if: always() && job.status == 'success' && github.event.inputs.app != '' && github.event.inputs.app != 'fleet'
         continue-on-error: true   # a rate-limited kick must not fail a shipped run; the cron still backstops
         env:
           GH_TOKEN: ${{ github.token }}
-          APP: ${{ github.event.inputs.app }}
-          SELF: ${{ github.run_id }}
         run: |
-          # Any OTHER slice of this app still going? Exclude this run — it is
-          # still "in_progress" while this step executes. Defaults to 1 (assume a
-          # sibling is alive) if the query fails, so a hiccup can't double-fire a
-          # batch; the cron covers that case.
-          SIBS=$(gh run list -R kevinrhaas/polecat-platform --workflow steward-improve.yml \
-            --limit 60 --json status,displayTitle,databaseId \
-            -q "[.[] | select(.databaseId != ${SELF}) | select(.status==\"in_progress\" or .status==\"queued\") | .displayTitle] | map(select(. == \"Steward improve — ${APP}\" or startswith(\"Steward improve — ${APP} [\"))) | length" 2>/dev/null || echo 1)
-          if [ "${SIBS:-1}" -gt 0 ]; then
-            echo "↷ ${SIBS} sibling slice(s) still running — the last one out kicks the scheduler"
-            exit 0
-          fi
-          echo "→ last slice of the batch; kicking steward-focus so the next batch starts now"
+          # EVERY run kicks, not just the last one out.
+          #
+          # Under the old batch gate this step first checked whether any sibling
+          # was still running and stayed quiet if so, because a kick mid-batch
+          # would have been refused by the scheduler anyway. Slots changed that:
+          # this run finishing frees ITS slot right now, and the lane should be
+          # back to full strength within the minute rather than at the mercy of
+          # the next cron tick (measured 2026-08-27: scheduled ticks arrived 99,
+          # 110, 135, 193 and 214 minutes apart, then stopped for ~6 hours).
+          #
+          # Safe to fire unconditionally because the scheduler is idempotent: it
+          # fills only the slots it finds empty, so a redundant tick dispatches
+          # nothing. Several runs finishing together produce several kicks, and
+          # steward-focus's own concurrency group (1 running + 1 pending) drops
+          # the surplus — also harmless, because whichever tick does run refills
+          # ALL free slots, not one.
+          #
+          # Still gated on job.status == 'success', exactly as before: an
+          # unconditional re-dispatch is what let a week of failing analytics
+          # runs burn the fleet's shared quota (tech-sweep issue #106). A slot
+          # whose run FAILED is refilled by the cron instead — slower, and the
+          # safe direction.
+          echo "→ slot freed; kicking steward-focus to refill it"
           gh workflow run steward-focus.yml -R kevinrhaas/polecat-platform
