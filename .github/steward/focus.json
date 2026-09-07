@@ -19,10 +19,9 @@
       "model": "claude-opus-5"
     },
     "custom": {
-      "enabled": true,
+      "enabled": false,
       "everyHours": 1,
       "model": "claude-opus-5",
-      "slices": 1,
       "max_turns": 400
     },
     "autoselector.polecat.live": {
@@ -61,7 +60,7 @@
       "offset": 3
     },
     "janitor": {
-      "enabled": true,
+      "enabled": false,
       "everyHours": 1
     }
   }
