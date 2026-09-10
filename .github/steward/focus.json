@@ -19,7 +19,8 @@
       "model": "claude-opus-5"
     },
     "custom": {
-      "enabled": true,
+      "enabled": false,
+      "_paused": "2026-09-10, owner's instruction: paused while the open-PR pile on kevinrhaas/custom is cleared. The PR lap could not merge ANYTHING until custom#1058 — git merge had no identity on the runner, so every lap died before it began and reported the PRs pushed anyway. Restore to enabled:true (slices stays 2) once the pile is clear and the lap re-derives the tool-owned research layer. `enabled` rather than `slices:0` because slices is documented 1..10 and 0 would fall back to the default.",
       "everyHours": 1,
       "model": "claude-opus-5",
       "max_turns": 400,
