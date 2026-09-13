@@ -132,15 +132,23 @@ newplan sweep
 cat > "$FAKE_PLAN/last.txt" <<'EOF'
 HTTP/2.0 200 OK
 
-[{"number":1,"draft":false,"labels":[],"head":{"ref":"steward/good"}},
- {"number":2,"draft":true,"labels":[],"head":{"ref":"steward/draft"}},
- {"number":3,"draft":false,"labels":[{"name":"hold"}],"head":{"ref":"steward/parked"}},
- {"number":4,"draft":false,"labels":[],"head":{"ref":"feature/not-ours"}},
- {"number":5,"draft":false,"labels":[],"head":{"ref":"chore/polecat-shell-v1"}}]
+[{"number":1,"draft":false,"labels":[],"head":{"ref":"steward/good"},"base":{"ref":"dev"}},
+ {"number":2,"draft":true,"labels":[],"head":{"ref":"steward/draft"},"base":{"ref":"dev"}},
+ {"number":3,"draft":false,"labels":[{"name":"hold"}],"head":{"ref":"steward/parked"},"base":{"ref":"main"}},
+ {"number":4,"draft":false,"labels":[],"head":{"ref":"feature/not-ours"},"base":{"ref":"main"}},
+ {"number":5,"draft":false,"labels":[],"head":{"ref":"chore/polecat-shell-v1"},"base":{"ref":"main"}}]
 EOF
 got=$(bash "$SUT" pr-sweepable o/r '^(steward/|chore/polecat-shell)' 2>/dev/null | cut -f1 | tr '\n' ',')
 check "pr-sweepable keeps only the sweepable PRs (drops draft, hold, foreign branch)" "$got" "1,5,"
 check "…in a single request, so the per-PR view is retired" "$(calls)" "1"
+
+# T-0809: the base comes back too, because the janitor now merges the base into
+# the branch and gates the MERGE. Assuming `main` would gate the wrong tree on
+# every dev-first repo — jobtracker, analytics and chicago/4d are all dev-first.
+newplan sweep_base
+cp "$TMP/plan.sweep/last.txt" "$FAKE_PLAN/last.txt"
+got=$(bash "$SUT" pr-sweepable o/r '^(steward/|chore/polecat-shell)' 2>/dev/null | tr '\t' ':' | tr '\n' ',')
+check "pr-sweepable returns number, head AND base" "$got" "1:steward/good:dev,5:chore/polecat-shell-v1:main,"
 
 # ── 7b. pr-automerge arms, and falls back to a plain merge when it cannot ──
 # Auto-merge is the only thing here with no REST endpoint, so it is the only

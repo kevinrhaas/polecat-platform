@@ -200,10 +200,15 @@ for p in json.load(sys.stdin):
     api GET "repos/${repo}/pulls/${number}" "$@" ;;
   pr-sweepable)
     # What the janitor asks for, in ONE request: open, not draft, not `hold`,
-    # head matching <regex>. REST's pull list already carries draft, labels and
-    # head.ref, so this also retires the per-PR `gh pr view` the janitor used to
-    # make just to learn the branch name — one call per PR saved, on top of the
-    # bucket change.
+    # head matching <regex>. REST's pull list already carries draft, labels,
+    # head.ref AND base.ref, so this also retires the per-PR `gh pr view` the
+    # janitor used to make just to learn the branch name — one call per PR
+    # saved, on top of the bucket change.
+    #
+    # The BASE is the third column, added for T-0809: the janitor merges the
+    # base into the branch and gates THAT, so it has to know which base. It
+    # cannot assume `main` — jobtracker, analytics and chicago/4d are all on a
+    # dev-first pipeline and their automation PRs target `dev`.
     repo="$1"; pattern="$2"
     api GET "repos/${repo}/pulls?state=open&per_page=100" \
       | python3 -c '
@@ -214,7 +219,7 @@ for p in json.load(sys.stdin):
     if any(l["name"]=="hold" for l in p.get("labels",[])): continue
     ref = p["head"]["ref"]
     if not pat.search(ref): continue
-    print("%d\t%s" % (p["number"], ref))' "$pattern" ;;
+    print("%d\t%s\t%s" % (p["number"], ref, p["base"]["ref"]))' "$pattern" ;;
   pr-find)
     # Open PR number for a head branch, or empty. `head` must be qualified with
     # the owner — GitHub's REST filter takes `owner:branch` and silently matches

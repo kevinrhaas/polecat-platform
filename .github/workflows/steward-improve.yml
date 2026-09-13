@@ -287,7 +287,7 @@ jobs:
           echo "BLENDER_CACHE=$HOME/blender-dl" >> "$GITHUB_ENV"
           # build.py's dependencies. Blender's own bundled Python does not see
           # these, but the generators and validate.py that run beside it do.
-          timeout 4m pip install --quiet jsonschema pyproj \
+          timeout 4m pip install --quiet jsonschema pyproj Pillow \
             || echo "::warning::pip install failed — a bake will report the missing module"
 
       # ---- the chicago/4d resident source sweep reads scans and writes workbooks --

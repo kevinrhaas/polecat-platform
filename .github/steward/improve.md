@@ -147,7 +147,7 @@ HARD RULES:
       - FOUND SOMETHING NEW? `ticket.mjs new "title" --by loop`. An owner report
         becomes a ticket `--by owner` the moment it is made.
   * THE GATE (both, in the foreground, from `chicago/4d/`):
-      pip install --quiet jsonschema pyproj      # the runner has neither
+      pip install --quiet jsonschema pyproj Pillow   # the runner has none of them
         # The custom lane ALSO pre-installs, since 2026-09-03, what the resident
         # source sweep (T-0491..T-0518) reads with: pdftotext + pdftoppm
         # (poppler-utils), tesseract, openpyxl and pypdf. Check with

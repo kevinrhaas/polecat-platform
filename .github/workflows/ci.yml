@@ -26,6 +26,18 @@ jobs:
       - name: The steward's run record parses its fixtures
         run: node .github/steward/run-record.mjs --self-test
 
+      # The janitor is the no-manual-merges guarantee, so its two failure paths
+      # are gated here rather than discovered on the fleet two hours later.
+      # test-janitor-sweep.sh EXTRACTS the sweep body from steward-janitor.yml,
+      # so editing the workflow is what this check is watching for.
+      - name: The steward's GitHub calls survive their failure paths
+        run: bash .github/steward/test-gh-rest.sh
+
+      - name: The janitor gates the merge, and names a conflict out loud
+        run: |
+          bash .github/steward/janitor-mergeability.sh --self-test
+          bash .github/steward/test-janitor-sweep.sh
+
       - name: Manifest freshness
         run: |
           node scripts/gen-manifest.mjs
