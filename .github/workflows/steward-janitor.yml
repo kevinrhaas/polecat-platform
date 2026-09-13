@@ -187,7 +187,14 @@ jobs:
                 # which Node still resolves from chicago/4d/tools/.
                 GATE="chicago/4d check.sh + smoke_renderer.mjs"
                 (
-                  python3 -m pip install --quiet --disable-pip-version-check jsonschema pyproj openpyxl pypdf \
+                  # Pillow belongs on this list: `read_kinzie_addition_water_lots.py
+                  # --check-sheet` profiles five million-pixel windows of the
+                  # sheet through PIL, and without it check.sh fails that step —
+                  # so the janitor's verdict on EVERY custom PR was a false red
+                  # (measured 2026-09-13 on a pristine dev: 381 of 382 steps
+                  # green, the 382nd a ModuleNotFoundError). Gating the merge
+                  # correctly is no use if the gate is red on a missing import.
+                  python3 -m pip install --quiet --disable-pip-version-check jsonschema pyproj openpyxl pypdf Pillow \
                     && cd chicago/4d && ./tools/check.sh && node tools/smoke_renderer.mjs
                 ) > /tmp/gate.log 2>&1
               else
