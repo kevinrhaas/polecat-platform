@@ -61,7 +61,7 @@
     },
     "janitor": {
       "enabled": true,
-      "everyHours": 2
+      "everyHours": 1
     }
   }
 }

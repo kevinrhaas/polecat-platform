@@ -57,9 +57,22 @@ cat > "$BIN/gh" <<'FAKE'
 #!/usr/bin/env bash
 case "$2" in
   list)
-    # `gh run list` — BUSY answers from FAKE_BUSY, defaulting to none in flight.
+    # `gh run list --json status,createdAt` — the step reads BOTH gates off this
+    # one call, so the fake answers with the JSON shape gh really returns.
+    # FAKE_BUSY runs are in_progress; FAKE_LAST_AGE_MIN dates the newest run.
     if [ "${FAKE_GH_BROKEN:-}" = "1" ]; then echo "gh: could not query" >&2; exit 1; fi
-    printf '%s\n' "${FAKE_BUSY:-0}" ;;
+    python3 - <<PYEOF
+import json, os, datetime as dt
+busy = int(os.environ.get("FAKE_BUSY", "0") or 0)
+age  = os.environ.get("FAKE_LAST_AGE_MIN", "")
+rows = [{"status": "in_progress", "createdAt": dt.datetime.now(dt.timezone.utc).isoformat()}
+        for _ in range(busy)]
+if age != "":
+    when = dt.datetime.now(dt.timezone.utc) - dt.timedelta(minutes=int(age))
+    rows.append({"status": "completed", "createdAt": when.isoformat().replace("+00:00", "Z")})
+print(json.dumps(rows))
+PYEOF
+    ;;
   run)
     # `gh workflow run <wf> …` — record what would have been dispatched.
     printf '%s\n' "$3" >> "$FAKE_DISPATCHES" ;;
@@ -76,6 +89,10 @@ const cmd = process.argv[2];
 if (cmd === 'due-jobs') console.log('janitor');
 else if (cmd === 'due') process.exit(0);
 else if (cmd === 'slices-of') console.log('1');
+// The cadence the age gate reads. FAKE_EVERY_HOURS lets a case choose it; 0
+// means "the roster does not hold this job", which must disable the gate rather
+// than block the job forever.
+else if (cmd === 'every-hours-of-job') console.log(process.env.FAKE_EVERY_HOURS || '1');
 else console.log('');
 FAKE
 cp "$TMP/focus.sh" "$TMP/ws/focus.sh"
@@ -111,6 +128,42 @@ export FAKE_BUSY=0 FAKE_GH_BROKEN=1
 run_focus
 check "a broken gh query fails OPEN and still dispatches" "$(dispatched)" "1"
 unset FAKE_GH_BROKEN
+
+# ── 5. THE CADENCE ITSELF (T-1125) — everyHours is hours, not ticks ─────────
+# `isDueAt` is hour-granular, so everyHours:1 is true at EVERY tick. For an app
+# lane that is the point; for a job it means "as often as the cron fires", which
+# on 2026-09-14 was about every eight minutes. The age gate is what turns the
+# Manager dial into a cadence.
+export FAKE_BUSY=0 FAKE_EVERY_HOURS=1
+export FAKE_LAST_AGE_MIN=20
+run_focus
+check "a job that ran 20m ago is NOT redispatched on an hourly cadence" "$(dispatched)" "0"
+if grep -q 'cadence is every 1h' "$TMP/log"; then
+  ok "…and the tick says how long ago and what the cadence is"
+else bad "…the skip is unexplained: $(cat "$TMP/log")"; fi
+
+export FAKE_LAST_AGE_MIN=75
+run_focus
+check "…and IS redispatched once the hour has passed"                  "$(dispatched)" "1"
+
+# A coarser cadence holds for longer off the same measurement.
+export FAKE_EVERY_HOURS=2 FAKE_LAST_AGE_MIN=75
+run_focus
+check "75m is not due on a 2h cadence"                                 "$(dispatched)" "0"
+export FAKE_LAST_AGE_MIN=130
+run_focus
+check "…but 130m is"                                                   "$(dispatched)" "1"
+
+# ── 6. the age gate fails OPEN, exactly as the busy check does ──────────────
+# A job silenced forever by an unanswerable query is worse than one dispatched
+# twice, and a job the roster does not hold must not be gated at all.
+export FAKE_EVERY_HOURS=1; unset FAKE_LAST_AGE_MIN
+run_focus
+check "no run history at all still dispatches"                         "$(dispatched)" "1"
+export FAKE_EVERY_HOURS=0 FAKE_LAST_AGE_MIN=5
+run_focus
+check "a job the roster does not hold is not age-gated"                "$(dispatched)" "1"
+unset FAKE_EVERY_HOURS FAKE_LAST_AGE_MIN
 
 printf '\n'
 if [ "$fail" -eq 0 ]; then printf '\033[32mFOCUS JOB DISPATCH SELF-TEST PASS\033[0m — %s checks\n' "$pass"; exit 0; fi
