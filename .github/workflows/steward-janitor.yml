@@ -139,9 +139,31 @@ jobs:
               # merge that then failed on conflict printed one line and was
               # swept again next hour in silence. `prepare` puts base+head
               # merged on disk, or names the conflicting paths.
+              # `set +e` AROUND THIS, AND IT IS NOT DECORATION. The step runs
+              # under the workflow default `bash -e`, where an assignment from a
+              # command substitution carries that command's status — so a failing
+              # `prepare` aborted the WHOLE SWEEP here and `PRC=$?`, with every
+              # branch below that reads it, was unreachable. `prepare` returns
+              # non-zero BY DESIGN: 1 means the branch conflicts with its base,
+              # which is the case this loop exists to handle.
+              #
+              # Measured 2026-09-14. Every janitor run failed, each dying on the
+              # FIRST pull request it looked at: `=== polecat-platform#145
+              # (steward/claim-notice -> main) ===` and then `exit code 1`, 1.5
+              # seconds later, with only `mktemp` in between. #145 has been open
+              # since 2026-08-28 and long since stopped merging, so the sweep died
+              # there every time. FLEET order made that maximally expensive —
+              # `custom` is LAST and `polecat-platform` second to last — so the
+              # repo with the backlog was never reached at all.
+              #
+              # `PRS=$(… || true)` above is guarded and the gate below has its own
+              # `set +e`; this was the one call whose whole contract is a non-zero
+              # exit, and it was the one left bare.
+              set +e
               PREP=$(bash "$MERGEABILITY" prepare \
                        "https://github.com/kevinrhaas/$REPO" "$DIR" "$BASE" "$BR" 2>&1)
               PRC=$?
+              set -e
               if [ $PRC -ne 0 ]; then
                 cd /; rm -rf "$DIR"
                 SKIPPED=$((SKIPPED+1))
