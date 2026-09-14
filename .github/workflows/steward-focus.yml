@@ -161,6 +161,43 @@ jobs:
               janitor)       WF="steward-janitor.yml"; ARGS="" ;;
               *) echo "::warning::unknown roster job '$JOB' — skipping"; continue ;;
             esac
+            # SKIP IF BUSY — the app lanes above have had this since slices were
+            # introduced, and the jobs never did. It is not decoration here: a
+            # job has no slices, so "one at a time" is the whole of its contract.
+            #
+            # `isDueAt` is HOUR-GRANULAR — it asks `hour % everyHours == offset`
+            # and remembers nothing about whether the job already ran this hour.
+            # The focus cron is `*/10`, so a due hour is due at ALL SIX of its
+            # ticks, and `everyHours: 1` means due at every tick of every hour.
+            # For a lane that is deliberate (the roster documents it as
+            # "continuous") and harmless, because the busy check above fills only
+            # free slots. For a job it was six dispatches an hour into a workflow
+            # whose concurrency group holds one.
+            #
+            # Measured 2026-09-14, once the janitor started taking real time
+            # instead of dying in 1.5 seconds:
+            #
+            #   1044  created 02:41:44   cancelled 02:52:29   ← when 1045 arrived
+            #   1045  created 02:52:27   cancelled 03:03:21   ← when 1046 arrived
+            #   1046  created 03:03:18   cancelled 03:17:38   ← when 1047 arrived
+            #
+            # Each run was superseded as the PENDING member of the group by the
+            # next dispatch, so the sweep never finished; and `custom` is LAST in
+            # the janitor's FLEET, so the repo with the backlog was never reached
+            # — the same outcome as the `set -e` abort this replaced, by a
+            # different road.
+            #
+            # Fails OPEN, like the lane query above: if `gh` cannot answer, BUSY
+            # is 0 and the dispatch goes ahead. The concurrency group is still
+            # the backstop, and a job that is skipped for an hour is worse than
+            # one that queues.
+            BUSY=$(gh run list -R kevinrhaas/polecat-platform --workflow "$WF" --limit 20 \
+                     --json status --jq '[.[] | select(.status == "in_progress" or .status == "queued")] | length' \
+                     2>/dev/null || echo 0)
+            if [ "${BUSY:-0}" -gt 0 ]; then
+              echo "↷ ${JOB} — ${BUSY} run(s) already in flight, not dispatching"
+              continue
+            fi
             echo "→ dispatching job ${JOB} (${WF})"
             gh workflow run "$WF" -R kevinrhaas/polecat-platform $ARGS
             COUNT=$((COUNT+1))
