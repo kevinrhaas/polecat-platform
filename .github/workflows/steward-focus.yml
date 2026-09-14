@@ -191,12 +191,54 @@ jobs:
             # is 0 and the dispatch goes ahead. The concurrency group is still
             # the backstop, and a job that is skipped for an hour is worse than
             # one that queues.
-            BUSY=$(gh run list -R kevinrhaas/polecat-platform --workflow "$WF" --limit 20 \
-                     --json status --jq '[.[] | select(.status == "in_progress" or .status == "queued")] | length' \
-                     2>/dev/null || echo 0)
+            # ONE `gh run list` ANSWERS BOTH GATES — busy, and how long since the
+            # last run began. `createdAt` comes back on the same call the busy
+            # check already made, so this costs nothing extra.
+            RUNS=$(gh run list -R kevinrhaas/polecat-platform --workflow "$WF" --limit 20 \
+                     --json status,createdAt 2>/dev/null || echo '[]')
+            BUSY=$(printf '%s' "$RUNS" \
+                     | jq '[.[] | select(.status == "in_progress" or .status == "queued")] | length' 2>/dev/null || echo 0)
             if [ "${BUSY:-0}" -gt 0 ]; then
               echo "↷ ${JOB} — ${BUSY} run(s) already in flight, not dispatching"
               continue
+            fi
+
+            # THE AGE GATE — what makes `everyHours` a CADENCE for a job (T-1125).
+            #
+            # `isDueAt` is hour-granular: `everyHours: 1` is true at EVERY tick,
+            # which for an app lane is the point (it is topped up to `slices`)
+            # and for a job is not a cadence at all. Measured 2026-09-14 with the
+            # janitor at 1: dispatched 12:52, 12:59, 13:03, 13:28, 13:36, 13:43,
+            # 13:51 — about every eight minutes. It had looked hourly only while
+            # each run took the full 55-minute timeout and the busy check above
+            # swallowed the rest; once `custom` left FLEET the runs finished in
+            # 1-4 minutes and nothing absorbed them.
+            #
+            # Gating on the last RUN rather than on the clock is deliberate. The
+            # obvious version — "fire on the first tick of the hour" — would skip
+            # hours outright: the cron is nominally */10, but GitHub throttles
+            # scheduled events hard and that same afternoon it fired at minutes
+            # 2, 50, 43, 34, 23, 2, 51, 33, 3 and 51. An hour whose early tick is
+            # throttled away would never fire. Run age does not care when the
+            # tick lands, only that an hour has passed.
+            #
+            # FAILS OPEN, like the busy check above it: no runs, an unparseable
+            # answer, or a job the roster does not hold leaves AGE_OK at 1 and the
+            # dispatch goes ahead. A job skipped forever by a broken query is a
+            # worse failure than one dispatched twice.
+            EVERY=$(node .github/steward/schedule.mjs every-hours-of-job "$JOB" 2>/dev/null || echo 0)
+            if [ "${EVERY:-0}" -gt 0 ]; then
+              LAST=$(printf '%s' "$RUNS" | jq -r 'map(.createdAt) | sort | last // empty' 2>/dev/null || echo "")
+              if [ -n "$LAST" ]; then
+                AGE_MIN=$(( ( $(date -u +%s) - $(date -u -d "$LAST" +%s 2>/dev/null || echo 0) ) / 60 ))
+                NEED_MIN=$(( EVERY * 60 ))
+                # A clock skew or an unparseable date gives a negative age; treat
+                # that as "cannot tell" and dispatch rather than stall.
+                if [ "$AGE_MIN" -ge 0 ] && [ "$AGE_MIN" -lt "$NEED_MIN" ]; then
+                  echo "↷ ${JOB} — last run began ${AGE_MIN}m ago, cadence is every ${EVERY}h (${NEED_MIN}m); not due"
+                  continue
+                fi
+              fi
             fi
             echo "→ dispatching job ${JOB} (${WF})"
             gh workflow run "$WF" -R kevinrhaas/polecat-platform $ARGS

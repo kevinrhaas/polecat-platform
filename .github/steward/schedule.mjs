@@ -11,6 +11,35 @@
 //               steward-focus tops the lane up to `slices` on each eligible
 //               tick, so 1 is what continuous operation wants; a coarser
 //               cadence only refills on the hours the lane is due.
+//
+//               IT MEANS SOMETHING DIFFERENT FOR A `jobs` ENTRY, and the
+//               difference is the whole of T-1125. An APP lane is topped up to
+//               `slices` and wants to be eligible constantly; a JOB has no
+//               slices, so "eligible every tick" is not a cadence at all — it
+//               is as often as the ticks come. Measured 2026-09-14, janitor at
+//               everyHours 1: dispatched at 12:52, 12:59, 13:03, 13:28, 13:36,
+//               13:43, 13:51 — roughly every eight minutes, because that is how
+//               often steward-focus's cron fires.
+//
+//               It had LOOKED hourly only by accident: while the janitor was
+//               stuck on kevinrhaas/custom each run took the full 55-minute
+//               timeout, and the skip-if-busy guard swallowed the other ticks.
+//               Once `custom` left FLEET the runs finished in 1-4 minutes and
+//               there was nothing left to absorb them.
+//
+//               So for jobs, steward-focus adds an AGE gate on top of this one:
+//               a job is dispatched only if its last run began more than
+//               everyHours ago. `everyHours: 1` then means what the Manager
+//               dial says it means — once an hour.
+//
+//               THAT GATE IS NOT DONE WITH CLOCK ARITHMETIC, and the reason is
+//               measured too. "Fire on the first tick of the hour" is the
+//               obvious implementation and it would silently skip hours: the
+//               cron is nominally */10 but GitHub throttles scheduled events
+//               hard, and on the same afternoon it fired at minutes 2, 50, 43,
+//               34, 23, 2, 51, 33, 3 and 51. An hour whose early tick is
+//               throttled away would never fire at all. The age of the last RUN
+//               is immune to that; wall-clock tick position is not.
 //   offset      int — which hours the cadence lands on: runs when
 //               hourUTC % everyHours === offset. This is how "align the next
 //               run to 21:00" works (offset = 21 % everyHours).
@@ -105,6 +134,13 @@ if(cmd){
     // carries 400; steward-focus passes it through as --max-turns.
     const lane = (f.apps || {})[process.argv[3]];
     console.log((lane && lane.max_turns) || '');
+  }else if(cmd === 'every-hours-of-job'){
+    // The job's cadence in hours, for steward-focus's age gate. Printed as a
+    // bare number so the shell can compare it without parsing anything, and 0
+    // for a job the roster does not hold — which the caller reads as "no age
+    // gate", the pre-T-1125 behaviour, rather than as "never run me".
+    const lane = (f.jobs || {})[process.argv[3]];
+    console.log(lane ? Math.max(1, lane.everyHours || 1) : 0);
   }else if(cmd === 'due-jobs'){
     for(const [job, lane] of Object.entries(f.jobs || {})) if(isDueAt(lane, now)) console.log(job);
   }else if(cmd === 'next'){
