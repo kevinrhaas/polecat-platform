@@ -38,6 +38,14 @@ jobs:
           bash .github/steward/janitor-mergeability.sh --self-test
           bash .github/steward/test-janitor-sweep.sh
 
+      # The other half of the janitor working: being dispatched once rather than
+      # once per tick. `isDueAt` is hour-granular and the focus cron is `*/10`,
+      # so without the busy check a due job is dispatched six times an hour into
+      # a workflow whose concurrency group holds one — and on 2026-09-14 three
+      # consecutive janitor runs were each cancelled as the next arrived.
+      - name: A roster job is dispatched once, not once per tick
+        run: bash .github/steward/test-focus-jobs.sh
+
       - name: Manifest freshness
         run: |
           node scripts/gen-manifest.mjs
