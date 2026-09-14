@@ -29,7 +29,28 @@ wf, out = sys.argv[1], sys.argv[2]
 steps = yaml.safe_load(open(wf))['jobs']['sweep']['steps']
 body = [s for s in steps if s.get('name','').startswith('Sweep and merge')]
 assert len(body) == 1, f'expected one sweep step, found {len(body)}'
-open(out,'w').write("#!/usr/bin/env bash\nset -uo pipefail\n" + body[0]['run'])
+# `-e` IS THE POINT, AND ITS ABSENCE HID A DEAD JANITOR FOR DAYS. GitHub runs a
+# `run:` block as `bash -e {0}` — the runner says so in every log — and this
+# harness ran it as `set -uo pipefail`, WITHOUT `-e`. So the suite exercised the
+# step under shell options production never uses, and the whole class of
+# `set -e` aborts was invisible to it.
+#
+# That is not hypothetical. On 2026-09-14 every janitor run failed, each dying on
+# the first PR it looked at, because `PREP=$(… prepare …)` takes the exit status
+# of its command substitution and `prepare` returns 1 BY DESIGN when a branch
+# conflicts. Under `-e` the script died there; `PRC=$?` and every branch that
+# reads it were unreachable. This suite was green throughout, and case 1 below —
+# "a conflicting PR is not merged" — is exactly the case that was broken.
+#
+# So the extraction now matches the runner. A test that runs the code under
+# different options than production is testing a different program.
+#
+# The A/B, run against a copy of the workflow with the guard removed again:
+# this header fails 6 of 20 (case 1 entire, plus case 5's journal line); the old
+# `set -uo pipefail` header passes all 20 on that same broken workflow. The one
+# character is the whole difference between a suite that catches this and a
+# suite that watched it happen.
+open(out,'w').write("#!/usr/bin/env bash\nset -euo pipefail\n" + body[0]['run'])
 PY
 [ -s "$TMP/sweep.sh" ] || { echo "could not extract the sweep step"; exit 1; }
 bash -n "$TMP/sweep.sh" || { echo "the extracted sweep body does not parse"; exit 1; }
