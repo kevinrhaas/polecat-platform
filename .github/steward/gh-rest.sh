@@ -220,6 +220,22 @@ for p in json.load(sys.stdin):
     ref = p["head"]["ref"]
     if not pat.search(ref): continue
     print("%d\t%s\t%s" % (p["number"], ref, p["base"]["ref"]))' "$pattern" ;;
+  pr-state)
+    # `open` or `closed`, one field, one REST request. The janitor asks this
+    # AFTER a gate that can run for minutes, so it does not merge a pull request
+    # that was closed while that gate ran — see steward-janitor.yml for the run
+    # that made it necessary.
+    #
+    # IT PRINTS NOTHING WHEN THE REQUEST FAILS, and exits 0 while doing it. That
+    # is the contract the caller is written against: an empty answer means
+    # "could not tell", and the caller carries on and merges, which is what it
+    # did before this existed. Returning non-zero would put a REST hiccup in the
+    # path of every merge in the fleet, and this is a guard against one bad
+    # merge, not a safety interlock worth paying that for.
+    repo="$1"; number="$2"
+    body=$(api GET "repos/${repo}/pulls/${number}") || {
+      log "pr-state: could not read ${repo}#${number} — answering empty"; exit 0; }
+    printf '%s' "$body" | jqf state ;;
   pr-find)
     # Open PR number for a head branch, or empty. `head` must be qualified with
     # the owner — GitHub's REST filter takes `owner:branch` and silently matches

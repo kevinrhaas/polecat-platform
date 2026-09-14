@@ -186,6 +186,30 @@ EOF
 got=$(bash "$SUT" pr-automerge o/r 8 squash "title" 2>/dev/null)
 check "pr-automerge that cannot arm falls back to merging, and still merges" "$got" "deadbee"
 
+# ── 7c. pr-state answers, and answers EMPTY rather than failing ────────────
+# The janitor merges on an empty answer, so the failure path is the one that
+# matters: if a 500 came back as a non-zero exit, a transient GitHub blip would
+# stop every merge in the fleet instead of the one closed PR this guards against.
+newplan state_closed
+cat > "$FAKE_PLAN/1.txt" <<'EOF'
+HTTP/2.0 200 OK
+
+{"number":1303,"state":"closed"}
+EOF
+got=$(bash "$SUT" pr-state o/r 1303 2>/dev/null)
+check "pr-state reports a closed PR as closed" "$got" "closed"
+check "…in one request" "$(calls)" "1"
+
+newplan state_unreadable
+cat > "$FAKE_PLAN/last.txt" <<'EOF'
+HTTP/2.0 500 Internal Server Error
+
+{"message":"Server Error"}
+EOF
+got=$(bash "$SUT" pr-state o/r 1303 2>/dev/null); rc=$?
+check "pr-state that cannot read the PR prints nothing" "$got" ""
+check "…and still exits 0, so the caller falls through to merging" "$rc" "0"
+
 # ── 8. No steward subcommand shells out to a GraphQL-backed `gh pr|issue` ───
 if grep -nE '^[^#]*gh (pr|issue|search) ' "$SUT" >/dev/null; then
   bad "gh-rest.sh itself still calls a GraphQL-backed gh subcommand"

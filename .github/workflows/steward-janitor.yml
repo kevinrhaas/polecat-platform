@@ -36,11 +36,62 @@ concurrency:
   group: steward-janitor
   cancel-in-progress: false
 
+# `custom` IS DELIBERATELY NOT IN THIS LIST, and it is the one repo that has to
+# say why, because it is also the repo with the largest pile of automation PRs.
+#
+# Its gate could not fit in this job and never once finished. Run 1047
+# (2026-09-14) was the first sweep able to get past two earlier bugs (#165, #166)
+# and reach it: job 03:18:32Z → 04:13:43Z, killed at `timeout-minutes: 55`,
+# TWO pull requests looked at, 53m37s of that spent inside a single gate that
+# never returned. The orphans left behind were `node` and `chrome-headless-shell`.
+#
+# THE COST IS THE RENDERER SMOKE, NOT `check.sh`, and that distinction is the
+# whole reason this is a removal rather than a bigger timeout. `check.sh` is
+# cheap on a runner — the repo's own `gate` workflow runs it, with a full-depth
+# checkout and a pip install, in 6–9 minutes (measured across nine consecutive
+# runs on 2026-09-14: #1282's two gates at 6m12s and 7m42s, dev's at 8m53s).
+# What does not fit is `tools/smoke_renderer.mjs`, which the gate below ran
+# after it: both viewports unfiltered measured ~26 min in 2026-08-14 and the
+# suite has grown since, which is why that project gives it its own workflow at
+# `timeout-minutes: 90`. Twelve sweepable PRs times a 90-minute ceiling is not a
+# 55-minute job, and raising the timeout would buy one PR per run per hour and a
+# half of a held runner.
+#
+# AND THE GUARANTEE IT WAS HERE FOR IS ALREADY HELD, TWICE OVER. T-0809 is that
+# the janitor gates the MERGE and not the bare branch. For this repo:
+#
+#   • `chicago-4d-check.yml` triggers on `pull_request` with a plain
+#     `actions/checkout@v4`, so it checks out `refs/pull/N/merge` — the merge
+#     result, not the branch. #1305 carries the proof: two `gate` runs on the
+#     same head sha, the `push` one green and the `pull_request` one red.
+#   • `.github/steward/pr-lap.sh` merges `dev` into each branch, regenerates,
+#     and runs `./tools/check.sh` on THAT TREE, pushing only if it is green.
+#
+# So the sweep was paying an hour a run to re-answer a question two cheaper
+# things already answer. `custom` merges through the lap plus GitHub auto-merge;
+# five PRs landed that way on 2026-09-14 with no janitor involvement.
+#
+# PUTTING IT BACK is a real option if the lap ever stops covering it — bake PRs
+# onto a non-`dev` base are outside the lap's reach, since it only walks PRs
+# into `dev`. It takes TWO changes, not one, and the arithmetic below is why
+# neither alone is enough. The gate branch further down still carries the
+# `check.sh` + `smoke_renderer.mjs` recipe, so re-adding the name here would
+# quietly restore run 1047 exactly.
+#
+#   1. A BOUNDED GATE. That project already built the knobs for this:
+#      `SMOKE_VIEWPORT=mobile` runs one of the two viewports, `SMOKE_STAGE=1-4`
+#      a contiguous run of its thirteen parts. Cheapest honest gate is
+#      `check.sh` alone, at 6–9 minutes.
+#   2. A PER-REPO TIME BUDGET, because (1) is still not sufficient. Twelve
+#      sweepable PRs at even 7 minutes each is 84 minutes, and that is before
+#      the other nine repos. Without a budget the sweep spends the whole run on
+#      whichever repo it reaches first, which is the shape of the original bug
+#      rather than a fix for it.
 env:
   FLEET: >-
     games.polecat.live jobtracker.polecat.live manager.polecat.live
     analytics.polecat.live autoselector.polecat.live relay.polecat.live
-    polecat-app polecat polecat-platform custom
+    polecat-app polecat polecat-platform
 
 jobs:
   sweep:
@@ -227,6 +278,36 @@ jobs:
               set -e
               cd /; rm -rf "$DIR"
               if [ $RC -eq 0 ]; then
+                # IS IT STILL OPEN? The gate above runs for minutes, and a
+                # person can close the PR while it does. The sweep reads the PR
+                # list once, at the top of the repo, and never asked again.
+                #
+                # Run 1047 is the case. It spent 03:20:02Z → 04:13:43Z gating
+                # custom#1303, a bake onto a base that had died under it; a
+                # human closed that PR at 03:44, twenty-nine minutes before the
+                # job was killed. Nothing was merged only because the gate ran
+                # out of time first. Had it gone green, this loop would have
+                # merged a pull request somebody had deliberately closed, and
+                # `branch-delete`d the branch behind it.
+                #
+                # FAIL-OPEN, and that is the design rather than an oversight.
+                # This guards against one wrong merge; it is not an interlock.
+                # `pr-state` prints nothing when its request fails, and an empty
+                # answer falls through to the merge — exactly what this loop did
+                # before the guard existed. A guard that turned a 502 into a
+                # silently skipped merge would cost more than the case it fixes.
+                #
+                # `|| true` ON THE ASSIGNMENT, which is not decoration here
+                # either: this step runs under `bash -e`, where `X=$(cmd)` takes
+                # `cmd`'s status. That is the same one-character omission that
+                # aborted the whole sweep on the first conflicting PR (#165).
+                STATE=$(bash "$GHREST" pr-state "kevinrhaas/$REPO" "$N" || true)
+                if [ "$STATE" = "closed" ]; then
+                  echo "CLOSED while its gate ran — green ($GATE), but not merging"
+                  SKIPPED=$((SKIPPED+1))
+                  echo "- not merged kevinrhaas/$REPO#$N — closed while its gate ran" >> /tmp/steward-out.txt
+                  continue
+                fi
                 echo "GREEN ($GATE) → merging"
                 if bash "$GHREST" pr-merge "kevinrhaas/$REPO" "$N" squash \
                    && bash "$GHREST" branch-delete "kevinrhaas/$REPO" "$BR"; then
