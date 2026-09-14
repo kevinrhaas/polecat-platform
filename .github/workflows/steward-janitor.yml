@@ -278,6 +278,36 @@ jobs:
               set -e
               cd /; rm -rf "$DIR"
               if [ $RC -eq 0 ]; then
+                # IS IT STILL OPEN? The gate above runs for minutes, and a
+                # person can close the PR while it does. The sweep reads the PR
+                # list once, at the top of the repo, and never asked again.
+                #
+                # Run 1047 is the case. It spent 03:20:02Z → 04:13:43Z gating
+                # custom#1303, a bake onto a base that had died under it; a
+                # human closed that PR at 03:44, twenty-nine minutes before the
+                # job was killed. Nothing was merged only because the gate ran
+                # out of time first. Had it gone green, this loop would have
+                # merged a pull request somebody had deliberately closed, and
+                # `branch-delete`d the branch behind it.
+                #
+                # FAIL-OPEN, and that is the design rather than an oversight.
+                # This guards against one wrong merge; it is not an interlock.
+                # `pr-state` prints nothing when its request fails, and an empty
+                # answer falls through to the merge — exactly what this loop did
+                # before the guard existed. A guard that turned a 502 into a
+                # silently skipped merge would cost more than the case it fixes.
+                #
+                # `|| true` ON THE ASSIGNMENT, which is not decoration here
+                # either: this step runs under `bash -e`, where `X=$(cmd)` takes
+                # `cmd`'s status. That is the same one-character omission that
+                # aborted the whole sweep on the first conflicting PR (#165).
+                STATE=$(bash "$GHREST" pr-state "kevinrhaas/$REPO" "$N" || true)
+                if [ "$STATE" = "closed" ]; then
+                  echo "CLOSED while its gate ran — green ($GATE), but not merging"
+                  SKIPPED=$((SKIPPED+1))
+                  echo "- not merged kevinrhaas/$REPO#$N — closed while its gate ran" >> /tmp/steward-out.txt
+                  continue
+                fi
                 echo "GREEN ($GATE) → merging"
                 if bash "$GHREST" pr-merge "kevinrhaas/$REPO" "$N" squash \
                    && bash "$GHREST" branch-delete "kevinrhaas/$REPO" "$BR"; then

@@ -71,6 +71,10 @@ cat > "$WS/.github/steward/gh-rest.sh" <<'FAKE'
 printf '%s\n' "$*" >> "$FAKE_CALLS"
 case "$1" in
   pr-sweepable) printf '%s\n' "$FAKE_PRS" ;;
+  # Unset is the FAIL-OPEN answer — "GitHub could not be asked" — and it is what
+  # every other case below runs under, so they double as the proof that adding
+  # this guard changed none of them.
+  pr-state)      printf '%s\n' "${FAKE_PR_STATE:-}" ;;
   comments-list) cat "$FAKE_COMMENTS" ;;
   pr-comment)    cat "$4" >> "$FAKE_COMMENTS" ;;
   pr-merge)      [ "${FAKE_MERGE_FAILS:-}" = "$3" ] && exit 1; echo deadbeef ;;
@@ -158,6 +162,33 @@ check "a base that moved between gate and merge is reported" \
 if grep -q 'merge FAILED after a green gate' /tmp/steward-out.txt; then
   ok "…and the journal no longer shrugs with \"(conflict?)\""
 else bad "…the journal line is missing: $(cat /tmp/steward-out.txt)"; fi
+
+# ── 7. a PR closed while its own gate ran is not merged ─────────────────────
+# Run 1047 gated custom#1303 for 53 minutes; a human closed it 29 minutes in.
+# The gate is GREEN here — that is the point. The only thing standing between a
+# closed pull request and a squash-merge is this check.
+: > "$FAKE_CALLS"; : > "$FAKE_COMMENTS"
+export FAKE_PRS=$'16\tsteward/clean-green\tdev'
+export FAKE_PR_STATE=closed
+run_sweep
+check "a PR closed during its gate is not merged"            "$(called pr-merge)" "0"
+check "…and its branch is not deleted out from under anyone" "$(called branch-delete)" "0"
+check "…and it is not commented on — closing it was deliberate" "$(called pr-comment)" "0"
+if grep -q 'closed while its gate ran' /tmp/steward-out.txt; then
+  ok "…and the journal says why it was not merged"
+else bad "…the journal line is missing: $(cat /tmp/steward-out.txt)"; fi
+
+# ── 8. …but an answer of "open", or none at all, still merges ───────────────
+# The guard fails OPEN on purpose: an unreadable state must not become a
+# silently skipped merge across the whole fleet.
+: > "$FAKE_CALLS"; : > "$FAKE_COMMENTS"
+export FAKE_PR_STATE=open
+run_sweep
+check "an open PR is still merged"                           "$(called pr-merge)" "1"
+: > "$FAKE_CALLS"; : > "$FAKE_COMMENTS"
+unset FAKE_PR_STATE
+run_sweep
+check "…and so is one whose state could not be read"         "$(called pr-merge)" "1"
 
 printf '\n'
 if [ "$fail" -eq 0 ]; then printf '\033[32mJANITOR SWEEP SELF-TEST PASS\033[0m — %s checks\n' "$pass"; exit 0; fi
