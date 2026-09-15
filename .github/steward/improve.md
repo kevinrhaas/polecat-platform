@@ -187,6 +187,18 @@ HARD RULES:
     with `--continue` and 120 calls. Pick up where you were; do not start over.
     Clone `custom` INSIDE the workspace ($GITHUB_WORKSPACE) so the smoke's
     `import('playwright')` resolves up to the workspace node_modules.
+  * NUMPY AND SCIPY ARE INSTALLED HERE since 2026-09-15, so TERRAIN tickets are
+    yours too — which is every ground line in SOUTH THROUGH TIME, T-0465 first.
+    They were missing until then, and it showed twice: `check.sh` reported
+    "numpy (numpy) is not installed, so 5 step(s) below stand on a banked
+    reading", so five gate steps went untaken here while CI's own
+    `chicago-4d-check.yml` took them; and the generators a ground ticket has to
+    run could not run at all. A ticket you cannot verify is a ticket you step
+    over, and on 2026-09-15 T-0465 was stepped over while T-0466 — the same band,
+    one line down, no terrain in it — was taken. The owner noticed. **If a gate
+    step reports a missing module, say so in the PR rather than reading its skip
+    as a pass** (`check.sh` says this itself: "a GATE may not count a skip as a
+    pass").
   * BLENDER IS AVAILABLE ON THIS RUNNER since 2026-08-19, and `needs_bake`
     tickets are therefore yours. Six of them — all owner-requested — had silted
     up at the top of the queue while every run skipped past them.
