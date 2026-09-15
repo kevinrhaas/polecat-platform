@@ -287,7 +287,23 @@ jobs:
           echo "BLENDER_CACHE=$HOME/blender-dl" >> "$GITHUB_ENV"
           # build.py's dependencies. Blender's own bundled Python does not see
           # these, but the generators and validate.py that run beside it do.
-          timeout 4m pip install --quiet jsonschema pyproj Pillow \
+          #
+          # NUMPY AND SCIPY ARE PART OF THAT SET, and their absence was costing
+          # the runner work rather than merely degrading it. Two things measured
+          # on 2026-09-15:
+          #   * custom's own gate says so out loud. chicago/4d/tools/check.sh ran
+          #     here and reported "numpy (numpy) is not installed, so 5 step(s)
+          #     below stand on a banked reading" and "a GATE may not count a skip
+          #     as a pass — pip install numpy". Five steps of the gate this
+          #     workflow runs before every PR were not being taken.
+          #   * chicago-4d-check.yml — CI's gate for the same repo — installs
+          #     `jsonschema pyproj openpyxl pypdf numpy scipy Pillow`. The steward
+          #     was running the same script against a thinner environment, so a
+          #     run could ship green here and meet those five steps in CI.
+          # The terrain generators need them too, which is every ground ticket in
+          # SOUTH THROUGH TIME (T-0465 and down). A ticket that cannot be verified
+          # is a ticket a run steps over, and T-0465 was stepped over.
+          timeout 6m pip install --quiet jsonschema pyproj Pillow numpy scipy \
             || echo "::warning::pip install failed — a bake will report the missing module"
 
       # ---- the chicago/4d resident source sweep reads scans and writes workbooks --
