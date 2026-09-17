@@ -27,7 +27,9 @@ name: Steward focus scheduler
 #
 # Different apps run in PARALLEL too (separate repos — no contention). Turn apps on/off or change cadence by editing
 # focus.json — from the GitHub UI, any Claude session, or (roadmap) the
-# Manager console. No workflow edits, takes effect next tick.
+# Manager console. No workflow edits, and it takes effect IMMEDIATELY — a push
+# to focus.json ticks this workflow (see the `push` trigger below), so a lane
+# you enable starts now rather than whenever the cron next fires.
 #
 # Dispatches with the built-in GITHUB_TOKEN (`actions: write` below):
 # workflow_dispatch and repository_dispatch are GitHub's documented exceptions
@@ -45,6 +47,32 @@ on:
     # scheduled ticks badly under load — measured 99 to 214 minutes apart, then a
     # ~6 hour gap — which is exactly why the loop does not depend on them.
     - cron: '*/10 * * * *'
+
+  # THE COLD START. Every other path back to full strength runs through a
+  # FINISHING run: steward-improve's last step kicks this workflow, so a freed
+  # slot refills within the minute. A lane that has NO runs has nothing to do
+  # the kicking — so turning one on, or reviving one whose runs all died, falls
+  # back on the cron alone, which is the one thing measured not to be reliable.
+  #
+  # Observed 2026-09-17: the roster enabled `custom` at ×3 at 04:07:51Z; the
+  # last tick had been 04:02:48Z and the next had not arrived 16 minutes later.
+  # Nothing was broken — the lane was simply waiting on a throttled clock, which
+  # from the outside is indistinguishable from the loop being stuck.
+  #
+  # Editing the roster IS the intent to start, so let the edit start it. Covers
+  # every path in — Manager's Fleet Ops panel, the GitHub UI, any Claude session
+  # — because it keys on the file, not on who wrote it. Manager commits with a
+  # PAT, and PAT-authored pushes do trigger workflows (GITHUB_TOKEN ones do not,
+  # which is why the kick in steward-improve is a dispatch and not a push).
+  #
+  # Cheap and safe to fire often: this job is Claude-free and takes seconds, the
+  # `steward-focus` concurrency group collapses a burst of edits, and the tick is
+  # idempotent — it fills only empty slots, so a tick with nothing to do does
+  # nothing.
+  push:
+    branches: [main]
+    paths: ['.github/steward/focus.json']
+
   workflow_dispatch: {}         # manual tick for testing
 
 permissions:
