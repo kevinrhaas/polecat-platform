@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # gh-rest.sh — the steward's GitHub operations, on REST, with backoff.
 #
-#   gh-rest.sh pr-create   <repo> <head> <base> <title> <body-file>   → prints the PR number
+#   gh-rest.sh pr-create   <repo> <head> <base> <title> <body-file> [draft]
+#                                                                     → prints the PR number
 #   gh-rest.sh pr-merge    <repo> <number> <method> [commit-title]    → prints the merge sha
 #   gh-rest.sh pr-automerge <repo> <number> [method] [commit-title]   → 'armed', or merges now
 #   gh-rest.sh pr-comment  <repo> <number> <body-file>
 #   gh-rest.sh pr-list     <repo> [state] [per-page]                  → number<TAB>head<TAB>base<TAB>title
+#   gh-rest.sh pr-find     <repo> <branch> [state]                    → PR number for a head branch
 #   gh-rest.sh pr-get      <repo> <number> [--jq FILTER]
 #   gh-rest.sh issue-create  <repo> <title> <body-file> [label]       → prints the issue number
 #   gh-rest.sh issue-comment <repo> <number> <body-file>
@@ -124,12 +126,18 @@ jqf() { python3 -c 'import json,sys;d=json.load(sys.stdin);print(d.get(sys.argv[
 cmd="${1:-}"; shift || true
 case "$cmd" in
   pr-create)
-    repo="$1"; head="$2"; base="$3"; title="$4"; bodyfile="$5"
+    # A sixth argument of `draft` opens it as a DRAFT. salvage.sh is the caller that
+    # needs it: the pull request it opens is a receipt for work a cancelled run left
+    # behind, unreviewed and ungated, and a draft says so in the one place a reviewer
+    # looks. Anything else (absent, empty, "false") opens a normal pull request.
+    repo="$1"; head="$2"; base="$3"; title="$4"; bodyfile="$5"; draft="${6:-}"
     payload=$(python3 -c '
 import json,sys
-json.dump({"title":sys.argv[1],"head":sys.argv[2],"base":sys.argv[3],
-           "body":open(sys.argv[4],encoding="utf-8").read()}, sys.stdout)' \
-      "$title" "$head" "$base" "$bodyfile")
+d={"title":sys.argv[1],"head":sys.argv[2],"base":sys.argv[3],
+   "body":open(sys.argv[4],encoding="utf-8").read()}
+if len(sys.argv)>5 and sys.argv[5]=="draft": d["draft"]=True
+json.dump(d, sys.stdout)' \
+      "$title" "$head" "$base" "$bodyfile" "$draft")
     printf '%s' "$payload" > /tmp/gh-rest-pr.json
     api POST "repos/${repo}/pulls" --input /tmp/gh-rest-pr.json | jqf number ;;
   pr-merge)
@@ -242,8 +250,12 @@ for p in json.load(sys.stdin):
     # nothing when given a bare branch name, which would read as "no PR exists"
     # and is exactly the wrong answer for a caller checking whether its push
     # got one.
-    repo="$1"; branch="$2"; owner="${repo%%/*}"
-    api GET "repos/${repo}/pulls?state=open&head=${owner}:${branch}&per_page=1" \
+    #
+    # A third argument picks the state, and `all` is the question salvage.sh asks:
+    # "did this branch EVER have a pull request?". Open is the default because every
+    # caller before it wanted the one it could still merge.
+    repo="$1"; branch="$2"; state="${3:-open}"; owner="${repo%%/*}"
+    api GET "repos/${repo}/pulls?state=${state}&head=${owner}:${branch}&per_page=1" \
       | python3 -c '
 import json,sys
 d=json.load(sys.stdin)
