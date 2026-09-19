@@ -61,7 +61,7 @@
       "offset": 3
     },
     "janitor": {
-      "enabled": false,
+      "enabled": true,
       "everyHours": 1
     }
   }
