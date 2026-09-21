@@ -129,6 +129,16 @@ HARD RULES:
         --delete <branch>`; this runner's token may, a session's proxy may not)
         and claim `--force`. A branch with real work past the claim is a
         salvage, not a corpse: leave it and take the next ticket.
+      - AND READ IT BEFORE YOU REBUILD IT. `ticket.mjs inflight` now prints a
+        RECOVERABLE band: an old branch, on an unfinished ticket, with no claim
+        lock, that no merged PR accounts for — work a cancelled run left on the
+        remote where nothing could see it. custom's T-1155 was written in full,
+        pushed, cancelled before its PR, and rebuilt from scratch by the next run
+        three hours later; the second run's 71 files already existed. If your
+        ticket is in that band, open the compare URL it prints and take the
+        branch's reasoning into your own before you write a line. Salvage now
+        opens a DRAFT PR for such a branch, so you may find one already: FINISH
+        THAT PR rather than opening a second one for the same work.
       - FINISH THE PR YOU OPEN, INSIDE THIS RUN. Merge it on a green gate, or
         `block` it, or label it `hold` and say why. A ticket's state only reaches
         `dev` when its PR merges, so an abandoned open PR reads as `open` to the

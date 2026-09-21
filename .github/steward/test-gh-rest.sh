@@ -210,6 +210,52 @@ got=$(bash "$SUT" pr-state o/r 1303 2>/dev/null); rc=$?
 check "pr-state that cannot read the PR prints nothing" "$got" ""
 check "…and still exits 0, so the caller falls through to merging" "$rc" "0"
 
+# ── 9. `draft` is sent only when asked for (salvage.sh's PR) ────────────────
+# A draft says "not reviewed, not gated" in the one place a reviewer looks, and
+# salvage opens every one of its pull requests that way. The flag is positional
+# and easy to send by accident, so both directions are asserted.
+newplan draft
+cat > "$FAKE_PLAN/last.txt" <<'EOF'
+HTTP/2.0 201 Created
+
+{"number":77}
+EOF
+bash "$SUT" pr-create o/r head base "t" "$TMP/b.md" draft >/dev/null 2>&1
+if python3 -c 'import json,sys;sys.exit(0 if json.load(open("/tmp/gh-rest-pr.json")).get("draft") is True else 1)'; then
+  ok "pr-create sends draft:true when the sixth argument says draft"
+else bad "pr-create did not send draft:true"; fi
+
+newplan nodraft
+cat > "$FAKE_PLAN/last.txt" <<'EOF'
+HTTP/2.0 201 Created
+
+{"number":78}
+EOF
+bash "$SUT" pr-create o/r head base "t" "$TMP/b.md" >/dev/null 2>&1
+if python3 -c 'import json,sys;sys.exit(0 if "draft" not in json.load(open("/tmp/gh-rest-pr.json")) else 1)'; then
+  ok "…and omits the key entirely when it is not asked for"
+else bad "pr-create sent a draft key when none was asked for"; fi
+
+# ── 10. `pr-find` can ask about EVERY state, which is salvage's question ─────
+# "Is there an open PR I can merge?" and "did this branch ever have one?" are
+# different questions, and salvage asks the second: a closed or merged PR means
+# the branch was never invisible, which is the only fault it is guarding.
+newplan findall
+cat > "$FAKE_PLAN/last.txt" <<'EOF'
+HTTP/2.0 200 OK
+
+[]
+EOF
+bash "$SUT" pr-find o/r some-branch all >/dev/null 2>&1
+if grep -q 'state=all&head=o:some-branch' "$FAKE_CALLS"; then
+  ok "pr-find passes the state through, and still qualifies head with the owner"
+else bad "pr-find did not ask for state=all — $(cat "$FAKE_CALLS")"; fi
+
+bash "$SUT" pr-find o/r some-branch >/dev/null 2>&1
+if grep -q 'state=open&head=o:some-branch' "$FAKE_CALLS"; then
+  ok "…and still defaults to open for every caller that came before it"
+else bad "pr-find's default state is no longer open"; fi
+
 # ── 8. No steward subcommand shells out to a GraphQL-backed `gh pr|issue` ───
 if grep -nE '^[^#]*gh (pr|issue|search) ' "$SUT" >/dev/null; then
   bad "gh-rest.sh itself still calls a GraphQL-backed gh subcommand"

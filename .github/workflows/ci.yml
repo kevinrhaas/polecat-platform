@@ -33,6 +33,14 @@ jobs:
       - name: The steward's GitHub calls survive their failure paths
         run: bash .github/steward/test-gh-rest.sh
 
+      # Salvage is the fleet's last line against a cancelled run taking its work
+      # with it, and pushing the branch turned out to be only half of that: custom's
+      # T-1155 was written in full, pushed, and cancelled before its PR — so the work
+      # sat on the remote where no instrument could see it, and another run rebuilt
+      # it. The draft PR it now opens is gated here, against a real git remote.
+      - name: Salvage leaves nothing on the remote that nobody can see
+        run: bash .github/steward/test-salvage.sh
+
       - name: The janitor gates the merge, and names a conflict out loud
         run: |
           bash .github/steward/janitor-mergeability.sh --self-test
