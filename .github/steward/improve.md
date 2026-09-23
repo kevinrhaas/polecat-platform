@@ -4,7 +4,9 @@ for all kevinrhaas repos (clone/push any of them with plain https URLs) and the
 `gh` CLI is authenticated for PRs. Fleet repos: polecat-platform,
 games.polecat.live, jobtracker.polecat.live, manager.polecat.live,
 analytics.polecat.live, autoselector.polecat.live, relay.polecat.live,
-polecat-app, polecat, custom (SCOPED — see the CUSTOM / CHICAGO 4D rule).
+polecat-app, polecat, chicago (4D Chicago — see the CHICAGO 4D rule; its
+tickets live in chicago-tickets). custom is NOT stewarded any more — see the
+CHICAGO 4D rule.
 
 MISSION: exactly ONE high-quality unit of work this run — shipped as its OWN PR,
 verified green in the foreground, and merged (or left on `hold` if it can't go
@@ -33,8 +35,9 @@ the picking logic. Otherwise pick, in priority order:
 3. The app with the stalest latest release (fetch each app's live
    /js/changelog.js, compare newest ts) → build the top item of ITS OWN playbook
    (games: CLAUDE.md + BUILD_LOOP.md + REBUILD_QUEUE.md; analytics: STATUS.md
-   NEXT ★ items + tests/run.js green; custom: chicago/4d/tickets/QUEUE.md —
-   the ROADMAP is NO LONGER the backlog there; others: ROADMAP.md). Fixing a top finding
+   NEXT ★ items + tests/run.js green; chicago: QUEUE.md in
+   kevinrhaas/chicago-tickets (cloned at chicago/4d/tickets/) — the ROADMAP is
+   NO LONGER the backlog there; others: ROADMAP.md). Fixing a top finding
    from an open "UX sweep" / "Tech sweep" issue is a first-class unit.
 
 PARALLEL SLICES (from the workflow input, printed below as `SLICE: k of N`):
@@ -82,73 +85,76 @@ HARD RULES:
   Kevin's dispatch — do NOT PR into main, do NOT dispatch promote-to-prod.
 - NON-PIPELINE REPOS: branch `steward/<short-topic>` from origin/main.
   NEVER push to main directly (merge via your green PR).
-- CUSTOM / CHICAGO 4D — a SCOPED lane, not a whole-repo lane. kevinrhaas/custom
-  is a monorepo of unrelated personal projects (CAD, 3D-print models, the Joliet
-  game, a landing site). Your lane is EXACTLY ONE subtree: `chicago/4d/` — a
-  walkable, historically-sourced 3D reconstruction of 1835 Chicago — plus its
-  published mirror `site/chicago/4d/`. Touch NOTHING else in that repo, ever.
-  Read `chicago/4d/AGENTS.md` (§ THE QUEUE) and `tickets/README.md` first;
-  STATUS.md is deliberately unflattering and is the honest state of play.
-  PIPELINE (since 2026-08-14): this app is on a TWO-TIER dev -> main pipeline —
-  read `chicago/4d/docs/PIPELINE.md`. Branch from origin/DEV, PR into DEV, merge
-  when the dev gate is green. Merging to dev is STAGE, not ship: it publishes only
-  the preview at /custom/chicago/4d/dev/walk/?year=1835. PRODUCTION MOVES ONLY WHEN
-  THE OWNER DISPATCHES `chicago-4d-promote-to-prod.yml` — never promote, never push
-  to main, and never merge a 4D PR into main. (If `dev` does not exist yet the
-  pipeline is not activated; say so in the PR and target main as before.)
-  * START WITH `chicago/4d/tickets/QUEUE.md` — THE TICKET QUEUE IS THE BACKLOG
-    since 2026-08-17, on the owner's direct request, and `docs/ROADMAP.md` is now
-    only the reasoning ARCHIVE (its NEXT UP table is frozen under a tombstone; do
-    not pick from it, do not add rows to it). Read `chicago/4d/tickets/README.md`
-    and `AGENTS.md` § THE QUEUE — one page, and it is the contract. In short:
-      - TAKE THE TOPMOST ticket in QUEUE.md you can actually run — and since
-        2026-08-19 that includes `needs_bake: true`, because this runner now
-        bakes (see BLENDER below). Do not skip the top of the queue any more.
-        `node tools/ticket.mjs list --workable` prints the same order.
-        WITH `SLICE: k of N` AND N > 1, take the **k-th** ticket in that
-        `--workable` list instead of the 1st (see PARALLEL SLICES above): the
-        other N-1 slots are working the other rows, and the ordering is stable
-        for all of you because a `claimed` ticket keeps its place in
-        `--workable`, so the k-th row is the one your slot owns. If a sibling
-        already holds it (`inflight` / a refused `claim`), drop to the topmost
-        workable ticket nobody is on.
-      - CHECK NOBODY ELSE HAS IT: `node tools/ticket.mjs inflight` names the
-        remote branches already carrying a ticket number. `claim` refuses a
-        ticket with a rival branch unless you pass `--force`, so look at that
-        branch's PR before you force past it. Two runs rebuilt T-0062 the same
-        morning for want of this check. Under parallel slices this is the
-        backstop for the race the k-th-ticket rule already avoids: a sibling
-        dispatched seconds ahead of you may have claimed by the time you look —
-        if so, take the next workable ticket BELOW yours and claim that.
-      - A RIVAL BRANCH CAN BE A CORPSE. A branch on your ticket that is older
-        than a run, has no PR, and whose only commits past `origin/dev` touch
-        `tickets/` alone (`git log --stat origin/dev..origin/<branch>`) is what a
-        run leaves when it dies right after claiming — #1459 left
-        `steward/t-0531-census-1840-sheets-210-215-219` that way on 2026-09-03
-        and it locked T-0531 for every run after. Delete it (`git push origin
-        --delete <branch>`; this runner's token may, a session's proxy may not)
-        and claim `--force`. A branch with real work past the claim is a
-        salvage, not a corpse: leave it and take the next ticket.
+- CHICAGO 4D — its own repo since 2026-09-23. The 4D reconstruction of 1835
+  Chicago moved OUT of kevinrhaas/custom into **kevinrhaas/chicago** (served at
+  https://chicago.polecat.live/4d/, dev preview /4d/dev/, year doors /4d/1835/),
+  and its tickets moved into **kevinrhaas/chicago-tickets**. The `custom` lane has
+  nothing scoped left in it: a run started on `custom` says so and finishes
+  without changing anything. Inside kevinrhaas/chicago the project still lives
+  at `chicago/4d/` (the paths every tool and doc use did not change); its
+  published mirror is `site/4d/` (generated, untracked). Read
+  `chicago/4d/AGENTS.md` and the tickets repo's `README.md` first; STATUS.md is
+  deliberately unflattering and is the honest state of play.
+  PIPELINE: a TWO-TIER dev -> main pipeline — read `chicago/4d/docs/PIPELINE.md`.
+  Branch from origin/DEV, PR into DEV, merge when the dev gate is green. Merging
+  to dev is STAGE, not ship: it publishes only the preview at
+  chicago.polecat.live/4d/dev/. PRODUCTION MOVES ONLY WHEN THE OWNER DISPATCHES
+  `chicago-4d-promote-to-prod.yml` — never promote, never push to main, and never
+  merge a 4D PR into main.
+  * THE TICKETS ARE A SEPARATE REPO, AND THAT IS WHAT KEEPS THEM OUT OF YOUR PR.
+    `bash chicago/4d/tools/tickets.sh` clones kevinrhaas/chicago-tickets into
+    `chicago/4d/tickets/` (gitignored in the code repo) or pulls it if present;
+    `check.sh` and `publish.sh` run it themselves. Every `ticket.mjs` command
+    that changes a ticket COMMITS AND PUSHES IT TO THE TICKETS REPO'S main
+    DIRECTLY — no branch, no PR, no merge lap — pulling and retrying if main
+    moved. Your code PR never touches a ticket file or QUEUE.md, so it can no
+    longer conflict on them. Tickets sit in folders of 250 by number
+    (`T-1500-1749/T-1519-….md`); QUEUE.md is at the tickets repo's root.
+    THE QUEUE IS THE BACKLOG, and `docs/ROADMAP.md` is only the reasoning
+    ARCHIVE (its NEXT UP table is frozen; do not pick from it or add to it).
+      - TAKE THE TOPMOST ticket in QUEUE.md you can actually run — that includes
+        `needs_bake: true` (this runner bakes, see BLENDER below) — and SKIP any
+        ticket carrying `decision: pending`: it is waiting on the owner, whose
+        question sits in its `## Decision needed` section and on Manager's
+        board. `node tools/ticket.mjs list --workable` prints the order and
+        leaves those out. WITH `SLICE: k of N` AND N > 1, take the **k-th**
+        ticket in that `--workable` list (see PARALLEL SLICES above).
+      - CLAIM FIRST, before any work: `node tools/ticket.mjs claim T-NNNN`. The
+        claim is a commit pushed to the tickets repo's main, so it is visible
+        to every other run THE MOMENT it lands — no waiting on a PR — and two
+        runs racing for one ticket cannot both win: the second push conflicts
+        and `claim` says the ticket is taken. Take the next one. A claim older
+        than three hours is a dead run and `claim` steals it.
+      - `node tools/ticket.mjs inflight` still names the code-repo branches
+        carrying a ticket number: look before forcing past a claim.
       - FINISH THE PR YOU OPEN, INSIDE THIS RUN. Merge it on a green gate, or
-        `block` it, or label it `hold` and say why. A ticket's state only reaches
-        `dev` when its PR merges, so an abandoned open PR reads as `open` to the
-        next run, which then does the work again.
-      - THE OWNER ORDERS QUEUE.md. You append (new work, at the BOTTOM) and
-        remove (on close). NEVER reorder it — his ranking is the point.
-      - CLAIM in your first commit: `node tools/ticket.mjs claim T-NNNN`. That is
-        the collision lock two runs must not race.
-      - CLOSE in the merging PR: `node tools/ticket.mjs done T-NNNN --pr N`, or
-        `block --owner --on "the question"` if it is genuinely his call.
+        `block` it, or label it `hold` and say why.
+      - CLOSE with `node tools/ticket.mjs done T-NNNN --pr N` once the PR is
+        open. That sets the ticket to `review` with its PR; the tickets repo's
+        settle workflow flips it to `done` (and takes its QUEUE line) when the PR
+        MERGES, or back to `open` if the PR is closed unmerged. So the ticket can
+        never read done for work that did not land.
+      - THE OWNER ORDERS QUEUE.md. You append (new work, beside the ticket it
+        serves: `new "title" --after T-NNNN`) and the tools remove on close.
+        NEVER reorder it — his ranking is the point.
+      - A QUESTION ONLY THE OWNER CAN ANSWER is not a reason to stop silently:
+        `node tools/ticket.mjs ask T-NNNN --question "…" --option a="…"
+        --option b="…" --rec a --why "…"`. The ticket STAYS IN THE QUEUE where it
+        was, marked `decision: pending`, with the question and options written
+        into it and onto Manager's board; runs skip it until he answers. Four
+        things only are his (AGENTS.md): rights/licensing, the depiction of
+        people, spending money, and what the project IS. A missing number is not.
       - SIZE BEFORE YOU CLAIM. Effort is measured in RUNS (XS part of one, S one,
         M one tight or one plus a bake, L more than one). `claim` REFUSES an L.
         If you discover mid-run that your ticket needs more than one
         demonstration, `ticket.mjs split T-NNNN "piece" "piece"` — do NOT ship a
         self-invented "(1/2)" and leave the ticket claimed.
-      - FOUND SOMETHING NEW? `ticket.mjs new "title" --by loop`. An owner report
-        becomes a ticket `--by owner` the moment it is made.
+      - FOUND SOMETHING NEW? Add it to the ticket that owns the question first;
+        otherwise `ticket.mjs new "title" --after T-NNNN --by loop`. An owner
+        report becomes a ticket `--by owner` the moment it is made.
   * THE GATE (both, in the foreground, from `chicago/4d/`):
       pip install --quiet jsonschema pyproj Pillow   # the runner has none of them
-        # The custom lane ALSO pre-installs, since 2026-09-03, what the resident
+        # The chicago lane ALSO pre-installs, since 2026-09-03, what the resident
         # source sweep (T-0491..T-0518) reads with: pdftotext + pdftoppm
         # (poppler-utils), tesseract, openpyxl and pypdf. Check with
         # `command -v pdftotext tesseract` before falling back to page reads;
@@ -178,14 +184,14 @@ HARD RULES:
     MERGE → close the ticket. Merge BEFORE any optional bookkeeping (filing
     smoke readings, README polish, a second look at a footing). #1466 spent
     its 200th call on the merge itself, with the gate green and the PR open.
-  * WHEN `--for-diff` NAMES PARTS 1-13 because `site/chicago/4d/walk/index.html`
+  * WHEN `--for-diff` NAMES PARTS 1-13 because `site/4d/walk/index.html`
     or the mirror as a whole changed, that is the publish stamp every PR
     rewrites: run desktop part 1 as the scaffold check and nothing more. Never
     run more than four legs in one run — the smoke is a check on YOUR diff,
     not the whole gate re-proved (#1464 ran seven legs and lost the run).
   * A TRANSIENT API 5xx does not end the unit: the workflow resumes you once
     with `--continue` and 120 calls. Pick up where you were; do not start over.
-    Clone `custom` INSIDE the workspace ($GITHUB_WORKSPACE) so the smoke's
+    Clone `chicago` INSIDE the workspace ($GITHUB_WORKSPACE) so the smoke's
     `import('playwright')` resolves up to the workspace node_modules.
   * NUMPY AND SCIPY ARE INSTALLED HERE since 2026-09-15, so TERRAIN tickets are
     yours too — which is every ground line in SOUTH THROUGH TIME, T-0465 first.
@@ -222,16 +228,17 @@ HARD RULES:
     **Budget it before you claim.** A full bake plus the smoke will not fit
     beside a large unit of work in one run. If the ticket needs a town-wide bake
     AND a measured before/after, that is more than one run — `split` it.
-  * PUBLISH IN THE SAME COMMIT. `site/chicago/4d/` is a generated mirror and
-    deploy.yml only fires on `site/**` — a renderer or data change that skips
-    `./tools/publish.sh` is invisible on the live site while looking merged.
+  * PUBLISH BEFORE YOU GATE. `site/4d/` is a generated, untracked mirror that
+    deploy.yml rebuilds with `./tools/publish.sh`; `check.sh` publishes it and
+    gates what it produced, so run the gate on the tree you mean to ship.
   * CHANGELOG: authored at `chicago/4d/renderers/web/js/changelog.js` (fleet
     format, new entry on TOP with `v: null, ts: '', date: ''`) — inside the app, because the
     walkthrough's What's-new tab imports it and a page cannot import from its
     own publish mirror. Stamp with `node chicago/4d/tools/stamp-changelog.mjs`
     and verify with `node chicago/4d/tools/check-changelog.mjs` before merging.
-    `publish.sh` mirrors it to `site/chicago/4d/js/changelog.js`, the URL
-    Manager and the launcher parse — that path is a contract and must not move.
+    `publish.sh` mirrors it to `site/4d/js/changelog.js` —
+    chicago.polecat.live/4d/js/changelog.js, the URL Manager and the launcher
+    parse — that path is a contract and must not move.
   * PROVENANCE IS THE PRODUCT — the one invariant that outranks everything else
     here. Every attribute carries a confidence (`documented` / `inferred` /
     `conjectural`); `documented` REQUIRES a source record, `inferred` REQUIRES a
@@ -257,7 +264,7 @@ HARD RULES:
   docs/SHELL-API.md § the fleet changelog contract. STAMP
   timestamps with the repo's own tool (games tools/stamp-changelog.mjs;
   jobtracker/relay/autoselector .github/stamp-changelog.mjs; analytics
-  tools/changelog-normalize.js; custom chicago/4d/tools/stamp-changelog.mjs;
+  tools/changelog-normalize.js; chicago chicago/4d/tools/stamp-changelog.mjs;
   polecat-app its generator; polecat-platform
   itself scripts/stamp-changelog.mjs) — also stamp older empty-ts entries.
   Must stay parseable by manager's ingest.
@@ -335,7 +342,7 @@ HARD RULES:
   If a suite is too slow to finish inside one run, cut the SCOPE of the unit
   (smaller slice), NEVER the synchrony. Your one unit runs its full foreground
   verification before it merges. "Full" means the parts that cover your diff:
-  where an app prices its suite by part (custom's `smoke_budget.mjs --for-diff`),
+  where an app prices its suite by part (chicago's `smoke_budget.mjs --for-diff`),
   run the parts it names, each inside the 600 s cap, and do NOT start a command
   you already know cannot finish in 600 s — a backgrounded suite is the same
   failure as a backgrounded suite you meant to background.

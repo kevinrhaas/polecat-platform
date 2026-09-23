@@ -259,11 +259,11 @@ jobs:
       # pure cost.
       - name: Read chicago/4d's Blender pin
         id: blender
-        if: github.event.inputs.app == 'custom'
+        if: github.event.inputs.app == 'chicago'
         run: |
           # From dev, where the pipeline keeps it — the pin is the cache key, so a
           # bump misses naturally and re-fetches instead of running a stale binary.
-          if pin=$(gh api "repos/kevinrhaas/custom/contents/chicago/4d/generators/blender.pin?ref=dev" \
+          if pin=$(gh api "repos/kevinrhaas/chicago/contents/chicago/4d/generators/blender.pin?ref=dev" \
                      --jq .content 2>/dev/null | base64 -d); then
             version=$(printf '%s\n' "$pin" | sed -n 's/^BLENDER_VERSION=//p' | head -1)
             [ -n "$version" ] && echo "version=$version" >> "$GITHUB_OUTPUT"
@@ -272,14 +272,14 @@ jobs:
           echo "${version:-unresolved}"
 
       - name: Cache Blender (chicago/4d geometry bakes)
-        if: github.event.inputs.app == 'custom' && steps.blender.outputs.version != ''
+        if: github.event.inputs.app == 'chicago' && steps.blender.outputs.version != ''
         uses: actions/cache@v4
         with:
           path: ~/blender-dl
           key: blender-${{ steps.blender.outputs.version }}
 
       - name: Point bake.sh at the cache, and install what it bakes with
-        if: github.event.inputs.app == 'custom'
+        if: github.event.inputs.app == 'chicago'
         timeout-minutes: 10
         run: |
           set -euo pipefail
@@ -322,7 +322,7 @@ jobs:
       # run — the tickets say "CSV always, XLSX when openpyxl imports", and the
       # warning below is what a run reads to know which fallback it is on.
       - name: Install the research tools the chicago/4d resident sweep reads with
-        if: github.event.inputs.app == 'custom'
+        if: github.event.inputs.app == 'chicago'
         timeout-minutes: 8
         run: |
           set -uo pipefail
