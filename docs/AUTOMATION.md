@@ -97,7 +97,7 @@ when a run dies mid-sentence and it cannot claim a merge that did not happen. `o
 one of `merged | open | hold | blocked | died | no-pr`. The same table goes to the run's
 Actions summary, the JSON to the `steward-record.json` artifact, and Manager reads the
 marker to label each run in its Steward log. The heading now carries the slice
-(`Steward improve — custom [2/5]`), because five parallel runs used to post five entries
+(`Steward improve — chicago [2/5]`), because five parallel runs used to post five entries
 under one title. `--self-test` covers the parser against fixtures in
 `.github/steward/fixtures/`.
 
@@ -155,7 +155,7 @@ the design ports back one-to-one if the infrastructure matures (the prompts in
    agent STAMPS timestamps itself with the repo's own tool (nothing stamps after
    merge) — games `tools/stamp-changelog.mjs`, jobtracker/relay/autoselector
    `.github/stamp-changelog.mjs`, analytics `tools/changelog-normalize.js`,
-   custom `chicago/4d/tools/stamp-changelog.mjs`, this
+   chicago `chicago/4d/tools/stamp-changelog.mjs`, this
    repo's own `site/js/changelog.js` via `scripts/stamp-changelog.mjs`.
 3. Smoke before merge: 390×780 + desktop, zero pageerrors. Mobile is a gate.
 4. Never break `/js/changelog.js` parseability — Manager and the launcher read it live.
@@ -175,11 +175,9 @@ the design ports back one-to-one if the infrastructure matures (the prompts in
 Hourly × 8 repos was paused for token cost. The steward improve loop is now driven
 entirely by `.github/steward/focus.json` (2026-07-15): each app opts in with
 `enabled` + an `everyHours` cadence, and `steward-focus.yml` dispatches only the
-apps due that hour. Currently enabled: **analytics.polecat.live** and **custom**,
-both continuous (`everyHours: 1`, pinned to opus). Everything else is paused —
-autoselector.polecat.live ran a ~6-hour burst on 2026-07-15 and
-jobtracker.polecat.live was paused the same day at Kevin's request; flip either
-app's `enabled` back to resume. Scheduled spend is
+apps due that hour. As of 2026-09-23 every lane is paused (analytics.polecat.live
+and the 4D lane — now `chicago` — were the continuous ones, `everyHours: 1`, pinned
+to opus); flip a lane's `enabled` back to resume it. Scheduled spend is
 therefore whatever the roster enables + the two daily sweeps; start/stop/retarget any
 app by editing focus.json (no commit to a workflow; a push to that file ticks
 steward-focus immediately, so it takes effect at once). Manual
@@ -190,15 +188,24 @@ it modulo the cadence, so `offset % 1` is always 0. Two hourly lanes therefore f
 on the same tick, which is fine: different repos dispatch in parallel under separate
 concurrency groups, and only same-app overlap is skipped.
 
-## The `custom` lane is SCOPED (2026-08-10)
+## The `chicago` lane (2026-09-23; the `custom` lane before it)
 
-`kevinrhaas/custom` is not an app — it is Kevin's monorepo of unrelated personal
-projects (CAD, 3D-print models, the Joliet game, a small landing site). Its steward
-lane exists for exactly one subtree: **`chicago/4d/`**, a walkable,
-historically-sourced 3D reconstruction of 1835 Chicago, plus its published mirror
-`site/chicago/4d/`. `.github/steward/improve.md` carries the full rule — the gate
-(`chicago/4d/tools/check.sh` + `tools/smoke_renderer.mjs`, after
-`pip install jsonschema pyproj`), the no-Blender-on-this-runner constraint (bakes
-belong to the repo's own nightly `chicago-4d-bake.yml`), the
-publish-in-the-same-commit requirement, and the provenance invariant that outranks
-everything else there. A run that edits anything else in that repo is out of scope.
+The 4D reconstruction of 1835 Chicago used to be one subtree of `kevinrhaas/custom`
+(a monorepo of unrelated personal projects), and the `custom` lane was SCOPED to that
+subtree (2026-08-10). On 2026-09-23 it moved into its own repositories:
+
+- **`kevinrhaas/chicago`** — the code, data and research. The project still lives at
+  `chicago/4d/` inside it (so no tool's paths changed); its generated, untracked Pages
+  mirror is `site/4d/`, served at https://chicago.polecat.live/4d/.
+- **`kevinrhaas/chicago-tickets`** — the ticket files (folders of 250 by number) and
+  `QUEUE.md`. Every `ticket.mjs` change is a direct commit to its `main` — no PR — so
+  ticket and queue edits never ride a code PR and never conflict with one. A claim is
+  visible to every run the moment it is pushed; `done` sets `review`, and the tickets
+  repo's settle workflow marks it `done` when the code PR actually merges.
+
+The lane is now `chicago` in focus.json (same shape: hourly, 3 slices, 400 turns,
+opus). The `custom` lane is left in the roster, disabled, with nothing in scope: a
+run started on it reports that and stops. `.github/steward/improve.md` § CHICAGO 4D
+carries the full rule — the gate (`chicago/4d/tools/check.sh` + the smoke by parts),
+Blender on this runner, the tickets flow, owner decisions (`ticket.mjs ask`), and the
+provenance invariant that outranks everything else there.

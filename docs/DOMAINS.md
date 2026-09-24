@@ -13,6 +13,7 @@
 | autoselector.polecat.live | autoselector.polecat.live | AutoSelector |
 | relay.polecat.live | relay.polecat.live | Relay (P2P tables + chat) |
 | games.polecat.live | games.polecat.live | Arcade |
+| chicago.polecat.live | chicago | 4D Chicago — landing at `/`, the 4D app at `/4d/` (year doors `/4d/1835/`, dev preview `/4d/dev/`). Moved out of `custom` 2026-09-23; `custom.polecat.live/chicago/**` redirects here |
 | modelserver.polecat.live | solution-engineering (`model-server/`) | Self-hosted model server — OCI VM + Caddy, NOT Pages (A record → VM IP; cert via Caddy/SERVER_DOMAIN) |
 
 Subdomain naming stays `<app>.polecat.live` — memorable, standard (Google-style
