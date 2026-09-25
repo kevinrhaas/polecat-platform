@@ -136,11 +136,25 @@ HTTP/2.0 200 OK
  {"number":2,"draft":true,"labels":[],"head":{"ref":"steward/draft"},"base":{"ref":"dev"}},
  {"number":3,"draft":false,"labels":[{"name":"hold"}],"head":{"ref":"steward/parked"},"base":{"ref":"main"}},
  {"number":4,"draft":false,"labels":[],"head":{"ref":"feature/not-ours"},"base":{"ref":"main"}},
- {"number":5,"draft":false,"labels":[],"head":{"ref":"chore/polecat-shell-v1"},"base":{"ref":"main"}}]
+ {"number":5,"draft":false,"labels":[],"head":{"ref":"chore/polecat-shell-v1"},"base":{"ref":"main"}},
+ {"number":6,"draft":false,"labels":[{"name":"resume"}],"head":{"ref":"steward/handed-on"},"base":{"ref":"dev"}}]
 EOF
 got=$(bash "$SUT" pr-sweepable o/r '^(steward/|chore/polecat-shell)' 2>/dev/null | cut -f1 | tr '\n' ',')
-check "pr-sweepable keeps only the sweepable PRs (drops draft, hold, foreign branch)" "$got" "1,5,"
+check "pr-sweepable keeps only the sweepable PRs (drops draft, hold, foreign branch)" "$got" "1,5,6,"
 check "…in a single request, so the per-PR view is retired" "$(calls)" "1"
+
+# T-1577 — THE TWO LABELS, AND THE JANITOR READS THEM DIFFERENTLY. This is the
+# fixture the acceptance asks for: a `resume` PR is picked up and a `hold` PR is
+# not. Both halves are asserted from the same list, because the fault being
+# fixed was one label doing both jobs — #6 above is the run's own unfinished
+# work, which is exactly what the sweep is for, and #3 is the owner deciding.
+newplan sweep_labels
+cp "$TMP/plan.sweep/last.txt" "$FAKE_PLAN/last.txt"
+got=$(bash "$SUT" pr-sweepable o/r '^(steward/|chore/polecat-shell)' 2>/dev/null | cut -f1 | tr '\n' ',')
+case ",$got" in *,6,*) ok "a \`resume\` PR is swept — it is work the loop still owes" ;;
+                    *) bad "a \`resume\` PR must be swept, got [$got]" ;; esac
+case ",$got" in *,3,*) bad "a \`hold\` PR must NOT be swept, got [$got]" ;;
+                    *) ok "…and a \`hold\` PR is not — that one is the owner's" ;; esac
 
 # T-0809: the base comes back too, because the janitor now merges the base into
 # the branch and gates the MERGE. Assuming `main` would gate the wrong tree on
@@ -148,7 +162,7 @@ check "…in a single request, so the per-PR view is retired" "$(calls)" "1"
 newplan sweep_base
 cp "$TMP/plan.sweep/last.txt" "$FAKE_PLAN/last.txt"
 got=$(bash "$SUT" pr-sweepable o/r '^(steward/|chore/polecat-shell)' 2>/dev/null | tr '\t' ':' | tr '\n' ',')
-check "pr-sweepable returns number, head AND base" "$got" "1:steward/good:dev,5:chore/polecat-shell-v1:main,"
+check "pr-sweepable returns number, head AND base" "$got" "1:steward/good:dev,5:chore/polecat-shell-v1:main,6:steward/handed-on:dev,"
 
 # ── 7b. pr-automerge arms, and falls back to a plain merge when it cannot ──
 # Auto-merge is the only thing here with no REST endpoint, so it is the only
@@ -209,6 +223,53 @@ EOF
 got=$(bash "$SUT" pr-state o/r 1303 2>/dev/null); rc=$?
 check "pr-state that cannot read the PR prints nothing" "$got" ""
 check "…and still exits 0, so the caller falls through to merging" "$rc" "0"
+
+# ── 7d. pr-resume writes the reason BEFORE the label, and never both ───────
+# T-1577. The fault this verb closes is a PR parked with its reason in the body,
+# where nobody read it; the ordering is therefore the contract, not a detail —
+# a labelled PR must never exist without its reason beside it.
+newplan resume_ok
+cat > "$FAKE_PLAN/last.txt" <<'EOF'
+HTTP/2.0 200 OK
+
+{}
+EOF
+got=$(bash "$SUT" pr-resume o/r 41 --why "dev's gate is red on T-1567" --waits-on T-1567 2>/dev/null | tail -1)
+check "pr-resume says what it handed off and what it waits on" "$got" "resume: #41 handed off · waits on: T-1567"
+order=$(grep -nE 'issues/41/(comments|labels)' "$FAKE_CALLS" | head -2 | sed -E 's#.*issues/41/([a-z]+).*#\1#' | tr '\n' ',')
+check "…the comment goes on BEFORE the label" "$order" "comments,labels,"
+if grep -q "labels/hold" "$FAKE_CALLS"; then ok "…and it takes \`hold\` off, since the work is unfinished and not parked"
+else bad "pr-resume must remove \`hold\` — leaving both on leaves every pass skipping it"; fi
+if grep -q 'repos/o/r/labels' "$FAKE_CALLS"; then ok "…after minting \`resume\` idempotently, so the first handoff is not label-less"
+else bad "pr-resume did not create the \`resume\` label"; fi
+
+# The machine-readable first line, which is what the lap, the board and the next
+# run all read. A newline in the reason would push it off line one.
+body=$(python3 -c 'import json,sys;print(json.load(open("/tmp/gh-rest-comment.json"))["body"])')
+check "the first line is the structured one" "$(printf '%s' "$body" | head -1)" \
+  "resume: dev's gate is red on T-1567 · waits on: T-1567"
+newplan resume_multiline
+cat > "$FAKE_PLAN/last.txt" <<'EOF'
+HTTP/2.0 200 OK
+
+{}
+EOF
+bash "$SUT" pr-resume o/r 42 --why "$(printf 'clock ran out\nmid-gate')" >/dev/null 2>&1
+body=$(python3 -c 'import json,sys;print(json.load(open("/tmp/gh-rest-comment.json"))["body"])')
+check "a multi-line reason is flattened onto line one" "$(printf '%s' "$body" | head -1)" \
+  "resume: clock ran out mid-gate · waits on: nothing"
+
+# A handoff with no reason is the fault this verb exists to end, so it is a
+# usage error — and nothing is sent, so no PR is left labelled and mute.
+newplan resume_noreason
+bash "$SUT" pr-resume o/r 43 >/dev/null 2>&1; rc=$?
+check "pr-resume without --why is a usage error" "$rc" "2"
+check "…and it made no request at all" "$(calls)" "0"
+
+newplan resume_badwaits
+bash "$SUT" pr-resume o/r 43 --why x --waits-on "soon" >/dev/null 2>&1; rc=$?
+check "pr-resume rejects a --waits-on that is not a ticket id" "$rc" "2"
+check "…and made no request for it either" "$(calls)" "0"
 
 # ── 8. No steward subcommand shells out to a GraphQL-backed `gh pr|issue` ───
 if grep -nE '^[^#]*gh (pr|issue|search) ' "$SUT" >/dev/null; then

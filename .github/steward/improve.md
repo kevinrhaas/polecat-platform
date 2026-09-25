@@ -9,8 +9,8 @@ tickets live in chicago-tickets). custom is NOT stewarded any more — see the
 CHICAGO 4D rule.
 
 MISSION: exactly ONE high-quality unit of work this run — shipped as its OWN PR,
-verified green in the foreground, and merged (or left on `hold` if it can't go
-green). Then finish. How many units the fleet does per hour is set ELSEWHERE, NOT
+verified green in the foreground, and merged (or handed to the next run on
+`resume`, with its reason, if it can't go green). Then finish. How many units the fleet does per hour is set ELSEWHERE, NOT
 by you: focus.json's per-lane `slices` field keeps that many INDEPENDENT runs
 going on the lane at all times — yours is one of them, and a replacement starts
 the moment it ends (each a separate process with its own PR + verification —
@@ -128,7 +128,9 @@ HARD RULES:
       - `node tools/ticket.mjs inflight` still names the code-repo branches
         carrying a ticket number: look before forcing past a claim.
       - FINISH THE PR YOU OPEN, INSIDE THIS RUN. Merge it on a green gate, or
-        `block` it, or label it `hold` and say why.
+        `block` it, or hand it on with `.github/steward/pr-rest.sh resume <N>
+        --why "…"` (that repo's own verb — see AGENTS.md § the two labels).
+        NEVER `hold`: that label is the owner's alone.
       - CLOSE with `node tools/ticket.mjs done T-NNNN --pr N` once the PR is
         open. That sets the ticket to `review` with its PR; the tickets repo's
         settle workflow flips it to `done` (and takes its QUEUE line) when the PR
@@ -284,8 +286,49 @@ HARD RULES:
   base branch, so dev-based PRs land on dev). On non-pipeline repos merge is
   ship (deploy.yml publishes on merge); on pipeline repos merge stages to
   /dev/ and the pipeline ships it. Ambiguous, architecturally significant, or
-  not fully verified → leave the PR OPEN with the `hold` label and an
-  explanation for Kevin instead; `hold` keeps the janitor away.
+  not fully verified → leave the PR OPEN and hand it on with `resume` (below).
+- **THE TWO LABELS, AND A RUN ONLY EVER APPLIES ONE OF THEM** (T-1571/T-1577;
+  owner, 2026-09-25, on finding three PRs parked on `hold` whose reasons he had
+  not seen: *"that seems like a bad move because i am not aware of why they are
+  held"*).
+
+  | label | means | who applies it | what comes for it |
+  |---|---|---|---|
+  | `hold` | **the owner is deciding** | Kevin, NEVER a run | nothing, until he says so |
+  | `resume` | **a run could not finish** | the run, with its reason | the janitor, and the next run |
+
+  * **YOU NEVER APPLY `hold`.** Every automated pass skips a held PR on purpose
+    — a park a robot can overrule is not a park — so a run that labels its own
+    unfinished work `hold` has parked it where nothing will ever come for it.
+    Measured on chicago's three open PRs at 17:35Z that day: one's stated reason
+    was already stale (CI had since passed all 620 steps) and it had drifted
+    into conflict while held; two were COMPLETE, held only because dev's gate
+    was red. Not one needed a ruling; each needed a machine to lap it, re-gate
+    it and merge it, and each got a person instead. If the thing in your way is
+    genuinely the owner's — rights, the depiction of people, money, what the
+    project IS — that is a QUESTION, not a label: `ticket.mjs ask` on chicago,
+    or say so in your summary elsewhere.
+  * **A RUN THAT CANNOT FINISH APPLIES `resume`, WITH ITS REASON**, in one call:
+
+        bash "$GHREST" pr-resume <owner/repo> <N> --why "dev's gate is red on T-1567" --waits-on T-1567
+
+    which writes `resume: <reason> · waits on: <T-NNNN|nothing>` as the first
+    line of a PR comment, applies the label, and takes `hold` off if one is
+    there. `--why` is required and `--waits-on` defaults to `nothing`. The
+    reason goes on BEFORE the label, so a labelled PR never exists without it.
+    (Inside kevinrhaas/chicago use that repo's own `.github/steward/pr-rest.sh
+    resume <N> --why "…"`, which is the same verb against the same contract.)
+  * **RESUMABLE WORK COMES BEFORE NEW QUEUE WORK.** Before you pick, look for an
+    open `resume` PR on your focus app. If there is one, THAT is your unit:
+    merge its base in, re-derive, fix what is red, gate it, merge it — the same
+    endgame as any unit, on a branch already most of the way there. **Skip one
+    whose `waits on` ticket is still open** and say so in your summary; it
+    cannot go green yet and re-gating it would spend a run proving that.
+  * **The janitor reads the two the same way**: `resume` is work the loop still
+    owes, so it keeps sweeping, gating and merging a resumable PR every 2h;
+    `hold` it never touches. So `resume` does NOT keep the janitor away, and
+    that is the point — nothing should have to keep it away from the loop's own
+    unfinished work.
 - **`pr-automerge` ARMS GitHub's auto-merge and returns**, so the PR lands the
   moment its required checks go green and you are not holding the slice open to
   watch for it. If it cannot arm — no required check on the base branch, or the
@@ -350,32 +393,34 @@ HARD RULES:
   and does NOT mean — it does NOT mean pushing through failures):
   * Verification PASSES → merge the green PR. The run is done.
   * Verification FAILS for real, or you're blocked/uncertain → STOP cleanly:
-    leave the PR OPEN with the `hold` label + a short written explanation for
-    Kevin. Do NOT merge broken work, and do NOT retry the same thing forever.
+    leave the PR OPEN and hand it on — `bash "$GHREST" pr-resume <owner/repo>
+    <N> --why "<what stopped you>" [--waits-on T-NNNN]`. Do NOT merge broken
+    work, do NOT apply `hold`, and do NOT retry the same thing forever.
     Then finish the run — do NOT start a different unit to compensate; the
     lane's other slices and the next hourly tick cover the rest.
   * Contention / rate-limit THRASH — the #1 way a run wastes its whole turn
-    budget and dies on "Reached max turns" with NOTHING shipped. BAIL TO HOLD,
-    FAST, and preserve the work. Concretely: if GitHub rate-limits you (403 /
+    budget and dies on "Reached max turns" with NOTHING shipped. BAIL TO
+    `resume`, FAST, and preserve the work. Concretely: if GitHub rate-limits you (403 /
     "secondary rate limit" / "abuse detection") more than TWICE, OR `main` moved
     under you and you've had to rebase more than TWICE, STOP fighting — do NOT
     keep retrying the limited call, do NOT keep re-rebasing, do NOT route around
     the limit with a dozen REST calls. Instead: commit what you have to the
-    steward branch, push it, open a PR with the `hold` label + a one-line note
-    ("parked: main moving faster than I can rebase" or "parked: GitHub API
-    rate-limited — re-run when quieter"), and END the run. A `hold` PR that
-    preserves the work is a SUCCESS; thrashing to max-turns with nothing is the
-    failure to avoid. The next tick retries fresh when it's quieter. (Watch your
-    turn budget: if you're past ~two-thirds of it and not yet verified-green,
-    assume you won't make it — bail to `hold` now rather than dying with nothing.)
+    steward branch, push it, open a PR and `pr-resume` it with a one-line reason
+    ("main moving faster than I can rebase" or "GitHub API rate-limited — re-run
+    when quieter"), and END the run. A `resume` PR that preserves the work is a
+    SUCCESS; thrashing to max-turns with nothing is the failure to avoid. The
+    next tick retries fresh when it's quieter, and the janitor may well have
+    landed it by then. (Watch your turn budget: if you're past ~two-thirds of it
+    and not yet verified-green, assume you won't make it — bail to `resume` now
+    rather than dying with nothing.)
   * Runner hiccup / network blip → let the run end; the next tick retries fresh.
     Don't loop, don't self-suspend to "wait it out."
-  Your run is complete when your one unit is either a merged green PR or a `hold`
-  PR + explanation — reached SYNCHRONOUSLY, never by waiting on a background
-  process.
+  Your run is complete when your one unit is either a merged green PR or a
+  `resume` PR whose reason is written on it — reached SYNCHRONOUSLY, never by
+  waiting on a background process.
 - ONE UNIT PER RUN — do exactly one, then finish:
   * The unit is its OWN steward branch + PR, fully verified (green suite/smoke
-    in the foreground) and MERGED (or left on `hold`). NEVER bundle unrelated
+    in the foreground) and MERGED (or handed on with `resume`). NEVER bundle unrelated
     work into one PR: Guard-main auto-revert and the janitor operate per-PR, so
     a PR must stay one revertible unit. Bundling unrelated work into one PR is a
     defect, not efficiency.
@@ -391,7 +436,7 @@ HARD RULES:
   Update the app's ROADMAP/queue file in the SAME PR as the unit. No model
   identifiers in repo artifacts. Do all work synchronously and finish by printing
   a summary whose FIRST line is
-      Ticket: T-NNNN · PR: <url or none> · Outcome: merged|hold|blocked|no-pr
+      Ticket: T-NNNN · PR: <url or none> · Outcome: merged|resume|blocked|no-pr
   and which then says: app picked, why, what shipped, verification run, and the
   PR URL. That first line is for a person reading fast; the journal's own record
   of the ticket, branch, PR and outcome is read from your tool calls, so it stays
