@@ -185,20 +185,160 @@ newplan automerge_clean
 cat > "$FAKE_PLAN/1.txt" <<'EOF'
 HTTP/2.0 200 OK
 
-{"number":8,"node_id":"PR_kwDO"}
+{"number":8,"node_id":"PR_kwDO","head":{"sha":"c0ffee1234567"}}
 EOF
 # What GitHub says when there is nothing left to wait for, or when the repo has
 # no required check on the base branch — both mean "merge it now".
 cat > "$FAKE_PLAN/2.txt" <<'EOF'
 GraphQL: Pull request is in clean status (enablePullRequestAutoMerge)
 EOF
+# T-1572: the fallback no longer merges blind — it reads the head commit's own
+# check runs first. Green, so the merge still happens.
 cat > "$FAKE_PLAN/3.txt" <<'EOF'
+HTTP/2.0 200 OK
+
+{"total_count":1,"check_runs":[{"name":"chicago-4d-check","status":"completed","conclusion":"success"}]}
+EOF
+cat > "$FAKE_PLAN/4.txt" <<'EOF'
 HTTP/2.0 200 OK
 
 {"sha":"deadbee"}
 EOF
 got=$(bash "$SUT" pr-automerge o/r 8 squash "title" 2>/dev/null)
-check "pr-automerge that cannot arm falls back to merging, and still merges" "$got" "deadbee"
+check "pr-automerge that cannot arm reads the gate, and merges it when green" "$got" "deadbee"
+
+# ── 7b-i. T-1572: a RED gate is refused, not merged ────────────────────────
+# The fault this is for: kevinrhaas/chicago has auto-merge switched OFF, so the
+# "could not arm" branch is the ONLY branch ever taken there, and it used to
+# merge on the spot. PR #43 landed on a `dev` whose check was already red,
+# about one second after it was opened.
+newplan automerge_red
+cat > "$FAKE_PLAN/1.txt" <<'EOF'
+HTTP/2.0 200 OK
+
+{"number":43,"node_id":"PR_kwDO","head":{"sha":"c0ffee1234567"}}
+EOF
+cat > "$FAKE_PLAN/2.txt" <<'EOF'
+GraphQL: Auto merge is not allowed for this repository (enablePullRequestAutoMerge)
+EOF
+cat > "$FAKE_PLAN/3.txt" <<'EOF'
+HTTP/2.0 200 OK
+
+{"total_count":2,"check_runs":[{"name":"chicago-4d-check","status":"completed","conclusion":"failure"},
+                               {"name":"smoke","status":"completed","conclusion":"success"}]}
+EOF
+cat > "$FAKE_PLAN/last.txt" <<'EOF'
+HTTP/2.0 200 OK
+
+{}
+EOF
+got=$(bash "$SUT" pr-automerge o/r 43 squash "title" 2>/dev/null); rc=$?
+check "a red check is REFUSED, not merged"                     "$got" "refused"
+check "…and it exits 3, so the caller can tell refusal from a REST failure" "$rc" "3"
+if grep -q 'repos/o/r/pulls/43/merge' "$FAKE_CALLS"; then bad "a refused PR must not be merged"
+else ok "…and no merge request was made at all"; fi
+if grep -q 'repos/o/r/issues/43/labels' "$FAKE_CALLS"; then ok "…the PR is labelled hold, so the janitor leaves it alone"
+else bad "a refused PR must be labelled hold"; fi
+if grep -q 'repos/o/r/issues/43/comments' "$FAKE_CALLS"; then ok "…and told why, on the PR itself"
+else bad "a refused PR must be told why"; fi
+
+# ── 7b-ii. A PENDING gate is refused once the wait budget is spent ─────────
+# Arming would have waited for the checks; without it the wait is ours to make,
+# and it is BOUNDED — a slice cannot be held open indefinitely.
+newplan automerge_pending
+cat > "$FAKE_PLAN/1.txt" <<'EOF'
+HTTP/2.0 200 OK
+
+{"number":9,"node_id":"PR_kwDO","head":{"sha":"c0ffee1234567"}}
+EOF
+cat > "$FAKE_PLAN/2.txt" <<'EOF'
+GraphQL: Auto merge is not allowed for this repository (enablePullRequestAutoMerge)
+EOF
+cat > "$FAKE_PLAN/3.txt" <<'EOF'
+HTTP/2.0 200 OK
+
+{"total_count":1,"check_runs":[{"name":"chicago-4d-check","status":"in_progress","conclusion":null}]}
+EOF
+cat > "$FAKE_PLAN/last.txt" <<'EOF'
+HTTP/2.0 200 OK
+
+{}
+EOF
+got=$(GH_REST_GATE_WAIT_SECONDS=0 bash "$SUT" pr-automerge o/r 9 squash "title" 2>/dev/null)
+check "a still-pending gate is refused rather than merged past" "$got" "refused"
+if grep -q 'repos/o/r/pulls/9/merge' "$FAKE_CALLS"; then bad "a pending PR must not be merged"
+else ok "…and again, no merge request was made"; fi
+
+# ── 7b-iii. No checks at all still merges — most steward PRs have none ─────
+# A bot-opened PR triggers no workflow on several fleet repos, so "no check
+# runs" is the normal state of a perfectly good PR. Refusing it would stop
+# every merge in the fleet, which is a far larger fault than the one fixed.
+newplan automerge_nochecks
+cat > "$FAKE_PLAN/1.txt" <<'EOF'
+HTTP/2.0 200 OK
+
+{"number":10,"node_id":"PR_kwDO","head":{"sha":"c0ffee1234567"}}
+EOF
+cat > "$FAKE_PLAN/2.txt" <<'EOF'
+GraphQL: Auto merge is not allowed for this repository (enablePullRequestAutoMerge)
+EOF
+cat > "$FAKE_PLAN/3.txt" <<'EOF'
+HTTP/2.0 200 OK
+
+{"total_count":0,"check_runs":[]}
+EOF
+cat > "$FAKE_PLAN/4.txt" <<'EOF'
+HTTP/2.0 200 OK
+
+{"sha":"beefbee"}
+EOF
+got=$(GH_REST_GATE_WAIT_SECONDS=0 bash "$SUT" pr-automerge o/r 10 squash "title" 2>/dev/null)
+check "a PR with no checks at all is still merged" "$got" "beefbee"
+
+# ── 7b-iv. An unreadable gate merges, like pr-state's empty answer ─────────
+# Same contract as pr-state: a transient GitHub blip must not stop every merge
+# in the fleet. This guards one bad merge; it is not a safety interlock worth
+# putting a 500 in the path of every one.
+newplan automerge_unreadable
+cat > "$FAKE_PLAN/1.txt" <<'EOF'
+HTTP/2.0 200 OK
+
+{"number":11,"node_id":"PR_kwDO","head":{"sha":"c0ffee1234567"}}
+EOF
+cat > "$FAKE_PLAN/2.txt" <<'EOF'
+GraphQL: Auto merge is not allowed for this repository (enablePullRequestAutoMerge)
+EOF
+cat > "$FAKE_PLAN/3.txt" <<'EOF'
+HTTP/2.0 200 OK
+
+not json at all
+EOF
+cat > "$FAKE_PLAN/4.txt" <<'EOF'
+HTTP/2.0 200 OK
+
+{"sha":"facade0"}
+EOF
+got=$(GH_REST_GATE_WAIT_SECONDS=0 bash "$SUT" pr-automerge o/r 11 squash "title" 2>/dev/null)
+check "an unreadable gate merges rather than stalling the fleet" "$got" "facade0"
+
+# ── 7b-v. The escape hatch still merges blind, for when that is wanted ─────
+newplan automerge_blind
+cat > "$FAKE_PLAN/1.txt" <<'EOF'
+HTTP/2.0 200 OK
+
+{"number":12,"node_id":"PR_kwDO","head":{"sha":"c0ffee1234567"}}
+EOF
+cat > "$FAKE_PLAN/2.txt" <<'EOF'
+GraphQL: Auto merge is not allowed for this repository (enablePullRequestAutoMerge)
+EOF
+cat > "$FAKE_PLAN/3.txt" <<'EOF'
+HTTP/2.0 200 OK
+
+{"sha":"0ldway5"}
+EOF
+got=$(GH_REST_MERGE_BLIND=1 bash "$SUT" pr-automerge o/r 12 squash "title" 2>/dev/null)
+check "GH_REST_MERGE_BLIND=1 restores the unconditional merge" "$got" "0ldway5"
+check "…and reads no gate to do it" "$(calls)" "3"
 
 # ── 7c. pr-state answers, and answers EMPTY rather than failing ────────────
 # The janitor merges on an empty answer, so the failure path is the one that

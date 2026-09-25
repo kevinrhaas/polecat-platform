@@ -331,14 +331,28 @@ HARD RULES:
     unfinished work.
 - **`pr-automerge` ARMS GitHub's auto-merge and returns**, so the PR lands the
   moment its required checks go green and you are not holding the slice open to
-  watch for it. If it cannot arm — no required check on the base branch, or the
-  PR is already clean with nothing to wait for — it merges immediately instead,
-  so it is never worse than `pr-merge` and `pr-merge` needs no separate call.
-  **Do not then sit and wait for the merge**: arm it, delete the branch, write
-  the journal and finish. Two things this buys, both measured: a slice stops
-  spending minutes of its cap watching its own gate, and it stops LOSING the
-  merge to a base branch that moved underneath it — that cost eleven rebuild-
-  and-regate laps on 2026-09-05 while `dev` advanced between push and merge.
+  watch for it. **Do not then sit and wait for the merge**: arm it, delete the
+  branch, write the journal and finish. Two things this buys, both measured: a
+  slice stops spending minutes of its cap watching its own gate, and it stops
+  LOSING the merge to a base branch that moved underneath it — that cost eleven
+  rebuild-and-regate laps on 2026-09-05 while `dev` advanced between push and
+  merge.
+- **ARMING IS NOT AVAILABLE EVERYWHERE, and where it is not the call BLOCKS
+  instead of returning.** Auto-merge is a repository setting and it is OFF on
+  `kevinrhaas/chicago`, so there the arming mutation comes back UNPROCESSABLE
+  every time. Until 2026-09-25 the fallback merged on the spot with no gate
+  consulted at all — that is how #43 landed on a red `dev` about one second
+  after it was opened (chicago-tickets T-1572). It now does by hand what arming
+  would have done: reads the head commit's own check runs, waits up to
+  `GH_REST_GATE_WAIT_SECONDS` (420) for a pending gate to settle, and then
+  either merges on green or **refuses** — printing `refused`, exiting **3**,
+  labelling the PR `hold` and commenting which check it refused on. So on those
+  repos budget one foreground call of up to ~7 minutes for the merge, and read
+  its exit status: **3 means your unit is now a `hold` PR**, which is a clean
+  outcome — say so in the summary and finish, do not re-merge past it.
+  `GH_REST_MERGE_BLIND=1` restores the old unconditional merge; use it only
+  when you have gated the merge yourself and know the red check is irrelevant,
+  and say in the PR why.
 - **NEVER `gh pr ...` OR `gh issue ...` — they spend the wrong budget, and it
   runs out.** `gh pr create|merge|comment|view|list` and `gh issue
   create|comment|list` all go through GitHub's **GraphQL** API, which is a
