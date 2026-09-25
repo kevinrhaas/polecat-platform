@@ -3,7 +3,13 @@
 #
 #   gh-rest.sh pr-create   <repo> <head> <base> <title> <body-file>   → prints the PR number
 #   gh-rest.sh pr-merge    <repo> <number> <method> [commit-title]    → prints the merge sha
-#   gh-rest.sh pr-automerge <repo> <number> [method] [commit-title]   → 'armed', or merges now
+#   gh-rest.sh pr-automerge <repo> <number> [method] [commit-title]   → 'armed', 'refused', or merges
+#       Arms GitHub's auto-merge where the repository allows it. Where it does
+#       NOT (kevinrhaas/chicago), it reads the head commit's own check runs,
+#       waits GH_REST_GATE_WAIT_SECONDS (420) for a pending gate to settle, and
+#       merges only on green — refusing a red or still-pending one by labelling
+#       the PR `resume` (never `hold`, T-1577), saying which check, and exiting 3.
+#       GH_REST_MERGE_BLIND=1 restores the old unconditional merge.
 #   gh-rest.sh pr-comment  <repo> <number> <body-file>
 #   gh-rest.sh pr-list     <repo> [state] [per-page]                  → number<TAB>head<TAB>base<TAB>title
 #   gh-rest.sh pr-get      <repo> <number> [--jq FILTER]
@@ -122,6 +128,81 @@ api() {
 
 jqf() { python3 -c 'import json,sys;d=json.load(sys.stdin);print(d.get(sys.argv[1],"") if isinstance(d,dict) else "")' "$1"; }
 
+# ── The merge gate, for repositories where auto-merge cannot be armed ────────
+#
+# `pr-automerge` is documented as "arm and walk away", and that documentation is
+# only true where GitHub's auto-merge is ENABLED on the repository. Where it is
+# not, the arming mutation comes back UNPROCESSABLE and the fallback below used
+# to merge on the spot, with no gate consulted at all.
+#
+# MEASURED on kevinrhaas/chicago, 2026-09-25 (chicago-tickets T-1572). PR #43
+# printed
+#
+#     gh-rest: pr-automerge: could not arm ({"errors":[{"type":"UNPROCESSABLE",
+#       "message":"Auto merge is not allowed for this repository"}]}) — merging
+#       directly instead
+#
+# and merged into `dev` about one second after it was opened — onto a `dev`
+# whose own check was already red for an unrelated reason. Auto-merge is not a
+# nicety there: it is the ONLY thing that was reading the gate, so a repository
+# without it turned every slice's merge into a blind one.
+#
+# So the fallback now does by hand what arming would have done for us: read the
+# head commit's own check runs, wait a BOUNDED time for them to settle, merge
+# when they are green, and refuse — saying which check — when they are not.
+# `pr-merge` is unchanged and still merges on command; this is the difference
+# between the two, and the reason to keep reaching for `pr-automerge`.
+GATE_WAIT="${GH_REST_GATE_WAIT_SECONDS:-420}"   # total seconds to wait for a pending gate
+GATE_POLL="${GH_REST_GATE_POLL_SECONDS:-20}"    # seconds between reads
+
+# gate_state <repo> <sha> → one line:
+#   clear | none | unreadable | "red <check> (<conclusion>)" | "pending <check> (<status>)"
+#
+# `none` and `unreadable` are deliberately NOT refusals. Bot-opened PRs on some
+# repos trigger no workflow at all, so "no check runs" is the normal state of a
+# perfectly good PR and refusing it would stop every merge in the fleet; and a
+# REST blip must not do that either — the same contract `pr-state` already
+# states for itself.
+gate_state() {
+  local repo="$1" sha="$2" body
+  body=$(api GET "repos/${repo}/commits/${sha}/check-runs?per_page=100" 2>/dev/null) || { printf 'unreadable\n'; return 0; }
+  printf '%s' "$body" | python3 -c '
+import json,sys
+RED={"failure","timed_out","cancelled","action_required","stale"}
+try: runs=(json.load(sys.stdin) or {}).get("check_runs") or []
+except Exception: print("unreadable"); raise SystemExit
+if not runs: print("none"); raise SystemExit
+for r in runs:
+    if r.get("status")=="completed" and (r.get("conclusion") or "") in RED:
+        print("red %s (%s)"%(r.get("name","?"), r.get("conclusion"))); raise SystemExit
+for r in runs:
+    if r.get("status")!="completed":
+        print("pending %s (%s)"%(r.get("name","?"), r.get("status"))); raise SystemExit
+print("clear")' 2>/dev/null || printf 'unreadable\n'
+}
+
+# refuse_merge <repo> <number> <why> — leave the PR OPEN, labelled and explained.
+#
+# IT APPLIES `resume`, NOT `hold`, and T-1577 is why: `hold` means THE OWNER IS
+# DECIDING, a run never applies it, and every automated pass skips a held PR on
+# purpose. A PR refused here needs no ruling from anybody — it needs a machine to
+# lap it, re-gate it and merge it once the check goes green, which is exactly
+# what `resume` asks for and what keeps the janitor sweeping it. Labelling these
+# `hold` would recreate, from inside the tooling, the very silt T-1577 cleared:
+# three complete PRs parked for a red gate with nothing coming for them.
+#
+# Doing it HERE rather than trusting each caller is what makes the outcome true
+# by construction. `pr-resume` owns the label vocabulary and the reason line, so
+# this spends no opinion of its own on either.
+refuse_merge() {
+  local repo="$1" number="$2" why="$3"
+  log "pr-automerge: REFUSING to merge ${repo}#${number} — ${why}"
+  bash "$0" pr-resume "$repo" "$number" \
+    --why "not merged: ${why} — pr-automerge read the gate rather than merging blind" >/dev/null 2>&1 || true
+  printf 'refused\n'
+  exit 3
+}
+
 cmd="${1:-}"; shift || true
 case "$cmd" in
   pr-create)
@@ -144,9 +225,10 @@ json.dump(d,sys.stdout)' "$method" "$ctitle")
     api PUT "repos/${repo}/pulls/${number}/merge" --input /tmp/gh-rest-merge.json | jqf sha ;;
   pr-automerge)
     # Arm GitHub's auto-merge, so the PR lands the moment its required checks go
-    # green and nobody has to hold a run open watching for it. Falls back to an
-    # ordinary merge whenever auto-merge cannot be armed, so it is never worse
-    # than `pr-merge` — the caller can always use this instead.
+    # green and nobody has to hold a run open watching for it. Where arming is
+    # impossible it falls back to reading the gate by hand and merging on green,
+    # so it is still never worse than `pr-merge` — it is now strictly SAFER, and
+    # the caller can always use this instead.
     #
     # THIS IS THE ONE GraphQL CALL IN THIS FILE, and the header's rule is being
     # applied rather than bent. `enablePullRequestAutoMerge` has NO REST
@@ -164,7 +246,13 @@ json.dump(d,sys.stdout)' "$method" "$ctitle")
     # and a gate, because `dev` advanced between the push and the merge.
     repo="$1"; number="$2"
     method=$(printf '%s' "${3:-squash}" | tr '[:lower:]' '[:upper:]')
-    node=$(api GET "repos/${repo}/pulls/${number}" | jqf node_id)
+    # One REST call for both the node id (to arm with) and the head sha (to read
+    # the gate on, if arming fails).
+    prbody=$(api GET "repos/${repo}/pulls/${number}")
+    node=$(printf '%s' "$prbody" | jqf node_id)
+    sha=$(printf '%s' "$prbody" | python3 -c 'import json,sys
+try: print(((json.load(sys.stdin) or {}).get("head") or {}).get("sha",""))
+except Exception: print("")' 2>/dev/null)
     if [ -z "$node" ]; then
       log "pr-automerge: could not read the PR's node id — merging directly instead"
       bash "$0" pr-merge "$repo" "$number" "${3:-squash}" "${4:-}"; exit $?
@@ -177,13 +265,61 @@ json.dump(d,sys.stdout)' "$method" "$ctitle")
       log "pr-automerge: armed on ${repo}#${number} (${method}) — GitHub will merge it when the gate is green"
       printf 'armed\n'; exit 0
     fi
-    # The three ways it legitimately cannot arm, all of which mean "just merge":
+    # The ways it legitimately cannot arm:
     #   • "Pull request is in clean status" — nothing left to wait for.
-    #   • auto-merge not enabled on the repository.
+    #   • auto-merge is not enabled on the repository (kevinrhaas/chicago).
     #   • no required status check on the base branch, so a clean PR is
     #     immediately mergeable and GitHub refuses to queue it.
-    log "pr-automerge: could not arm (${out//$'\n'/ }) — merging directly instead"
-    bash "$0" pr-merge "$repo" "$number" "${3:-squash}" "${4:-}" ;;
+    #
+    # ALL THREE USED TO MEAN "just merge", and that is the bug T-1572 reported:
+    # on a repository with auto-merge switched off, the second bullet is the
+    # ONLY branch ever taken, so "arm and walk away" silently became "merge now,
+    # gate unread". The merge still happens — but on the gate's word, not in
+    # spite of it. See gate_state()/refuse_merge() above for why `none` and
+    # `unreadable` still merge.
+    log "pr-automerge: could not arm (${out//$'\n'/ }) — reading the PR's own checks instead"
+    if [ "${GH_REST_MERGE_BLIND:-}" = "1" ]; then
+      log "pr-automerge: GH_REST_MERGE_BLIND=1 — merging without reading the gate"
+      bash "$0" pr-merge "$repo" "$number" "${3:-squash}" "${4:-}"; exit $?
+    fi
+    if [ -z "$sha" ]; then
+      log "pr-automerge: could not read the PR's head sha — merging directly instead"
+      bash "$0" pr-merge "$repo" "$number" "${3:-squash}" "${4:-}"; exit $?
+    fi
+    deadline=$(( $(date -u +%s) + GATE_WAIT )); empties=0
+    while :; do
+      verdict=$(gate_state "$repo" "$sha")
+      case "$verdict" in
+        clear)
+          log "pr-automerge: every check on ${sha:0:7} is green — merging"
+          bash "$0" pr-merge "$repo" "$number" "${3:-squash}" "${4:-}"; exit $? ;;
+        red\ *)
+          refuse_merge "$repo" "$number" "check ${verdict#red }" ;;
+        unreadable)
+          log "pr-automerge: could not read the checks on ${sha:0:7} — merging directly instead"
+          bash "$0" pr-merge "$repo" "$number" "${3:-squash}" "${4:-}"; exit $? ;;
+        none)
+          # Checks can take a few seconds to appear. Give them ONE poll to show
+          # up, then treat a still-empty list as "this PR has no gate" — which
+          # is the truth on repos where a bot-opened PR triggers no workflow.
+          empties=$(( empties + 1 ))
+          if (( empties > 1 )) || (( $(date -u +%s) + GATE_POLL > deadline )); then
+            log "pr-automerge: no check runs on ${sha:0:7} — nothing to gate on, merging"
+            bash "$0" pr-merge "$repo" "$number" "${3:-squash}" "${4:-}"; exit $?
+          fi
+          log "pr-automerge: no check runs on ${sha:0:7} yet — one more look in ${GATE_POLL}s"
+          sleep "$GATE_POLL" ;;
+        pending\ *)
+          if (( $(date -u +%s) + GATE_POLL > deadline )); then
+            refuse_merge "$repo" "$number" "check ${verdict#pending } had not finished within ${GATE_WAIT}s"
+          fi
+          log "pr-automerge: ${verdict} — waiting ${GATE_POLL}s (budget ends in $(( deadline - $(date -u +%s) ))s)"
+          sleep "$GATE_POLL" ;;
+        *)
+          log "pr-automerge: unrecognised gate verdict [${verdict}] — merging directly instead"
+          bash "$0" pr-merge "$repo" "$number" "${3:-squash}" "${4:-}"; exit $? ;;
+      esac
+    done ;;
   pr-comment|issue-comment)
     repo="$1"; number="$2"; bodyfile="$3"
     python3 -c 'import json,sys;json.dump({"body":open(sys.argv[1],encoding="utf-8").read()},sys.stdout)' \
@@ -373,5 +509,5 @@ json.dump({"name":sys.argv[1],"color":sys.argv[2],"description":sys.argv[3]},sys
     gh api rate_limit --jq \
       '"core \(.resources.core.remaining)/\(.resources.core.limit)  graphql \(.resources.graphql.remaining)/\(.resources.graphql.limit)  search \(.resources.search.remaining)/\(.resources.search.limit)"' ;;
   *)
-    sed -n '2,15p' "$0" >&2; exit 2 ;;
+    sed -n '2,21p' "$0" >&2; exit 2 ;;
 esac
