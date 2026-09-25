@@ -7,6 +7,7 @@
 #   gh-rest.sh pr-comment  <repo> <number> <body-file>
 #   gh-rest.sh pr-list     <repo> [state] [per-page]                  → number<TAB>head<TAB>base<TAB>title
 #   gh-rest.sh pr-get      <repo> <number> [--jq FILTER]
+#   gh-rest.sh pr-resume   <repo> <number> --why "…" [--waits-on T-NNNN|nothing]
 #   gh-rest.sh issue-create  <repo> <title> <body-file> [label]       → prints the issue number
 #   gh-rest.sh issue-comment <repo> <number> <body-file>
 #   gh-rest.sh issue-find    <repo> <label>                           → first open number, or empty
@@ -205,6 +206,14 @@ for p in json.load(sys.stdin):
     # janitor used to make just to learn the branch name — one call per PR
     # saved, on top of the bucket change.
     #
+    # `hold` IS THE ONLY LABEL THAT TAKES A PR OUT OF THE SWEEP, and `resume` is
+    # deliberately NOT one of them (T-1577). The two labels mean different
+    # things: `hold` is the owner deciding, so nothing comes for it until he says
+    # so; `resume` is a run's own unfinished handoff, which is work the loop
+    # still owes and therefore exactly what this sweep is for. A resumable PR is
+    # lapped, gated and merged like any other, and the test below asserts both
+    # halves so a future filter cannot quietly silence the second one.
+    #
     # The BASE is the third column, added for T-0809: the janitor merges the
     # base into the branch and gates THAT, so it has to know which base. It
     # cannot assume `main` — jobtracker, analytics and chicago/4d are all on a
@@ -220,6 +229,78 @@ for p in json.load(sys.stdin):
     ref = p["head"]["ref"]
     if not pat.search(ref): continue
     print("%d\t%s\t%s" % (p["number"], ref, p["base"]["ref"]))' "$pattern" ;;
+  pr-resume)
+    # THE RUN'S OWN UNFINISHED WORK, HANDED TO THE NEXT RUN — the verb that
+    # replaced `hold` in a steward run's hands (T-1577; chicago/4d AGENTS.md
+    # § the two labels is the fleet statement of it).
+    #
+    #   `hold` means THE OWNER IS DECIDING, and every automated pass skips a held
+    #   PR on purpose — a park a robot can overrule is not a park. The steward
+    #   prompt used to tell a run to apply that same label when it merely could
+    #   not finish, so work that needed nobody's decision had nothing coming for
+    #   it either. Measured 2026-09-25 on chicago's three open PRs: #39's stated
+    #   reason was already stale (CI had since passed all 620 steps) and it had
+    #   drifted into conflict while held; #41 and #42 were COMPLETE, held only
+    #   because dev's gate was red. Not one needed a ruling; each needed a
+    #   machine to lap it, re-gate it and merge it, and each got a person.
+    #
+    # So: a run never applies `hold`, and this is what it applies instead.
+    repo="$1"; number="$2"; shift 2
+    why=""; waits="nothing"
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --why)      why="$2"; shift 2 ;;
+        --waits-on) waits="${2:-nothing}"; shift 2 ;;
+        *) echo "gh-rest.sh pr-resume: unknown argument $1" >&2; exit 2 ;;
+      esac
+    done
+    # A HANDOFF WITH NO REASON IS THE FAULT THIS VERB EXISTS TO END, so a missing
+    # reason is a usage error and not a default. The three PRs above each had a
+    # reason; it was in the PR body, which is the one place nobody reads.
+    [ -n "$why" ] || { echo "gh-rest.sh pr-resume: --why is required — a handoff whose reason is not written down is the fault this verb exists to end" >&2; exit 2; }
+    # ONE LINE, ALWAYS. A newline in the reason would push the machine-readable
+    # part off the first line, and every reader below would see a handoff with no
+    # reason — the same silence, wearing a new label.
+    why=$(printf '%s' "$why" | tr '\n\r\t' '   ')
+    [ -n "$waits" ] || waits=nothing
+    case "$waits" in
+      nothing|T-[0-9][0-9][0-9][0-9]) ;;
+      *) echo "gh-rest.sh pr-resume: --waits-on takes a ticket id like T-1567, or the word 'nothing' — got '$waits'" >&2; exit 2 ;;
+    esac
+    # The label vocabulary, created once and idempotently. Adding a label that
+    # does not exist is a 422 on the issues endpoint, so the first handoff in a
+    # repo that has never seen one would otherwise leave the comment and no label
+    # — visible to a person and invisible to every pass.
+    bash "$0" label-create "$repo" resume 0E8A16 \
+      "A run could not finish this; the next one picks it up — reason in the resume: comment"
+    # THE REASON GOES ON BEFORE THE LABEL, and the order is the point: a labelled
+    # PR must never exist without its reason beside it. If the comment fails the
+    # label is never applied and the run is told — better an unlabelled PR with a
+    # loud failure than a labelled one nobody can interpret.
+    {
+      printf 'resume: %s · waits on: %s\n\n' "$why" "$waits"
+      printf 'This pull request is the loop'"'"'s own unfinished work, and it is NOT parked.\n'
+      printf 'The run that opened it could not finish inside its own budget; the branch\n'
+      printf 'carries the work. A later run picks it up before it takes new queue work:\n'
+      printf 'merge the base in, re-derive, fix what is red, gate, merge. The janitor\n'
+      printf 'keeps sweeping it in the meantime — `resume` is work the loop still owes.\n\n'
+      if [ "$waits" != "nothing" ]; then
+        printf 'It waits on **%s**. Until that ticket closes this PR cannot go green, so an\n' "$waits"
+        printf 'agentic run that finds it says so and takes the next row rather than\n'
+        printf 're-gating it. A machine merge of an already-green PR is not gated by this.\n\n'
+      fi
+      printf '`hold` is the owner'"'"'s park switch and no run applies it.\n\n'
+      printf -- '---\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n'
+    } > /tmp/gh-rest-resume.md
+    bash "$0" pr-comment "$repo" "$number" /tmp/gh-rest-resume.md
+    api POST "repos/${repo}/issues/${number}/labels" -f 'labels[]=resume' >/dev/null
+    # AND `hold` COMES OFF. A run reaching for this verb is declaring the work
+    # unfinished, not parked; leaving both on would leave every pass skipping it,
+    # which is exactly the state being fixed. A PR that never had `hold` answers
+    # 404 here, and that is not a failure.
+    api DELETE "repos/${repo}/issues/${number}/labels/hold" >/dev/null 2>&1 \
+      && echo "  hold removed — hold is the owner's switch and no run applies it"
+    echo "resume: #${number} handed off · waits on: ${waits}" ;;
   pr-state)
     # `open` or `closed`, one field, one REST request. The janitor asks this
     # AFTER a gate that can run for minutes, so it does not merge a pull request
@@ -292,5 +373,5 @@ json.dump({"name":sys.argv[1],"color":sys.argv[2],"description":sys.argv[3]},sys
     gh api rate_limit --jq \
       '"core \(.resources.core.remaining)/\(.resources.core.limit)  graphql \(.resources.graphql.remaining)/\(.resources.graphql.limit)  search \(.resources.search.remaining)/\(.resources.search.limit)"' ;;
   *)
-    sed -n '2,12p' "$0" >&2; exit 2 ;;
+    sed -n '2,15p' "$0" >&2; exit 2 ;;
 esac

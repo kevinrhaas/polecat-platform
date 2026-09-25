@@ -12,9 +12,14 @@ Read this first; it links to everything else.*
    repo's `deploy.yml` publishes on merge, and Guard-main auto-revert is the
    backstop. A janitor workflow also sweeps every 2h and merges any green
    `steward/*` / `chore/polecat-shell-*` PR that got left behind, so a green
-   PR ships either way. Genuinely risky or architectural work is the ONE
-   exception: leave the PR open **with the `hold` label** (the janitor never
-   touches `hold` or draft PRs) and explain what Kevin should look at.
+   PR ships either way. Work you cannot finish — a red gate, a spent clock, a
+   base moving faster than you can rebase — stays an open PR handed to the next
+   run: `bash .github/steward/gh-rest.sh pr-resume <owner/repo> <N> --why "…"`,
+   which writes the reason on the PR and labels it `resume`. **`hold` is Kevin's
+   park switch and no agent applies it** (T-1577): the janitor and every other
+   pass skip a held PR on purpose, so labelling your own unfinished work `hold`
+   parks it where nothing will come for it. A `resume` PR is swept like any
+   other, because it is work the loop still owes.
 2. **`vendor/polecat-shell/` is read-only.** It's the shared UI library,
    vendored from this repo with sha256 manifests (sweeps detect edits). Shell
    changes go to `polecat-platform/lib/` (+ VERSION bump + gen-manifest) and
