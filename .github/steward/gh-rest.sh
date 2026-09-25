@@ -8,8 +8,8 @@
 #       NOT (kevinrhaas/chicago), it reads the head commit's own check runs,
 #       waits GH_REST_GATE_WAIT_SECONDS (420) for a pending gate to settle, and
 #       merges only on green — refusing a red or still-pending one by labelling
-#       the PR `hold`, saying which check, and exiting 3. GH_REST_MERGE_BLIND=1
-#       restores the old unconditional merge.
+#       the PR `resume` (never `hold`, T-1577), saying which check, and exiting 3.
+#       GH_REST_MERGE_BLIND=1 restores the old unconditional merge.
 #   gh-rest.sh pr-comment  <repo> <number> <body-file>
 #   gh-rest.sh pr-list     <repo> [state] [per-page]                  → number<TAB>head<TAB>base<TAB>title
 #   gh-rest.sh pr-get      <repo> <number> [--jq FILTER]
@@ -183,20 +183,22 @@ print("clear")' 2>/dev/null || printf 'unreadable\n'
 
 # refuse_merge <repo> <number> <why> — leave the PR OPEN, labelled and explained.
 #
-# The steward rules already say what a run does when it cannot merge safely:
-# leave the PR open with `hold` and write down why. Doing it HERE rather than
-# trusting each caller is what makes that outcome true by construction — and
-# `hold` is also what keeps the janitor from sweeping the PR back in.
+# IT APPLIES `resume`, NOT `hold`, and T-1577 is why: `hold` means THE OWNER IS
+# DECIDING, a run never applies it, and every automated pass skips a held PR on
+# purpose. A PR refused here needs no ruling from anybody — it needs a machine to
+# lap it, re-gate it and merge it once the check goes green, which is exactly
+# what `resume` asks for and what keeps the janitor sweeping it. Labelling these
+# `hold` would recreate, from inside the tooling, the very silt T-1577 cleared:
+# three complete PRs parked for a red gate with nothing coming for them.
+#
+# Doing it HERE rather than trusting each caller is what makes the outcome true
+# by construction. `pr-resume` owns the label vocabulary and the reason line, so
+# this spends no opinion of its own on either.
 refuse_merge() {
   local repo="$1" number="$2" why="$3"
   log "pr-automerge: REFUSING to merge ${repo}#${number} — ${why}"
-  printf '{"labels":["hold"]}' > /tmp/gh-rest-hold-label.json
-  api POST "repos/${repo}/issues/${number}/labels" --input /tmp/gh-rest-hold-label.json >/dev/null 2>&1 || true
-  { printf 'Not merged: **%s**\n\n' "$why"
-    printf 'Auto-merge cannot be armed on this repository, so `pr-automerge` read this head commit'"'"'s own check runs rather than merging blind.\n\n'
-    printf 'Labelled `hold` so the janitor leaves it alone. Re-run the merge once the gate is green, or fix the check.\n'
-  } > /tmp/gh-rest-hold-body.md
-  bash "$0" pr-comment "$repo" "$number" /tmp/gh-rest-hold-body.md >/dev/null 2>&1 || true
+  bash "$0" pr-resume "$repo" "$number" \
+    --why "not merged: ${why} — pr-automerge read the gate rather than merging blind" >/dev/null 2>&1 || true
   printf 'refused\n'
   exit 3
 }

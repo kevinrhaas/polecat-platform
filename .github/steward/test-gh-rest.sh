@@ -237,10 +237,17 @@ check "a red check is REFUSED, not merged"                     "$got" "refused"
 check "…and it exits 3, so the caller can tell refusal from a REST failure" "$rc" "3"
 if grep -q 'repos/o/r/pulls/43/merge' "$FAKE_CALLS"; then bad "a refused PR must not be merged"
 else ok "…and no merge request was made at all"; fi
-if grep -q 'repos/o/r/issues/43/labels' "$FAKE_CALLS"; then ok "…the PR is labelled hold, so the janitor leaves it alone"
-else bad "a refused PR must be labelled hold"; fi
+# T-1577: `resume`, never `hold` — a refused PR needs no ruling from anybody, it
+# needs a machine to lap it and merge it when the check goes green, and `hold`
+# would take it out of the janitor's sweep for ever.
 if grep -q 'repos/o/r/issues/43/comments' "$FAKE_CALLS"; then ok "…and told why, on the PR itself"
 else bad "a refused PR must be told why"; fi
+if grep -q 'repos/o/r/issues/43/labels' "$FAKE_CALLS"; then ok "…and labelled, so the next pass knows what it is"
+else bad "a refused PR must be labelled"; fi
+if grep -q 'DELETE repos/o/r/issues/43/labels/hold' "$FAKE_CALLS"; then ok '…with resume, and hold taken off — a run never parks the owner'"'"'s switch'
+else bad "a refused PR must go to resume, not hold (T-1577)"; fi
+if grep -qE '\-f name=hold|"labels":\["hold"\]' "$FAKE_CALLS"; then bad "a refused PR must never be labelled hold (T-1577)"
+else ok "…and hold is never applied by the refusal itself"; fi
 
 # ── 7b-ii. A PENDING gate is refused once the wait budget is spent ─────────
 # Arming would have waited for the checks; without it the wait is ours to make,

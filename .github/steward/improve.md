@@ -345,14 +345,15 @@ HARD RULES:
   after it was opened (chicago-tickets T-1572). It now does by hand what arming
   would have done: reads the head commit's own check runs, waits up to
   `GH_REST_GATE_WAIT_SECONDS` (420) for a pending gate to settle, and then
-  either merges on green or **refuses** — printing `refused`, exiting **3**,
-  labelling the PR `hold` and commenting which check it refused on. So on those
-  repos budget one foreground call of up to ~7 minutes for the merge, and read
-  its exit status: **3 means your unit is now a `hold` PR**, which is a clean
-  outcome — say so in the summary and finish, do not re-merge past it.
-  `GH_REST_MERGE_BLIND=1` restores the old unconditional merge; use it only
-  when you have gated the merge yourself and know the red check is irrelevant,
-  and say in the PR why.
+  either merges on green or **refuses** — printing `refused`, exiting **3**, and
+  calling `pr-resume` for you with the check it refused on (so `resume`, never
+  `hold`: nobody has to rule on a red check, the next pass just re-gates it).
+  So on those repos budget one foreground call of up to ~7 minutes for the
+  merge, and read its exit status: **3 means your unit is now a `resume` PR**,
+  which is a clean outcome — say so in the summary and finish, do not re-merge
+  past it. `GH_REST_MERGE_BLIND=1` restores the old unconditional merge; use it
+  only when you have gated the merge yourself and know the red check is
+  irrelevant, and say in the PR why.
 - **NEVER `gh pr ...` OR `gh issue ...` — they spend the wrong budget, and it
   runs out.** `gh pr create|merge|comment|view|list` and `gh issue
   create|comment|list` all go through GitHub's **GraphQL** API, which is a
