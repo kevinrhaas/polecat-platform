@@ -344,16 +344,28 @@ HARD RULES:
   consulted at all — that is how #43 landed on a red `dev` about one second
   after it was opened (chicago-tickets T-1572). It now does by hand what arming
   would have done: reads the head commit's own check runs, waits up to
-  `GH_REST_GATE_WAIT_SECONDS` (420) for a pending gate to settle, and then
-  either merges on green or **refuses** — printing `refused`, exiting **3**, and
-  calling `pr-resume` for you with the check it refused on (so `resume`, never
-  `hold`: nobody has to rule on a red check, the next pass just re-gates it).
-  So on those repos budget one foreground call of up to ~7 minutes for the
-  merge, and read its exit status: **3 means your unit is now a `resume` PR**,
-  which is a clean outcome — say so in the summary and finish, do not re-merge
-  past it. `GH_REST_MERGE_BLIND=1` restores the old unconditional merge; use it
-  only when you have gated the merge yourself and know the red check is
-  irrelevant, and say in the PR why.
+  `GH_REST_GATE_WAIT_SECONDS` (**540**) for a pending gate to settle, and then
+  merges on green. So on those repos budget one foreground call of up to ~9
+  minutes for the merge, and **READ ITS EXIT STATUS — the two ways it does not
+  merge are different things** (T-1609):
+  * **exit 3, `refused` — a RED check.** That is a verdict. It has already
+    called `pr-resume` for you with the check it refused on (so `resume`, never
+    `hold`: nobody has to rule on a red check, the next pass just re-gates it).
+    **Your unit is now a `resume` PR, which is a clean outcome** — say so in the
+    summary and finish. Do not re-merge past it.
+  * **exit 4, `pending` — the gate is STILL RUNNING.** That is not a verdict and
+    not a refusal; nothing has been decided and the PR is untouched. **Call
+    `pr-automerge` again** — one more lap, one more foreground call, and it
+    merges when the gate lands. Measured 2026-09-26: chicago's gate takes
+    502-583 s, so a second lap covers it with room to spare and the unit merges
+    inside its own run. If the SECOND lap also comes back `pending`, stop waiting
+    and hand it on yourself with `pr-resume … --why "gate still running"`; the
+    janitor will lap and merge it. **Never answer a `pending` with
+    `GH_REST_MERGE_BLIND=1`** — that is merging a gate nobody read, which is
+    exactly what #43 did.
+  `GH_REST_MERGE_BLIND=1` restores the old unconditional merge; use it only when
+  you have gated the merge yourself and know the red check is irrelevant, and say
+  in the PR why.
 - **NEVER `gh pr ...` OR `gh issue ...` — they spend the wrong budget, and it
   runs out.** `gh pr create|merge|comment|view|list` and `gh issue
   create|comment|list` all go through GitHub's **GraphQL** API, which is a
