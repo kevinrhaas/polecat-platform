@@ -249,9 +249,11 @@ else bad "a refused PR must go to resume, not hold (T-1577)"; fi
 if grep -qE '\-f name=hold|"labels":\["hold"\]' "$FAKE_CALLS"; then bad "a refused PR must never be labelled hold (T-1577)"
 else ok "…and hold is never applied by the refusal itself"; fi
 
-# ── 7b-ii. A PENDING gate is refused once the wait budget is spent ─────────
+# ── 7b-ii. A PENDING gate comes back as `pending`, for the caller to lap ─────
 # Arming would have waited for the checks; without it the wait is ours to make,
-# and it is BOUNDED — a slice cannot be held open indefinitely.
+# and it is BOUNDED — a slice cannot be held open indefinitely, and one Bash tool
+# call cannot run past 600 s at all. So the bound is per CALL and expiring it is
+# not a verdict: `pending`, exit 4, PR untouched, caller decides (T-1609).
 newplan automerge_pending
 cat > "$FAKE_PLAN/1.txt" <<'EOF'
 HTTP/2.0 200 OK
@@ -271,10 +273,55 @@ HTTP/2.0 200 OK
 
 {}
 EOF
-got=$(GH_REST_GATE_WAIT_SECONDS=0 bash "$SUT" pr-automerge o/r 9 squash "title" 2>/dev/null)
-check "a still-pending gate is refused rather than merged past" "$got" "refused"
+got=$(GH_REST_GATE_WAIT_SECONDS=0 bash "$SUT" pr-automerge o/r 9 squash "title" 2>/dev/null); rc=$?
+check "a still-pending gate is handed back as pending, not merged past" "$got" "pending"
+check "…and exits 4, which is NOT the red-check exit 3 (T-1609)" "$rc" "4"
 if grep -q 'repos/o/r/pulls/9/merge' "$FAKE_CALLS"; then bad "a pending PR must not be merged"
 else ok "…and again, no merge request was made"; fi
+
+# T-1609: a PENDING gate is not a verdict, so it must not be dressed as one. No
+# label, no reason comment — the caller has not finished deciding, and a reason
+# written here would be stale the moment the gate goes green (the drift T-1577
+# measured). The run that gives up waiting calls `pr-resume` itself.
+if grep -qE '/labels|-f name=' "$FAKE_CALLS"; then bad "a pending PR must not be labelled (T-1609)"
+else ok "…and it is left UNLABELLED — pending is not a handoff"; fi
+if grep -q 'repos/o/r/issues/9/comments' "$FAKE_CALLS"; then bad "a pending PR must not be given a reason it may not need"
+else ok "…and no reason is written onto work that is still being gated"; fi
+
+# ── 7b-ii-b. T-1609: the gate is read AT the deadline, not a poll short of it ──
+# The old arithmetic was `now + GATE_POLL > deadline`, so the effective wait was
+# GATE_WAIT - GATE_POLL and the gate was never read at the instant the budget
+# expired. Here the budget is 1 s and the poll interval is 20 s: the old code
+# refused after a SINGLE read, having waited none of its budget. PR #63's real
+# gate went green 6 s past the mark, so this interval is a merged unit's worth.
+newplan automerge_deadline_read
+cat > "$FAKE_PLAN/1.txt" <<'EOF'
+HTTP/2.0 200 OK
+
+{"number":44,"node_id":"PR_kwDO","head":{"sha":"1a5tp011"}}
+EOF
+cat > "$FAKE_PLAN/2.txt" <<'EOF'
+GraphQL: Auto merge is not allowed for this repository (enablePullRequestAutoMerge)
+EOF
+cat > "$FAKE_PLAN/3.txt" <<'EOF'
+HTTP/2.0 200 OK
+
+{"total_count":1,"check_runs":[{"name":"chicago-4d-check","status":"in_progress","conclusion":null}]}
+EOF
+cat > "$FAKE_PLAN/4.txt" <<'EOF'
+HTTP/2.0 200 OK
+
+{"total_count":1,"check_runs":[{"name":"chicago-4d-check","status":"completed","conclusion":"success"}]}
+EOF
+cat > "$FAKE_PLAN/5.txt" <<'EOF'
+HTTP/2.0 200 OK
+
+{"sha":"1a5tp01"}
+EOF
+got=$(GH_REST_GATE_WAIT_SECONDS=1 GH_REST_GATE_POLL_SECONDS=20 \
+        bash "$SUT" pr-automerge o/r 44 squash "title" 2>/dev/null)
+check "a gate that goes green on the last poll is MERGED, not deferred" "$got" "1a5tp01"
+check "…having read the gate twice: the budget is waited out, not rounded down" "$(calls)" "5"
 
 # ── 7b-iii. No checks at all still merges — most steward PRs have none ─────
 # A bot-opened PR triggers no workflow on several fleet repos, so "no check

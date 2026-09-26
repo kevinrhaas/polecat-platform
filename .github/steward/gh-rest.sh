@@ -3,12 +3,16 @@
 #
 #   gh-rest.sh pr-create   <repo> <head> <base> <title> <body-file>   → prints the PR number
 #   gh-rest.sh pr-merge    <repo> <number> <method> [commit-title]    → prints the merge sha
-#   gh-rest.sh pr-automerge <repo> <number> [method] [commit-title]   → 'armed', 'refused', or merges
+#   gh-rest.sh pr-automerge <repo> <number> [method] [commit-title]   → 'armed', 'pending', 'refused', or merges
 #       Arms GitHub's auto-merge where the repository allows it. Where it does
 #       NOT (kevinrhaas/chicago), it reads the head commit's own check runs,
-#       waits GH_REST_GATE_WAIT_SECONDS (420) for a pending gate to settle, and
-#       merges only on green — refusing a red or still-pending one by labelling
-#       the PR `resume` (never `hold`, T-1577), saying which check, and exiting 3.
+#       waits GH_REST_GATE_WAIT_SECONDS (540) for a pending gate to settle, and
+#       merges only on green. The two ways it does not merge are DIFFERENT, and
+#       T-1609 is why:
+#         • a RED check is a verdict — it refuses, labels the PR `resume`
+#           (never `hold`, T-1577), says which check, and exits 3;
+#         • a still-PENDING gate is not a verdict — it prints `pending`, exits
+#           4 and changes nothing, for the caller to wait again or hand on.
 #       GH_REST_MERGE_BLIND=1 restores the old unconditional merge.
 #   gh-rest.sh pr-comment  <repo> <number> <body-file>
 #   gh-rest.sh pr-list     <repo> [state] [per-page]                  → number<TAB>head<TAB>base<TAB>title
@@ -152,7 +156,37 @@ jqf() { python3 -c 'import json,sys;d=json.load(sys.stdin);print(d.get(sys.argv[
 # when they are green, and refuse — saying which check — when they are not.
 # `pr-merge` is unchanged and still merges on command; this is the difference
 # between the two, and the reason to keep reaching for `pr-automerge`.
-GATE_WAIT="${GH_REST_GATE_WAIT_SECONDS:-420}"   # total seconds to wait for a pending gate
+# HOW LONG IT WAITS, AND WHY THAT IS NOT ONE NUMBER (T-1609, measured 2026-09-26).
+#
+# 420 s was a guess, and it was shorter than the gate it waited for. The
+# `pull_request` runs of kevinrhaas/chicago's `chicago-4d-check.yml` that morning
+# took 502-583 s wall clock for a full pass (median 551 s over 17 runs), so the
+# budget expired BELOW EVERY ONE OF THEM. Two consecutive units proved it inside
+# one hour, both fully gated green in the foreground before they were pushed:
+#
+#   PR #60 (T-0419)   opened 04:13Z   refused 04:20Z   gate green 04:23:25Z
+#   PR #63 (T-1603)   opened 05:31Z   refused 05:38Z   gate green 05:40:51Z
+#
+# Each ended as a `resume` PR whose stated reason was stale within three minutes,
+# and #60 was merged UNCHANGED by the janitor an hour later. That is not a gate
+# doing its job; it is a timeout wearing a verdict's clothes, and the cost is a
+# janitor lap plus up to two hours of latency on work that was already green.
+#
+# 540 s is the largest wait that fits ONE foreground call. A steward run drives
+# this from a Bash tool call capped at 600 s, so a wait past ~570 s is killed by
+# the harness before it can merge anything — which moves the failure from
+# GitHub's clock to the runner's and loses the work instead of labelling it. The
+# measured maximum is 583 s, ABOVE that ceiling, so NO single value here can be
+# both honest and sufficient: raising it until it always covered the gate would
+# write a number this process cannot wait out.
+#
+# So the wait is split instead of stretched. One call waits 540 s; a gate still
+# running at the end of it comes back as `pending`/exit 4 — not a refusal — and
+# the caller laps it. Two laps cover 1080 s, nearly twice the slowest gate
+# measured, and neither lap holds a slice open past its own ceiling. The second
+# lap costs one more arming mutation (~1 GraphQL point of 5000/h; see the note on
+# the mutation below), which is the whole price of the change.
+GATE_WAIT="${GH_REST_GATE_WAIT_SECONDS:-540}"   # seconds to wait, PER CALL, for a pending gate
 GATE_POLL="${GH_REST_GATE_POLL_SECONDS:-20}"    # seconds between reads
 
 # gate_state <repo> <sha> → one line:
@@ -201,6 +235,32 @@ refuse_merge() {
     --why "not merged: ${why} — pr-automerge read the gate rather than merging blind" >/dev/null 2>&1 || true
   printf 'refused\n'
   exit 3
+}
+
+# defer_merge <repo> <number> <check> — the gate has not answered yet, so there is
+# no verdict to act on. Print `pending`, exit 4, and change NOTHING about the PR.
+#
+# THIS IS NOT A REFUSAL, and T-1609 is why the two are separate calls. A red check
+# is GitHub saying the work is wrong; a pending one is GitHub not having said
+# anything. Collapsing them wrote "not merged" onto finished, green work — twice in
+# one hour — and bought a janitor lap to re-prove what the run had already proved.
+#
+# IT LEAVES NO LABEL, ON PURPOSE. `resume` means A RUN COULD NOT FINISH, and the
+# caller has not finished: its next move is to lap this call. Nothing is stranded
+# if the run dies here instead — the janitor sweeps by HEAD PATTERN, not by label
+# (`pr-sweepable` filters open, non-draft, `steward/*`, minus `hold`), so an
+# unlabelled open steward PR is already in the next sweep. The run that GIVES UP
+# waiting is the one that owes a reason, and it says so with `pr-resume` itself;
+# writing one here would put a stale reason on a PR that is about to merge, which
+# is the exact drift T-1577 measured.
+defer_merge() {
+  local repo="$1" number="$2" check="$3"
+  log "pr-automerge: ${check} is STILL RUNNING after ${GATE_WAIT}s on ${repo}#${number}"
+  log 'pr-automerge: that is not a red gate and not a refusal — nothing has been decided.'
+  log "pr-automerge: call pr-automerge again to keep waiting (each lap waits ${GATE_WAIT}s), or"
+  log "pr-automerge: hand it on: pr-resume ${repo} ${number} --why 'gate still running'"
+  printf 'pending\n'
+  exit 4
 }
 
 cmd="${1:-}"; shift || true
@@ -310,11 +370,23 @@ except Exception: print("")' 2>/dev/null)
           log "pr-automerge: no check runs on ${sha:0:7} yet — one more look in ${GATE_POLL}s"
           sleep "$GATE_POLL" ;;
         pending\ *)
-          if (( $(date -u +%s) + GATE_POLL > deadline )); then
-            refuse_merge "$repo" "$number" "check ${verdict#pending } had not finished within ${GATE_WAIT}s"
+          # SLEEP ONLY WHAT IS LEFT, AND READ THE GATE **AT** THE DEADLINE.
+          #
+          # The old test was `now + GATE_POLL > deadline`, which gave up a whole
+          # poll interval EARLY: the effective wait was GATE_WAIT - GATE_POLL, and
+          # the gate was never once read at the moment the budget actually ran out.
+          # On a 20 s poll that is 20 s discarded at the end of every wait —
+          # precisely where a gate that is about to go green lives. PR #63's gate
+          # went green 6 s after the 540 s mark this file now budgets, so the
+          # interval the old arithmetic threw away is the difference between a
+          # merged unit and a lap (T-1609).
+          now=$(date -u +%s)
+          if (( now >= deadline )); then
+            defer_merge "$repo" "$number" "check ${verdict#pending }"
           fi
-          log "pr-automerge: ${verdict} — waiting ${GATE_POLL}s (budget ends in $(( deadline - $(date -u +%s) ))s)"
-          sleep "$GATE_POLL" ;;
+          nap=$(( deadline - now )); (( nap > GATE_POLL )) && nap=$GATE_POLL
+          log "pr-automerge: ${verdict} — waiting ${nap}s (budget ends in $(( deadline - now ))s)"
+          sleep "$nap" ;;
         *)
           log "pr-automerge: unrecognised gate verdict [${verdict}] — merging directly instead"
           bash "$0" pr-merge "$repo" "$number" "${3:-squash}" "${4:-}"; exit $? ;;
