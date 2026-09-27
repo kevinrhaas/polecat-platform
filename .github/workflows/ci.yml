@@ -33,6 +33,12 @@ jobs:
       - name: The steward's GitHub calls survive their failure paths
         run: bash .github/steward/test-gh-rest.sh
 
+      # The journal filled on 2026-09-27 (GitHub caps an issue at 2,500
+      # comments) and turned every janitor run red on its last step. It rolls
+      # over now, and a failed post is a warning — both held here.
+      - name: The steward journal rolls over when full, and never fails a run
+        run: bash .github/steward/test-journal.sh
+
       - name: The janitor gates the merge, and names a conflict out loud
         run: |
           bash .github/steward/janitor-mergeability.sh --self-test

@@ -21,6 +21,8 @@
 #   gh-rest.sh issue-create  <repo> <title> <body-file> [label]       → prints the issue number
 #   gh-rest.sh issue-comment <repo> <number> <body-file>
 #   gh-rest.sh issue-find    <repo> <label>                           → first open number, or empty
+#   gh-rest.sh issue-comments <repo> <number>                         → the issue's comment count
+#   gh-rest.sh issue-close   <repo> <number>
 #   gh-rest.sh label-create  <repo> <name> <color> [description]
 #   gh-rest.sh budget                                                 → both meters, one line
 #
@@ -565,6 +567,15 @@ json.dump(d,sys.stdout)' "$title" "$bodyfile" "$label" > /tmp/gh-rest-issue.json
 import json,sys
 d=json.load(sys.stdin)
 print(d[0]["number"] if d else "")' ;;
+  issue-comments)
+    # The count GitHub keeps on the issue itself — one GET, no paging. journal.sh
+    # reads it to roll the journal over before GitHub's 2,500-comment cap does.
+    repo="$1"; num="$2"
+    api GET "repos/${repo}/issues/${num}" | jqf comments ;;
+  issue-close)
+    repo="$1"; num="$2"
+    printf '{"state":"closed","state_reason":"completed"}' > /tmp/gh-rest-close.json
+    api PATCH "repos/${repo}/issues/${num}" --input /tmp/gh-rest-close.json >/dev/null ;;
   label-create)
     repo="$1"; name="$2"; color="$3"; desc="${4:-}"
     python3 -c '
