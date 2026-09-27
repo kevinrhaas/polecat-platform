@@ -88,6 +88,20 @@ on the always-open `Steward journal` issue (label `steward-journal`, posted by
 matches the tag to show each run's narrative in its in-panel review. Don't close the
 issue; a new one is auto-created if it goes missing.
 
+**The journal rolls over, and it never fails a run** (2026-09-27). GitHub refuses a
+comment on an issue that already has 2,500 (HTTP 403, *"Commenting is disabled on issues
+with more than 2500 comments"*). The first journal, #56, got there at 12:27Z that day.
+Every janitor run then went red on its journal step alone, after its sweep had finished.
+The improve runs, which mark the step `continue-on-error`, stayed green and silently lost
+every entry, so Fleet Ops' run review showed nothing new. `journal.sh` now reads the
+issue's comment count first (`gh-rest.sh issue-comments`). At `JOURNAL_ROLL_AT` (2,400)
+it opens a successor journal pointing back at the full one, then closes the full one, so
+there is never a moment with none open. A post refused for the cap anyway rolls and
+retries once. Any other failure to post is a warning and exit 0: the journal is a run's
+write-up, never its verdict. Manager reads the newest `steward-journal` issue, open or
+closed (`js/github.js`, `state=all&per_page=1`), so it follows the roll with no change.
+`test-journal.sh` holds all four paths in CI.
+
 **What a run picked up** (2026-09-03): an improve entry now OPENS with a machine-readable
 record — `<!-- steward-record: {…} -->` followed by a one-row table of ticket, branch, PR,
 outcome, tool calls, turns, minutes and cost. `.github/steward/run-record.mjs` builds it by
