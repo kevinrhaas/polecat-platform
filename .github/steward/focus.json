@@ -30,7 +30,7 @@
       "everyHours": 1,
       "model": "claude-opus-5",
       "max_turns": 400,
-      "slices": 4
+      "slices": 5
     },
     "autoselector.polecat.live": {
       "enabled": false,
