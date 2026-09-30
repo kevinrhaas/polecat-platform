@@ -55,6 +55,9 @@ jobs:
       - name: Mixed processor lanes and GPT stream evidence
         run: node .github/steward/test-lanes.mjs
 
+      - name: Private ChatGPT worker routing
+        run: node .github/steward/test-private-worker.mjs
+
       - name: Manifest freshness
         run: |
           node scripts/gen-manifest.mjs
