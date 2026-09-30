@@ -95,6 +95,7 @@ else if (cmd === 'slices-of') console.log('1');
 else if (cmd === 'every-hours-of-job') console.log(process.env.FAKE_EVERY_HOURS || '1');
 else console.log('');
 FAKE
+: > "$TMP/ws/.github/steward/dispatch-lanes.mjs"
 cp "$TMP/focus.sh" "$TMP/ws/focus.sh"
 
 run_focus() { : > "$FAKE_DISPATCHES"; ( cd "$TMP/ws" && bash focus.sh ) > "$TMP/log" 2>&1; }

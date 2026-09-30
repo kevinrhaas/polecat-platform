@@ -32,6 +32,7 @@
  * echoed rather than thrown on, and nothing here can fail the run. `pipefail`
  * in the workflow still carries the agent's own exit code.
  */
+import { agentEvents } from './agent-events.mjs'
 import fs from 'node:fs'
 import readline from 'node:readline'
 
@@ -136,7 +137,7 @@ function handle (ev) {
       const text = ev.result || ev.error || ''
       const mins = ((ev.duration_ms || (Date.now() - T0)) / 60000).toFixed(1)
       say('■', `${ev.subtype || 'result'} · ${mins} min · ${ev.num_turns ?? '?'} turns · ` +
-               `${tools} tool calls · $${(ev.total_cost_usd ?? 0).toFixed(2)}`)
+               `${tools} tool calls · ${ev.total_cost_usd == null ? 'cost not reported' : '$' + ev.total_cost_usd.toFixed(2)}`)
       // The prompt's closing summary — this is what the journal wants.
       if (String(text).trim()) {
         try { fs.writeFileSync(OUT, String(text).trimEnd() + '\n') } catch {}
@@ -184,7 +185,7 @@ rl.on('line', line => {
     say('|', flat(line, 400))
     return
   }
-  try { handle(ev) } catch (err) { say('!', `stream-log could not render a ${ev.type} event: ${err.message}`) }
+  try { for (const event of agentEvents(ev)) handle(event) } catch (err) { say('!', `stream-log could not render a ${ev.type} event: ${err.message}`) }
 })
 
 rl.on('close', () => {

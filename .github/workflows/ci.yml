@@ -23,6 +23,9 @@ jobs:
           for f in $(git ls-files 'scripts/*.mjs'); do
             node --check "$f"
           done
+      - name: Independent lanes and processor dispatch
+        run: node .github/steward/test-lanes.mjs
+
       - name: The steward's run record parses its fixtures
         run: node .github/steward/run-record.mjs --self-test
 

@@ -29,6 +29,7 @@
  * artifacts — the fleet rule).
  */
 
+import { agentEvents } from './agent-events.mjs';
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 
 /* ------------------------------------------------------------------ read */
@@ -58,7 +59,7 @@ export function collectTools(events) {
   const uses = [];
   const byId = new Map();
   let result = null;
-  for (const ev of events) {
+  for (const ev of events.flatMap(agentEvents)) {
     if (ev.type === 'assistant') {
       for (const b of ev.message?.content || []) {
         if (b.type !== 'tool_use') continue;

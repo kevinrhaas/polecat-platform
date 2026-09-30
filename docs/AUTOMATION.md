@@ -223,3 +223,74 @@ run started on it reports that and stops. `.github/steward/improve.md` § CHICAG
 carries the full rule — the gate (`chicago/4d/tools/check.sh` + the smoke by parts),
 Blender on this runner, the tickets flow, owner decisions (`ticket.mjs ask`), and the
 provenance invariant that outranks everything else there.
+
+
+## Independent processor lanes
+
+Manager → Fleet Ops → **Add lane** creates a paused named lane for an app.
+Open its settings to choose **Claude Code** or **GPT / Codex**, a model ID,
+and reasoning effort. Set concurrency and cadence, then enable and **Commit
+roster**. The commit wakes the scheduler. **Run once** launches a separate,
+non-recurring batch with the displayed settings, in addition to scheduled work.
+
+The existing `apps` map remains unchanged and retains its historical slot and
+concurrency identity. Optional `lanes` is a map of stable IDs to configurations:
+
+```json
+{
+  "lanes": {
+    "chicago-deep": {
+      "app": "chicago", "name": "Deep work", "enabled": false,
+      "processor": "claude", "model": "claude-opus-5-5", "effort": "max",
+      "slices": 3, "everyHours": 1
+    },
+    "chicago-second": {
+      "app": "chicago", "name": "Second processor", "enabled": false,
+      "processor": "codex", "model": "gpt-6-astra", "effort": "xhigh",
+      "slices": 2, "everyHours": 1
+    }
+  }
+}
+```
+
+These are examples, not enabled production lanes. Add them to the existing
+roster; do not replace `apps` or `jobs`. Each named lane has independent slots,
+so these two settings target five simultaneous runs. Slices are local to a lane;
+all runs still follow the target repository's atomic ticket-claim protocol.
+Changes affect replacements; active runs finish unchanged. Lowering concurrency
+waits for surplus runs to drain. Removing a lane does not cancel its active runs.
+Do not reuse a removed lane's ID for a different app until its runs have drained.
+
+`processor` defaults to `claude`. A blank model preserves the old Claude fleet
+default; Codex defaults to GPT-6 Astra. Blank effort leaves the model default.
+Known current choices expose low/medium/high/xhigh/max; Haiku uses default effort.
+Custom IDs pass through unchanged, but access and supported effort remain the
+provider's decision. Unsupported models fail visibly rather than switching to
+another processor. The shared lane contract is mirrored in Manager `js/lanes.js`.
+
+### Credentials and execution
+
+Set **OPENAI_API_KEY** under polecat-platform → Settings → Secrets and variables
+→ Actions before starting GPT lanes. It is passed as `CODEX_API_KEY` to
+`codex exec`, never to Manager or the roster. This uses the API account's billing
+and model access, not a browser ChatGPT subscription. Claude continues to use
+**CLAUDE_CODE_OAUTH_TOKEN**. Both need the existing **STEWARD_PAT** for cross-repo
+work. The runner checks only the selected provider's credential before installing
+its CLI and browsers, and removes the other provider's credential from the child.
+
+Both processors get the same prompt and disposable GitHub VM, git setup,
+150-minute timeout, browser/geometry tools, salvage, and journal. Claude's
+`max_turns` is still supported; Codex has no equivalent CLI bound, so that field
+is not passed to it. Claude retains its existing transient-error continuation;
+Codex failures end the run and salvage its work without a blind retry.
+Codex JSONL is normalized for ticket/PR extraction and live logs while raw
+artifacts retain original events. Cost is unreported when the CLI omits it.
+
+The scheduler lists every page of active runs, matches exact app/lane titles,
+and dispatches only free slots. Failed/invalid run-list responses abort the tick
+instead of guessing that every slot is empty. GitHub concurrency groups retain
+per-app/per-lane/per-slot serialization as a second guard.
+
+Validation: `node .github/steward/test-lanes.mjs`,
+`bash .github/steward/test-focus-jobs.sh`, and
+`node .github/steward/run-record.mjs --self-test`.
