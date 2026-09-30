@@ -7,6 +7,8 @@ import path from 'node:path';
 
 const roster = { apps: { chicago: { enabled: true, slices: 3, model: 'claude-opus-5-5', effort: 'max' } },
   lanes: { 'chicago-gpt': { app: 'chicago', enabled: true, slices: 2, processor: 'gpt', model: 'gpt-6-astra', effort: 'xhigh' } } };
+// Enabled but expired lanes must not reserve queue positions forever.
+roster.lanes['expired'] = { app: 'chicago', enabled: true, slices: 10, until: '2000-01-01T00:00:00Z' };
 const [claude, gpt] = appLanes(roster);
 assert.equal(processorOf(claude.config).processor, 'claude');
 assert.equal(processorOf(gpt.config).effort, 'xhigh');
@@ -59,6 +61,11 @@ assert.equal(stream.status,0);
 const normalized=stream.stdout.trim().split('\n').map(l=>JSON.parse(l));
 assert.equal(normalized.filter(e=>e.message?.content?.[0]?.type==='tool_use').length,1);
 assert.equal(normalized.at(-1).result,'Completed unit');
+const logDir=mkdtempSync(path.join(tmpdir(),'lane-log-'));
+try {
+  const log=spawnSync(process.execPath,[new URL('stream-log.mjs',import.meta.url).pathname,path.join(logDir,'out')],{input:stream.stdout,encoding:'utf8'});
+  assert.equal(log.status,0);assert.match(log.stdout,/cost not reported/);assert.doesNotMatch(log.stdout,/\$0\.00/);
+} finally {rmSync(logDir,{recursive:true,force:true});}
 const failure=spawnSync(process.execPath,[new URL('codex-stream.mjs',import.meta.url).pathname],{input:JSON.stringify({type:'turn.failed',error:{message:'No model access'}})+'\n',encoding:'utf8'});
 assert.equal(failure.status,1);assert.match(failure.stdout,/No model access/);
 console.log('Mixed lane dispatch, occupancy, draining, validation and GPT evidence: PASS');

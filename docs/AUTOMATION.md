@@ -253,7 +253,7 @@ This is an example, not an enabled roster. Each lane keeps its own worker target
 concurrency groups. Do not rename a live lane: pause it and let its workers finish
 first. The dispatcher paginates active runs, matches exact lane identities, and
 fails closed on occupancy-query errors. Platform jobs continue independently.
-Queue positions span an app's enabled lanes; repository claim/inflight protocols
+Queue positions span an app's currently due lanes; repository claim/inflight protocols
 remain mandatory, including while schedules or counts change.
 
 `processor` is `claude` (default) or `gpt` (Codex CLI). `model` is an exact ID;
