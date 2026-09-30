@@ -98,6 +98,7 @@ concurrency:
 
 jobs:
   improve:
+    if: inputs.processor != 'gpt' || vars.STEWARD_GPT_AUTH != 'chatgpt'
     runs-on: ubuntu-latest
     # 150, raised from 90 on 2026-08-14, because 90 had started DISCARDING
     # FINISHED WORK rather than protecting anything.
@@ -697,3 +698,45 @@ jobs:
           echo "→ slot freed; kicking steward-focus to refill it"
           gh workflow run steward-focus.yml -R kevinrhaas/polecat-platform
 
+
+  chatgpt:
+    if: inputs.processor == 'gpt' && vars.STEWARD_GPT_AUTH == 'chatgpt'
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate lane settings
+        run: node .github/steward/validate-run.mjs
+      - name: Run private ChatGPT worker
+        env:
+          GH_TOKEN: ${{ secrets.STEWARD_PAT }}
+          WORKER_INPUTS: ${{ toJSON(inputs) }}
+        run: node .github/steward/private-worker.mjs
+      - name: Stop private worker if parent failed or was cancelled
+        if: always() && (failure() || cancelled())
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.STEWARD_PAT }}
+        run: |
+          [ -f /tmp/private-worker-id ] || exit 0
+          WORKER_ID=$(cat /tmp/private-worker-id)
+          [[ "$WORKER_ID" =~ ^[0-9]+$ ]] || exit 1
+          STATE=$(gh api "repos/kevinrhaas/polecat-steward/actions/runs/$WORKER_ID" --jq .status)
+          [ "$STATE" = completed ] || gh api --method POST "repos/kevinrhaas/polecat-steward/actions/runs/$WORKER_ID/cancel"
+      - name: Journal private worker link
+        if: always()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          bash .github/steward/journal.sh "$GITHUB_RUN_ID" "Steward ChatGPT worker" "${{ job.status }}" /tmp/private-worker.md --whole
+      - name: Ask scheduler to refill after success
+        if: success() && inputs.app != '' && inputs.app != 'fleet'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run steward-focus.yml -R kevinrhaas/polecat-platform

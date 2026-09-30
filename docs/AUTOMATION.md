@@ -279,3 +279,24 @@ is Claude-specific; GPT runs are bounded by the workflow timeout, not that field
 Implementation references: [Codex non-interactive mode](https://developers.openai.com/codex/noninteractive),
 [Codex reasoning configuration](https://developers.openai.com/codex/config-reference),
 and [Claude model and effort configuration](https://code.claude.com/docs/en/model-config).
+
+### ChatGPT plan authentication (private worker)
+
+With repository variable `STEWARD_GPT_AUTH=chatgpt`, GPT improve runs delegate to
+`kevinrhaas/polecat-steward`. Their public run stays active while the private worker
+runs, preserving Manager and scheduler slot accounting. Model, effort, app, lane,
+slice and queue position pass through unchanged. Failure propagates and does not
+immediately refill the lane. There is no API fallback in this mode.
+
+Provision the private worker first using its README: fleet work token, a separate
+private-repository Secrets-write token, and a fresh ChatGPT login per app/lane/slice.
+Each worker persists refreshed credentials securely for subsequent runs. Sessions
+share the account's plan allowance; they do not multiply it. Keep login credentials
+and detailed GPT execution logs in the private repository. Public journal entries
+contain only the private-run link and status. Parent failure or cancellation attempts to stop its linked private worker. A runner
+crash can prevent cleanup; follow the private-run link to verify cancellation.
+
+Leave the variable unset until provisioning is complete. Existing API mode remains
+the default, and existing Claude lanes are unaffected. Auth checks can be exercised
+without paid model calls: `node .github/steward/test-private-worker.mjs` here and
+`node scripts/test-auth.mjs` in the private worker repo.
