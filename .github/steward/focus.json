@@ -26,11 +26,11 @@
       "slices": 3
     },
     "chicago": {
-      "enabled": false,
+      "enabled": true,
       "everyHours": 1,
-      "model": "claude-opus-5",
       "max_turns": 400,
-      "slices": 5
+      "processor": "gpt",
+      "effort": "medium"
     },
     "autoselector.polecat.live": {
       "enabled": false,
@@ -68,7 +68,7 @@
       "offset": 3
     },
     "janitor": {
-      "enabled": false,
+      "enabled": true,
       "everyHours": 1
     }
   }
