@@ -15,15 +15,16 @@ for (const status of ['in_progress', 'queued', 'waiting', 'pending', 'requested'
     `repos/${repo}/actions/workflows/steward-improve.yml/runs?status=${status}&per_page=100`]));
   for (const page of pages) for (const r of page.workflow_runs) runs.push({ status: r.status, displayTitle: r.display_title });
 }
+const now = new Date();
 let count = 0;
 for (const lane of lanes) {
-  if (!isDueAt(lane.config, new Date())) continue;
+  if (!isDueAt(lane.config, now)) continue;
   const n = slicesOf(lane.config), busy = busySlots(runs, lane);
   let free = n - busy.size;
   const settings = processorOf(lane.config);
   // Distinct queue positions across this app's enabled lanes reduce collisions;
   // repository ticket claims remain the authority, including during resizing.
-  const siblings = lanes.filter(l => l.app === lane.app && l.config.enabled);
+  const siblings = lanes.filter(l => l.app === lane.app && isDueAt(l.config, now));
   const offset = siblings.slice(0, siblings.indexOf(lane)).reduce((v, l) => v + slicesOf(l.config), 0);
   const total = siblings.reduce((v, l) => v + slicesOf(l.config), 0);
   for (let k = 1; k <= n && free > 0; k++) {
