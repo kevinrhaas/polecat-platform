@@ -52,8 +52,12 @@ jobs:
       - name: A roster job is dispatched once, not once per tick
         run: bash .github/steward/test-focus-jobs.sh
 
+      - name: Mixed processor lanes and GPT stream evidence
+        run: node .github/steward/test-lanes.mjs
+
       - name: Manifest freshness
         run: |
           node scripts/gen-manifest.mjs
           git diff --exit-code lib/MANIFEST.json || {
             echo '::error::lib/MANIFEST.json is stale — run node scripts/gen-manifest.mjs'; exit 1; }
+
