@@ -223,3 +223,59 @@ run started on it reports that and stops. `.github/steward/improve.md` § CHICAG
 carries the full rule — the gate (`chicago/4d/tools/check.sh` + the smoke by parts),
 Blender on this runner, the tickets flow, owner decisions (`ticket.mjs ask`), and the
 provenance invariant that outranks everything else there.
+
+
+## Multiple processors on one app
+
+`apps` retains the original lane for each app. Add named lanes in a top-level
+`lanes` object; their keys are stable lowercase IDs (letters, digits, hyphens).
+Each named lane includes `app` plus the same schedule fields as an app lane.
+Manager's Fleet Ops **Add lane for this app** creates one paused for review.
+Commit the roster to apply its settings; running work drains when a lane is
+paused, removed, or reduced. No migration or changes to existing lane settings
+are required.
+
+```json
+{
+  "apps": {
+    "chicago": { "enabled": true, "everyHours": 1, "slices": 3,
+      "processor": "claude", "model": "claude-opus-5-5", "effort": "max" }
+  },
+  "lanes": {
+    "chicago-gpt": { "app": "chicago", "enabled": true, "everyHours": 1,
+      "slices": 2, "processor": "gpt", "model": "gpt-6-astra", "effort": "xhigh" }
+  }
+}
+```
+
+This is an example, not an enabled roster. Each lane keeps its own worker target
+(1–10); totals across lanes add together. Lane IDs appear in run titles and
+concurrency groups. Do not rename a live lane: pause it and let its workers finish
+first. The dispatcher paginates active runs, matches exact lane identities, and
+fails closed on occupancy-query errors. Platform jobs continue independently.
+Queue positions span an app's enabled lanes; repository claim/inflight protocols
+remain mandatory, including while schedules or counts change.
+
+`processor` is `claude` (default) or `gpt` (Codex CLI). `model` is an exact ID;
+omitted values preserve the Claude fleet default or select Astra for GPT.
+`effort` accepts default/omitted, low, medium, high, xhigh, or max. Availability
+and effort support are determined by the selected model and provider account.
+Known Haiku choices have no effort control. Custom IDs are preserved on reload;
+they are validated for safe transport, not guaranteed account access.
+
+Configure `OPENAI_API_KEY` as a **repository Actions secret on polecat-platform**
+for GPT lanes. The secret is injected only in the GPT execution step. Claude
+lanes continue using `CLAUDE_CODE_OAUTH_TOKEN`; both use `STEWARD_PAT` for repo
+operations. Manager never receives these processor credentials. The disposable
+runner has the same autonomous repository-editing permissions as existing Claude
+runs. GPT uses API billing, independently of any ChatGPT subscription.
+
+Both processors use the same playbook, tools, salvage, journal, and refill path.
+GPT events are adapted into the existing tool-evidence format so claims and PR
+operations remain traceable. Claude retains its bounded transient-error resume;
+GPT failures are recorded and recovered by a later scheduler tick. `max_turns`
+is Claude-specific; GPT runs are bounded by the workflow timeout, not that field.
+
+Implementation references: [Codex non-interactive mode](https://developers.openai.com/codex/noninteractive),
+[Codex reasoning configuration](https://developers.openai.com/codex/config-reference),
+and [Claude model and effort configuration](https://code.claude.com/docs/en/model-config).
