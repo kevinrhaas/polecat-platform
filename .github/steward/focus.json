@@ -26,7 +26,7 @@
       "slices": 3
     },
     "chicago": {
-      "enabled": true,
+      "enabled": false,
       "everyHours": 1,
       "max_turns": 400,
       "processor": "gpt",
@@ -68,7 +68,7 @@
       "offset": 3
     },
     "janitor": {
-      "enabled": true,
+      "enabled": false,
       "everyHours": 1
     }
   }
