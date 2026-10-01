@@ -34,8 +34,10 @@ try {
   mkdirSync(path.join(dir,'bin'));
   // Fake GitHub: a status-filtered query is --slurp'd (array of pages); the
   // unfiltered one returns one page. A run flagged `lagging` is missing from
-  // every FILTERED listing, as a just-promoted run is on the real API.
-  writeFileSync(path.join(dir,'bin/gh'), `#!/usr/bin/env node\nconst fs=require('fs');const a=process.argv.slice(2);if(a[0]==='api'){if(process.env.BROKEN)process.exit(1);const runs=JSON.parse(process.env.RUNS).map((r,i)=>({...r,id:i}));const url=a.at(-1);const out=rs=>rs.map(r=>({id:r.id,status:r.status,display_title:r.displayTitle}));if(url.includes('status=')){console.log(JSON.stringify([{workflow_runs:out(runs.filter(r=>!r.lagging&&url.includes('status='+r.status+'&')))}]));}else console.log(JSON.stringify({workflow_runs:out(runs)}));}else fs.appendFileSync(process.env.CALLS,JSON.stringify(a)+'\\n');`, {mode:0o755});
+  // every FILTERED listing, as a just-promoted run is on the real API. The
+  // unfiltered page is padded past 1 MB, as real pages are (full commit
+  // messages), so a dispatcher using execFileSync's default buffer fails here.
+  writeFileSync(path.join(dir,'bin/gh'), `#!/usr/bin/env node\nconst fs=require('fs');const a=process.argv.slice(2);if(a[0]==='api'){if(process.env.BROKEN)process.exit(1);const runs=JSON.parse(process.env.RUNS).map((r,i)=>({...r,id:i}));const url=a.at(-1);const out=rs=>rs.map(r=>({id:r.id,status:r.status,display_title:r.displayTitle}));if(url.includes('status=')){console.log(JSON.stringify([{workflow_runs:out(runs.filter(r=>!r.lagging&&url.includes('status='+r.status+'&')))}]));}else console.log(JSON.stringify({workflow_runs:out(runs),pad:'x'.repeat(2e6)}));}else fs.appendFileSync(process.env.CALLS,JSON.stringify(a)+'\\n');`, {mode:0o755});
   const calls = path.join(dir,'calls');
   const env = {...process.env, PATH:path.join(dir,'bin')+':'+process.env.PATH, RUNS:JSON.stringify(runs), CALLS:calls};
   let result = spawnSync(process.execPath,[path.join(dir,'dispatch-lanes.mjs')], {env,encoding:'utf8'});
