@@ -23,10 +23,10 @@ below.)
 | Workflow | Schedule | Job |
 |---|---|---|
 | `steward-improve.yml` | dispatch-only (no schedule) | ONE unit of work on the app that most needs it — shell PRs first, then the MIGRATION.md queue, then stalest-release playbook work. Invoked by `steward-focus.yml` per `focus.json` with an explicit `app=<repo>` (focus mode); a manual dispatch with an empty `app` runs the suite-wide fleet pick. **All scheduling lives in `focus.json`** — the `STEWARD_FOCUS_APP` variable was retired (2026-07-15). |
-| `steward-focus.yml` | heartbeat tick every 10 min (`*/10`, Claude-free) | **The multi-app focus roster.** Reads `.github/steward/focus.json` through `.github/steward/schedule.mjs` (the canonical evaluator) and, each tick, dispatches a focus improve BATCH per enabled lane that is due AND idle — so a lane fires its next batch within ~10 min of the last finishing, and a batch that died mid-way restarts on the next tick rather than stalling an hour. Drop the cron to `*/5` to run harder. Lane schedule fields: `enabled`, `everyHours`, `offset` (align which hours the cadence lands on), `window` (UTC hour window, wraps midnight), `startAt` (sleep until), `until` (expire at — "run every X until Y"), `slices` (1..10, default 1 — how many improve runs the lane fires IN PARALLEL each time it is due; each is a full unit of work with its own PR + smoke gate). Slices are **fired all at once, not chained** (changed 2026-08): steward-focus dispatches slice=1..N in the same tick and they work simultaneously — N agent lanes on one app. Each run is told `SLICE: k of N` and takes the **k-th** topmost workable item from that app's queue, so siblings starting from an identical repo state don't all build the same thing (see `.github/steward/improve.md` § PARALLEL SLICES; chicago/4d additionally locks per-ticket via `tools/ticket.mjs claim`/`inflight`). This used to chain one-at-a-time only because all slices shared one concurrency group, which holds one running + one pending and cancelled the surplus; `steward-improve`'s group now carries the slice number (`…-s<k>`), which is what makes the fan-out safe. Batch semantics: the skip-if-busy check means a new batch fires only when the lane is due again AND **no** slice of the previous batch is still in flight — a lane tops up as a whole, never mid-batch. Different apps run in parallel, and so do a lane's own slices. **The loop does not depend on the cron:** the last slice of a batch to finish dispatches `steward-focus` itself (its final step), so the next batch starts within a minute of the last one landing. That matters because GitHub throttles schedule events hard under load — measured 2026-08-27, scheduled ticks arrived 99–214 minutes apart and then stopped for ~6 hours, which stalled the lane once slices stopped chaining. The cron is now a backstop (and the recovery path for a batch where every slice failed, since the kick is gated on success). Edit lanes from Manager's Fleet Ops panel, the GitHub UI, or any session — effective next tick, no workflow edits. Preview with `node .github/steward/schedule.mjs next`. |
+| `steward-focus.yml` | heartbeat tick every 10 min (`*/10`, Claude-free) | **The multi-app focus roster.** Reads `.github/steward/focus.json` through `.github/steward/schedule.mjs` (the canonical evaluator) and, each tick, **tops up** every enabled lane that is due. Lane schedule fields: `enabled`, `everyHours`, `offset` (align which hours the cadence lands on), `window` (UTC hour window, wraps midnight), `startAt` (sleep until), `until` (expire at — "run every X until Y"), `slices` (1..10, default 1). **`slices` is a standing CONCURRENCY TARGET, not a batch size** (changed 2026-09): the lane keeps N improve runs going at all times, each a full unit of work with its own PR + smoke gate. Each tick counts how many of the N slots are occupied and dispatches only the empty ones, so one run finishing frees one slot and one replacement starts while its siblings carry on. The refill reuses that slot's OWN number (`slice=k`), which matters twice: the slice index is part of `steward-improve`'s concurrency group (`…-s<k>`), and slice k takes the **k-th** topmost workable item — stable because a claimed item keeps its place in the list (see `.github/steward/improve.md` § PARALLEL SLICES; chicago/4d additionally locks per-ticket via `tools/ticket.mjs claim`/`inflight`). This replaced a BATCH GATE that fired all N and then skipped the lane until every one had finished — so a lane moved at the pace of its slowest run, and one set to 10 spent much of its time running one. Before that it chained one-at-a-time, only because all slices shared a concurrency group that holds one running + one pending and cancelled the surplus. For continuous operation keep `everyHours: 1`, which makes the lane eligible on every tick. **The loop does not depend on the cron:** every successful run dispatches `steward-focus` itself (its final step), so a freed slot refills within about a minute. That matters because GitHub throttles schedule events hard under load — measured 2026-08-27, ticks arrived 99–214 minutes apart and then stopped for ~6 hours. The cron is a backstop, and the recovery path for a slot freed by a run that FAILED (the kick is gated on success). A lowered `slices` is honoured by letting the surplus drain, never by cancelling it. Different apps run in parallel, and so do a lane's own slices. Edit lanes from Manager's Fleet Ops panel, the GitHub UI, or any session — no workflow edits needed, and effective AT ONCE: a push to focus.json ticks steward-focus (its `push` trigger), which is what makes enabling a lane start it instead of leaving it to wait on a throttled cron. That cold start was the one path back to full strength with no finishing run to do the kicking. Preview with `node .github/steward/schedule.mjs next`. |
 | `steward-sweep-ux.yml` | roster job `sweep-ux` (default daily, 06 UTC) | Read-only user walk of every live site → one prioritized findings issue per app. |
 | `steward-sweep-tech.yml` | roster job `sweep-tech` (default daily, 09 UTC) | Read-only audit: pageerrors, changelog contract, vendor sha256 drift, SW caches, CI health, hygiene, secrets → one issue per app. |
-| `steward-janitor.yml` | roster job `janitor` (default every 2h; Claude-free) | **The no-manual-merges guarantee.** Sweeps all fleet repos for open `steward/*` / `chore/polecat-shell-*` PRs, re-runs each app's own smoke gate against the branch, merges the green ones, comments once on the red ones. Never touches drafts or PRs labeled `hold` — that label is Kevin's park-for-review switch. |
+| `steward-janitor.yml` | roster job `janitor` (default every 2h; Claude-free) | **The no-manual-merges guarantee.** Sweeps all fleet repos for open `steward/*` / `chore/polecat-shell-*` PRs, merges each PR's **base** into its branch, re-runs each app's own smoke gate against **that merge**, merges the green ones, comments once on the red ones. Never touches drafts or PRs labeled `hold` — that label is Kevin's park-for-review switch, and since T-1577 **no run applies it**. A PR labeled `resume` IS swept: that is a run's own unfinished handoff, which is work the loop still owes, so the janitor laps, gates and merges it like any other (see the two-label table in `.github/steward/improve.md` and the fixture in `test-gh-rest.sh`). **It gates the merge, not the bare branch, and it says so when a branch will not merge** — both since T-0809 (2026-09-13). Before that it cloned the branch alone: a green branch was merged without the merge ever having been gated (the hole T-0674 filed against bot-opened PRs), and a merge that then failed on conflict printed `merge failed (conflict?)` and moved on — no comment, no label. That silence is how 21 automation PRs silted up on kevinrhaas/custom in 2026-09, each swept and skipped and swept again; measured again on the day of the fix, **all five** open ones conflicted (on `changelog.js`, `QUEUE.md` and `dev-smoke-state.json` — files that repo deliberately does not union-merge) and not one had been told. **The standing rule: a `steward/*` PR that cannot merge is not open, it is ROTTING** — its ticket still reads `open` at the top of the queue and the next slice rebuilds the same work, so an un-mergeable PR must become visible within one sweep. `.github/steward/janitor-mergeability.sh` puts the merge on disk or names the conflicting paths; `test-janitor-sweep.sh` gates both failure paths in `ci.yml` by **extracting** the sweep step from the workflow, so editing the workflow is what that check watches. **It should not be inheriting GREEN work, and since T-1609 (2026-09-26) it mostly does not.** `pr-automerge`'s wait for a pending gate defaulted to 420 s against a chicago gate measured at 502-583 s, so a finished, foreground-gated unit timed out and became a `resume` PR every time — PR #60 was then merged *unchanged* by this sweep an hour later. The wait is now 540 s (the most one 600 s foreground call can hold), it reads the gate **at** its deadline rather than a poll short of it, and a still-pending gate is no longer reported as a refusal: it exits **4** with the PR untouched, and the run laps it once more and merges in-run. A RED check still exits 3 and still labels `resume`, which is the case this sweep is genuinely for. |
 | `steward-shell-release.yml` | dispatch only | Bump lib/VERSION + manifest + tag, vendoring PRs to every app, merge the green ones. |
 
 The sweeps' and janitor's standalone crons are retired (2026-07-16): **focus.json is
@@ -39,6 +39,37 @@ Secrets required on THIS repo: `CLAUDE_CODE_OAUTH_TOKEN` (from `claude setup-tok
 and `STEWARD_PAT` (classic PAT, repo scope on kevinrhaas/* — powers cross-repo
 clone/push and `gh` PRs/issues). Every workflow fails fast with a clear error if
 either is missing.
+
+### Which token pays for a call
+
+Two tokens, two meters, and the rule is simply *where the call lands*:
+
+| | reaches | metered | use for |
+|---|---|---|---|
+| `STEWARD_PAT` | every `kevinrhaas/*` repo | **account-wide** — one pool shared by every parallel slice, the janitor, the sweeps AND Manager's Fleet Ops | anything touching an APP repo |
+| `${{ github.token }}` | this repo only | **per repository** (1,000/h), its own bucket | anything that stays in polecat-platform |
+
+The PAT's pool is the scarce one, and `slices: N` multiplies the demand on it by
+N. So a call that never leaves this repo should not be paid for out of it:
+
+- **Journalling** (`journal.sh`, which hardcodes `kevinrhaas/polecat-platform`)
+  runs on `github.token` in improve, janitor and both sweeps — each needs
+  `issues: write`. This also makes the write-up independent of PR traffic: a
+  starved PAT can no longer lose a shipped run's journal entry.
+- **Dispatch** (steward-focus firing improve, and a finishing run kicking
+  steward-focus to refill its slot) runs on `github.token` with `actions: write`. Safe despite the
+  "GITHUB_TOKEN events don't start workflow runs" rule, because
+  `workflow_dispatch` is an explicit exception to it.
+- Everything cross-repo — clone/push, PRs and issues on app repos, the
+  chicago/4d blender pin — stays on the PAT. It has no alternative.
+
+Two things that are NOT the REST pool, and mislead if you assume they are:
+git over HTTPS (clone/fetch/push) is metered separately and does not spend it,
+and **GraphQL has its own 5,000-point hourly bucket** — which `gh pr` and
+`gh issue` used to drain to zero while REST sat nearly untouched (see the
+measurement in `.github/steward/gh-rest.sh`, the reason those calls are now
+REST). `bash .github/steward/gh-rest.sh budget` prints core and GraphQL
+together.
 
 Optional secrets — per-app admin tokens: `MANAGER_ADMIN_TOKEN`,
 `ANALYTICS_ADMIN_TOKEN`, `JOBTRACKER_ADMIN_TOKEN`, `RELAY_ADMIN_TOKEN`,
@@ -56,6 +87,33 @@ on the always-open `Steward journal` issue (label `steward-journal`, posted by
 `.github/steward/journal.sh`, tagged `<!-- steward-run:ID -->`). Manager's Fleet Ops
 matches the tag to show each run's narrative in its in-panel review. Don't close the
 issue; a new one is auto-created if it goes missing.
+
+**The journal rolls over, and it never fails a run** (2026-09-27). GitHub refuses a
+comment on an issue that already has 2,500 (HTTP 403, *"Commenting is disabled on issues
+with more than 2500 comments"*). The first journal, #56, got there at 12:27Z that day.
+Every janitor run then went red on its journal step alone, after its sweep had finished.
+The improve runs, which mark the step `continue-on-error`, stayed green and silently lost
+every entry, so Fleet Ops' run review showed nothing new. `journal.sh` now reads the
+issue's comment count first (`gh-rest.sh issue-comments`). At `JOURNAL_ROLL_AT` (2,400)
+it opens a successor journal pointing back at the full one, then closes the full one, so
+there is never a moment with none open. A post refused for the cap anyway rolls and
+retries once. Any other failure to post is a warning and exit 0: the journal is a run's
+write-up, never its verdict. Manager reads the newest `steward-journal` issue, open or
+closed (`js/github.js`, `state=all&per_page=1`), so it follows the roll with no change.
+`test-journal.sh` holds all four paths in CI.
+
+**What a run picked up** (2026-09-03): an improve entry now OPENS with a machine-readable
+record — `<!-- steward-record: {…} -->` followed by a one-row table of ticket, branch, PR,
+outcome, tool calls, turns, minutes and cost. `.github/steward/run-record.mjs` builds it by
+reading the run's own event stream (the `ticket.mjs claim`, `git push`, `pr-create` and
+`pr-merge` calls, with the PR number and merge sha from their results), so it is right even
+when a run dies mid-sentence and it cannot claim a merge that did not happen. `outcome` is
+one of `merged | open | resume | hold | blocked | died | no-pr` — `resume` is the run's own handoff (a `pr-resume` call in the stream) and `hold` is the owner's park switch, which a run no longer applies. The same table goes to the run's
+Actions summary, the JSON to the `steward-record.json` artifact, and Manager reads the
+marker to label each run in its Steward log. The heading now carries the slice
+(`Steward improve — chicago [2/5]`), because five parallel runs used to post five entries
+under one title. `--self-test` covers the parser against fixtures in
+`.github/steward/fixtures/`.
 
 **Watching a run while it happens** (2026-08-23, issue #139): every Claude-driven
 steward workflow runs the agent with `--output-format stream-json` piped through
@@ -111,7 +169,7 @@ the design ports back one-to-one if the infrastructure matures (the prompts in
    agent STAMPS timestamps itself with the repo's own tool (nothing stamps after
    merge) — games `tools/stamp-changelog.mjs`, jobtracker/relay/autoselector
    `.github/stamp-changelog.mjs`, analytics `tools/changelog-normalize.js`,
-   custom `chicago/4d/tools/stamp-changelog.mjs`, this
+   chicago `chicago/4d/tools/stamp-changelog.mjs`, this
    repo's own `site/js/changelog.js` via `scripts/stamp-changelog.mjs`.
 3. Smoke before merge: 390×780 + desktop, zero pageerrors. Mobile is a gate.
 4. Never break `/js/changelog.js` parseability — Manager and the launcher read it live.
@@ -131,13 +189,12 @@ the design ports back one-to-one if the infrastructure matures (the prompts in
 Hourly × 8 repos was paused for token cost. The steward improve loop is now driven
 entirely by `.github/steward/focus.json` (2026-07-15): each app opts in with
 `enabled` + an `everyHours` cadence, and `steward-focus.yml` dispatches only the
-apps due that hour. Currently enabled: **analytics.polecat.live** and **custom**,
-both continuous (`everyHours: 1`, pinned to opus). Everything else is paused —
-autoselector.polecat.live ran a ~6-hour burst on 2026-07-15 and
-jobtracker.polecat.live was paused the same day at Kevin's request; flip either
-app's `enabled` back to resume. Scheduled spend is
+apps due that hour. As of 2026-09-23 every lane is paused (analytics.polecat.live
+and the 4D lane — now `chicago` — were the continuous ones, `everyHours: 1`, pinned
+to opus); flip a lane's `enabled` back to resume it. Scheduled spend is
 therefore whatever the roster enables + the two daily sweeps; start/stop/retarget any
-app by editing focus.json (no commit to a workflow, effective next tick). Manual
+app by editing focus.json (no commit to a workflow; a push to that file ticks
+steward-focus immediately, so it takes effect at once). Manual
 `app=<repo>` dispatches and one-off fleet-pick runs remain free to start on demand.
 
 Note that `offset` does nothing on an `everyHours: 1` lane — the evaluator reduces
@@ -145,15 +202,101 @@ it modulo the cadence, so `offset % 1` is always 0. Two hourly lanes therefore f
 on the same tick, which is fine: different repos dispatch in parallel under separate
 concurrency groups, and only same-app overlap is skipped.
 
-## The `custom` lane is SCOPED (2026-08-10)
+## The `chicago` lane (2026-09-23; the `custom` lane before it)
 
-`kevinrhaas/custom` is not an app — it is Kevin's monorepo of unrelated personal
-projects (CAD, 3D-print models, the Joliet game, a small landing site). Its steward
-lane exists for exactly one subtree: **`chicago/4d/`**, a walkable,
-historically-sourced 3D reconstruction of 1835 Chicago, plus its published mirror
-`site/chicago/4d/`. `.github/steward/improve.md` carries the full rule — the gate
-(`chicago/4d/tools/check.sh` + `tools/smoke_renderer.mjs`, after
-`pip install jsonschema pyproj`), the no-Blender-on-this-runner constraint (bakes
-belong to the repo's own nightly `chicago-4d-bake.yml`), the
-publish-in-the-same-commit requirement, and the provenance invariant that outranks
-everything else there. A run that edits anything else in that repo is out of scope.
+The 4D reconstruction of 1835 Chicago used to be one subtree of `kevinrhaas/custom`
+(a monorepo of unrelated personal projects), and the `custom` lane was SCOPED to that
+subtree (2026-08-10). On 2026-09-23 it moved into its own repositories:
+
+- **`kevinrhaas/chicago`** — the code, data and research. The project still lives at
+  `chicago/4d/` inside it (so no tool's paths changed); its generated, untracked Pages
+  mirror is `site/4d/`, served at https://chicago.polecat.live/4d/.
+- **`kevinrhaas/chicago-tickets`** — the ticket files (folders of 250 by number) and
+  `QUEUE.md`. Every `ticket.mjs` change is a direct commit to its `main` — no PR — so
+  ticket and queue edits never ride a code PR and never conflict with one. A claim is
+  visible to every run the moment it is pushed; `done` sets `review`, and the tickets
+  repo's settle workflow marks it `done` when the code PR actually merges.
+
+The lane is now `chicago` in focus.json (same shape: hourly, 3 slices, 400 turns,
+opus). The `custom` lane is left in the roster, disabled, with nothing in scope: a
+run started on it reports that and stops. `.github/steward/improve.md` § CHICAGO 4D
+carries the full rule — the gate (`chicago/4d/tools/check.sh` + the smoke by parts),
+Blender on this runner, the tickets flow, owner decisions (`ticket.mjs ask`), and the
+provenance invariant that outranks everything else there.
+
+
+## Multiple processors on one app
+
+`apps` retains the original lane for each app. Add named lanes in a top-level
+`lanes` object; their keys are stable lowercase IDs (letters, digits, hyphens).
+Each named lane includes `app` plus the same schedule fields as an app lane.
+Manager's Fleet Ops **Add lane for this app** creates one paused for review.
+Commit the roster to apply its settings; running work drains when a lane is
+paused, removed, or reduced. No migration or changes to existing lane settings
+are required.
+
+```json
+{
+  "apps": {
+    "chicago": { "enabled": true, "everyHours": 1, "slices": 3,
+      "processor": "claude", "model": "claude-opus-5-5", "effort": "max" }
+  },
+  "lanes": {
+    "chicago-gpt": { "app": "chicago", "enabled": true, "everyHours": 1,
+      "slices": 2, "processor": "gpt", "model": "gpt-6-astra", "effort": "xhigh" }
+  }
+}
+```
+
+This is an example, not an enabled roster. Each lane keeps its own worker target
+(1–10); totals across lanes add together. Lane IDs appear in run titles and
+concurrency groups. Do not rename a live lane: pause it and let its workers finish
+first. The dispatcher paginates active runs, matches exact lane identities, and
+fails closed on occupancy-query errors. Platform jobs continue independently.
+Queue positions span an app's currently due lanes; repository claim/inflight protocols
+remain mandatory, including while schedules or counts change.
+
+`processor` is `claude` (default) or `gpt` (Codex CLI). `model` is an exact ID;
+omitted values preserve the Claude fleet default or select Astra for GPT.
+`effort` accepts default/omitted, low, medium, high, xhigh, or max. Availability
+and effort support are determined by the selected model and provider account.
+Known Haiku choices have no effort control. Custom IDs are preserved on reload;
+they are validated for safe transport, not guaranteed account access.
+
+Configure `OPENAI_API_KEY` as a **repository Actions secret on polecat-platform**
+for GPT lanes. The secret is injected only in the GPT execution step. Claude
+lanes continue using `CLAUDE_CODE_OAUTH_TOKEN`; both use `STEWARD_PAT` for repo
+operations. Manager never receives these processor credentials. The disposable
+runner has the same autonomous repository-editing permissions as existing Claude
+runs. GPT uses API billing, independently of any ChatGPT subscription.
+
+Both processors use the same playbook, tools, salvage, journal, and refill path.
+GPT events are adapted into the existing tool-evidence format so claims and PR
+operations remain traceable. Claude retains its bounded transient-error resume;
+GPT failures are recorded and recovered by a later scheduler tick. `max_turns`
+is Claude-specific; GPT runs are bounded by the workflow timeout, not that field.
+
+Implementation references: [Codex non-interactive mode](https://developers.openai.com/codex/noninteractive),
+[Codex reasoning configuration](https://developers.openai.com/codex/config-reference),
+and [Claude model and effort configuration](https://code.claude.com/docs/en/model-config).
+
+### ChatGPT plan authentication (private worker)
+
+With repository variable `STEWARD_GPT_AUTH=chatgpt`, GPT improve runs delegate to
+`kevinrhaas/polecat-steward`. Their public run stays active while the private worker
+runs, preserving Manager and scheduler slot accounting. Model, effort, app, lane,
+slice and queue position pass through unchanged. Failure propagates and does not
+immediately refill the lane. There is no API fallback in this mode.
+
+Provision the private worker first using its README: fleet work token, a separate
+private-repository Secrets-write token, and a fresh ChatGPT login per app/lane/slice.
+Each worker persists refreshed credentials securely for subsequent runs. Sessions
+share the account's plan allowance; they do not multiply it. Keep login credentials
+and detailed GPT execution logs in the private repository. Public journal entries
+contain only the private-run link and status. Parent failure or cancellation attempts to stop its linked private worker. A runner
+crash can prevent cleanup; follow the private-run link to verify cancellation.
+
+Leave the variable unset until provisioning is complete. Existing API mode remains
+the default, and existing Claude lanes are unaffected. Auth checks can be exercised
+without paid model calls: `node .github/steward/test-private-worker.mjs` here and
+`node scripts/test-auth.mjs` in the private worker repo.

@@ -2,15 +2,43 @@ name: Steward janitor
 
 # The no-manual-merges guarantee. Every 2 hours this deterministic, Claude-free
 # job sweeps all fleet repos for open automation PRs (branches steward/* or
-# chore/polecat-shell-*), re-runs each app's own smoke gate against the PR
-# branch, and merges the green ones (--delete-branch, so merged automation
+# chore/polecat-shell-*), merges each PR's BASE into its branch, re-runs each
+# app's own smoke gate against THAT MERGE, and merges the green ones (--delete-branch, so merged automation
 # branches don't pile up — see tech-sweep issue #106 item 3). Red PRs get one
 # explanatory comment and stay open. Draft PRs and PRs labeled `hold` are never
 # touched — the `hold` label is Kevin's "I want to look at this myself" switch.
 #
+# THE TWO LABELS, AND THIS SWEEP READS THEM DIFFERENTLY (T-1577):
+#
+#   `hold`   — THE OWNER IS DECIDING. No run applies it, and nothing automated
+#              comes for it until he says so. A park a robot can overrule is not
+#              a park, so `pr-sweepable` drops it and this job never sees it.
+#   `resume` — A RUN COULD NOT FINISH, with its reason on the first line of a
+#              `resume:` comment (`gh-rest.sh pr-resume`). That is WORK THE LOOP
+#              STILL OWES, not a park: it is swept, lapped, gated and merged
+#              like any other PR, and this job is the machine that owes it.
+#
+# Before the split, `hold` was the only label a steward run had, so it was
+# applied to both — and because every automated pass skips a held PR on purpose,
+# work that needed nobody's decision had nothing coming for it either. Measured
+# 2026-09-25 on chicago's three open PRs: one's stated reason was already stale
+# (CI had since passed all 620 steps) and it had drifted into conflict while
+# held; two were COMPLETE, held only because dev's own gate was red. Each needed
+# a sweep exactly like this one, and each got a person instead.
+#
 # This backstops the normal flow (agents merge their own green PRs): a run
 # that died before merging, or a PR left open out of caution that actually
 # passes, still ships without a human. Requires STEWARD_PAT.
+#
+# It gates the MERGE and not the bare branch, and it SAYS SO when a branch will
+# not merge — both since T-0809 (2026-09-13). Before that it cloned the branch
+# alone, so a green branch shipped without the merge ever having been gated, and
+# a merge that failed on conflict printed "merge failed (conflict?)" and was
+# swept again next hour in silence. Twenty-one automation PRs silted up that way
+# on kevinrhaas/custom in 2026-09; on the day this was fixed, all five open ones
+# conflicted and not one of them had been told. The sweep's two failure paths
+# are gated by .github/steward/test-janitor-sweep.sh, which extracts the step
+# below from this file — see ci.yml.
 
 on:
   # No cron — scheduled by the focus roster (.github/steward/focus.json
@@ -20,16 +48,68 @@ on:
 
 permissions:
   contents: read
+  issues: write    # lets GITHUB_TOKEN journal to THIS repo (see "Journal the run")
 
 concurrency:
   group: steward-janitor
   cancel-in-progress: false
 
+# `custom` IS DELIBERATELY NOT IN THIS LIST, and it is the one repo that has to
+# say why, because it is also the repo with the largest pile of automation PRs.
+#
+# Its gate could not fit in this job and never once finished. Run 1047
+# (2026-09-14) was the first sweep able to get past two earlier bugs (#165, #166)
+# and reach it: job 03:18:32Z → 04:13:43Z, killed at `timeout-minutes: 55`,
+# TWO pull requests looked at, 53m37s of that spent inside a single gate that
+# never returned. The orphans left behind were `node` and `chrome-headless-shell`.
+#
+# THE COST IS THE RENDERER SMOKE, NOT `check.sh`, and that distinction is the
+# whole reason this is a removal rather than a bigger timeout. `check.sh` is
+# cheap on a runner — the repo's own `gate` workflow runs it, with a full-depth
+# checkout and a pip install, in 6–9 minutes (measured across nine consecutive
+# runs on 2026-09-14: #1282's two gates at 6m12s and 7m42s, dev's at 8m53s).
+# What does not fit is `tools/smoke_renderer.mjs`, which the gate below ran
+# after it: both viewports unfiltered measured ~26 min in 2026-08-14 and the
+# suite has grown since, which is why that project gives it its own workflow at
+# `timeout-minutes: 90`. Twelve sweepable PRs times a 90-minute ceiling is not a
+# 55-minute job, and raising the timeout would buy one PR per run per hour and a
+# half of a held runner.
+#
+# AND THE GUARANTEE IT WAS HERE FOR IS ALREADY HELD, TWICE OVER. T-0809 is that
+# the janitor gates the MERGE and not the bare branch. For this repo:
+#
+#   • `chicago-4d-check.yml` triggers on `pull_request` with a plain
+#     `actions/checkout@v4`, so it checks out `refs/pull/N/merge` — the merge
+#     result, not the branch. #1305 carries the proof: two `gate` runs on the
+#     same head sha, the `push` one green and the `pull_request` one red.
+#   • `.github/steward/pr-lap.sh` merges `dev` into each branch, regenerates,
+#     and runs `./tools/check.sh` on THAT TREE, pushing only if it is green.
+#
+# So the sweep was paying an hour a run to re-answer a question two cheaper
+# things already answer. `custom` merges through the lap plus GitHub auto-merge;
+# five PRs landed that way on 2026-09-14 with no janitor involvement.
+#
+# PUTTING IT BACK is a real option if the lap ever stops covering it — bake PRs
+# onto a non-`dev` base are outside the lap's reach, since it only walks PRs
+# into `dev`. It takes TWO changes, not one, and the arithmetic below is why
+# neither alone is enough. The gate branch further down still carries the
+# `check.sh` + `smoke_renderer.mjs` recipe, so re-adding the name here would
+# quietly restore run 1047 exactly.
+#
+#   1. A BOUNDED GATE. That project already built the knobs for this:
+#      `SMOKE_VIEWPORT=mobile` runs one of the two viewports, `SMOKE_STAGE=1-4`
+#      a contiguous run of its thirteen parts. Cheapest honest gate is
+#      `check.sh` alone, at 6–9 minutes.
+#   2. A PER-REPO TIME BUDGET, because (1) is still not sufficient. Twelve
+#      sweepable PRs at even 7 minutes each is 84 minutes, and that is before
+#      the other nine repos. Without a budget the sweep spends the whole run on
+#      whichever repo it reaches first, which is the shape of the original bug
+#      rather than a fix for it.
 env:
   FLEET: >-
     games.polecat.live jobtracker.polecat.live manager.polecat.live
     analytics.polecat.live autoselector.polecat.live relay.polecat.live
-    polecat-app polecat polecat-platform custom
+    polecat-app polecat polecat-platform
 
 jobs:
   sweep:
@@ -106,6 +186,10 @@ jobs:
           # Absolute: the loop below cds into a clone and then to /, so a relative
           # path to the helper would resolve to nothing after the first iteration.
           GHREST="${GITHUB_WORKSPACE}/.github/steward/gh-rest.sh"
+          MERGEABILITY="${GITHUB_WORKSPACE}/.github/steward/janitor-mergeability.sh"
+          # The one-comment guard greps for this, so the text is a contract with
+          # itself: change it and every rotting PR gets a second comment.
+          CONFLICT_MARKER="Steward janitor: cannot merge"
           MERGED=0; FAILED=0; SKIPPED=0
           : > /tmp/steward-out.txt   # action list for the Steward journal
           for REPO in $FLEET; do
@@ -114,13 +198,67 @@ jobs:
             # `gh pr view` this loop used to make purely to learn the branch name.
             PRS=$(bash "$GHREST" pr-sweepable "kevinrhaas/$REPO" '^(steward/|chore/polecat-shell)' || true)
             [ -z "$PRS" ] && continue
-            while IFS=$'\t' read -r N BR <&3; do
+            while IFS=$'\t' read -r N BR BASE <&3; do
               [ -n "$N" ] || continue
-              echo "=== $REPO#$N ($BR) ==="
+              echo "=== $REPO#$N ($BR -> $BASE) ==="
               DIR=$(mktemp -d)
-              if ! git clone --depth 1 -b "$BR" "https://github.com/kevinrhaas/$REPO" "$DIR" 2>/dev/null; then
-                echo "clone failed; skipping"; SKIPPED=$((SKIPPED+1)); continue
+              # T-0809: gate the MERGE, not the bare branch. This used to be a
+              # `git clone --depth 1 -b "$BR"`, which meant a green branch was
+              # merged without the merge itself ever having been gated, and a
+              # merge that then failed on conflict printed one line and was
+              # swept again next hour in silence. `prepare` puts base+head
+              # merged on disk, or names the conflicting paths.
+              # `set +e` AROUND THIS, AND IT IS NOT DECORATION. The step runs
+              # under the workflow default `bash -e`, where an assignment from a
+              # command substitution carries that command's status — so a failing
+              # `prepare` aborted the WHOLE SWEEP here and `PRC=$?`, with every
+              # branch below that reads it, was unreachable. `prepare` returns
+              # non-zero BY DESIGN: 1 means the branch conflicts with its base,
+              # which is the case this loop exists to handle.
+              #
+              # Measured 2026-09-14. Every janitor run failed, each dying on the
+              # FIRST pull request it looked at: `=== polecat-platform#145
+              # (steward/claim-notice -> main) ===` and then `exit code 1`, 1.5
+              # seconds later, with only `mktemp` in between. #145 has been open
+              # since 2026-08-28 and long since stopped merging, so the sweep died
+              # there every time. FLEET order made that maximally expensive —
+              # `custom` is LAST and `polecat-platform` second to last — so the
+              # repo with the backlog was never reached at all.
+              #
+              # `PRS=$(… || true)` above is guarded and the gate below has its own
+              # `set +e`; this was the one call whose whole contract is a non-zero
+              # exit, and it was the one left bare.
+              set +e
+              PREP=$(bash "$MERGEABILITY" prepare \
+                       "https://github.com/kevinrhaas/$REPO" "$DIR" "$BASE" "$BR" 2>&1)
+              PRC=$?
+              set -e
+              if [ $PRC -ne 0 ]; then
+                cd /; rm -rf "$DIR"
+                SKIPPED=$((SKIPPED+1))
+                if [ $PRC -eq 1 ]; then
+                  PATHS=$(printf '%s\n' "$PREP" | tail -n +2)
+                  echo "CONFLICT with $BASE:"; printf '%s\n' "$PATHS" | sed 's/^/  /'
+                  echo "- CONFLICTING kevinrhaas/$REPO#$N — cannot merge into $BASE ($(printf '%s\n' "$PATHS" | wc -l | tr -d ' ') path(s))" >> /tmp/steward-out.txt
+                  # Say it ONCE, on the same "don't repeat yourself" guard the
+                  # red path uses. A PR that cannot merge is not open, it is
+                  # ROTTING: its ticket still reads `open` at the top of the
+                  # queue and the next slice rebuilds the same work.
+                  if ! bash "$GHREST" comments-list "kevinrhaas/$REPO" "$N" | grep -q "$CONFLICT_MARKER"; then
+                    {
+                      printf '%s — this branch no longer merges into `%s`, so the janitor cannot gate it and has not merged it. Rebase it on `%s`, or hand it on with `gh-rest.sh pr-resume <N> --why "…"` so the next run does. Only the owner applies `hold`.\n\n' \
+                        "$CONFLICT_MARKER" "$BASE" "$BASE"
+                      printf 'Conflicting paths:\n\n```\n%s\n```\n' "$PATHS"
+                    } > /tmp/janitor-comment.md
+                    bash "$GHREST" pr-comment "kevinrhaas/$REPO" "$N" /tmp/janitor-comment.md || true
+                  fi
+                else
+                  echo "$PREP"
+                  echo "- SKIPPED kevinrhaas/$REPO#$N — mergeability undetermined (retried next sweep)" >> /tmp/steward-out.txt
+                fi
+                continue
               fi
+              echo "$PREP  (gating the merge result)"
               cd "$DIR"
               ln -s /tmp/pwhome/node_modules node_modules 2>/dev/null || true
               set +e
@@ -140,7 +278,14 @@ jobs:
                 # which Node still resolves from chicago/4d/tools/.
                 GATE="chicago/4d check.sh + smoke_renderer.mjs"
                 (
-                  python3 -m pip install --quiet --disable-pip-version-check jsonschema pyproj \
+                  # Pillow belongs on this list: `read_kinzie_addition_water_lots.py
+                  # --check-sheet` profiles five million-pixel windows of the
+                  # sheet through PIL, and without it check.sh fails that step —
+                  # so the janitor's verdict on EVERY custom PR was a false red
+                  # (measured 2026-09-13 on a pristine dev: 381 of 382 steps
+                  # green, the 382nd a ModuleNotFoundError). Gating the merge
+                  # correctly is no use if the gate is red on a missing import.
+                  python3 -m pip install --quiet --disable-pip-version-check jsonschema pyproj openpyxl pypdf Pillow \
                     && cd chicago/4d && ./tools/check.sh && node tools/smoke_renderer.mjs
                 ) > /tmp/gate.log 2>&1
               else
@@ -151,12 +296,51 @@ jobs:
               set -e
               cd /; rm -rf "$DIR"
               if [ $RC -eq 0 ]; then
+                # IS IT STILL OPEN? The gate above runs for minutes, and a
+                # person can close the PR while it does. The sweep reads the PR
+                # list once, at the top of the repo, and never asked again.
+                #
+                # Run 1047 is the case. It spent 03:20:02Z → 04:13:43Z gating
+                # custom#1303, a bake onto a base that had died under it; a
+                # human closed that PR at 03:44, twenty-nine minutes before the
+                # job was killed. Nothing was merged only because the gate ran
+                # out of time first. Had it gone green, this loop would have
+                # merged a pull request somebody had deliberately closed, and
+                # `branch-delete`d the branch behind it.
+                #
+                # FAIL-OPEN, and that is the design rather than an oversight.
+                # This guards against one wrong merge; it is not an interlock.
+                # `pr-state` prints nothing when its request fails, and an empty
+                # answer falls through to the merge — exactly what this loop did
+                # before the guard existed. A guard that turned a 502 into a
+                # silently skipped merge would cost more than the case it fixes.
+                #
+                # `|| true` ON THE ASSIGNMENT, which is not decoration here
+                # either: this step runs under `bash -e`, where `X=$(cmd)` takes
+                # `cmd`'s status. That is the same one-character omission that
+                # aborted the whole sweep on the first conflicting PR (#165).
+                STATE=$(bash "$GHREST" pr-state "kevinrhaas/$REPO" "$N" || true)
+                if [ "$STATE" = "closed" ]; then
+                  echo "CLOSED while its gate ran — green ($GATE), but not merging"
+                  SKIPPED=$((SKIPPED+1))
+                  echo "- not merged kevinrhaas/$REPO#$N — closed while its gate ran" >> /tmp/steward-out.txt
+                  continue
+                fi
                 echo "GREEN ($GATE) → merging"
                 if bash "$GHREST" pr-merge "kevinrhaas/$REPO" "$N" squash \
                    && bash "$GHREST" branch-delete "kevinrhaas/$REPO" "$BR"; then
                   MERGED=$((MERGED+1)); echo "- merged kevinrhaas/$REPO#$N (smoke green)" >> /tmp/steward-out.txt
                 else
-                  echo "merge failed (conflict?)"; SKIPPED=$((SKIPPED+1)); echo "- merge FAILED (conflict?) on kevinrhaas/$REPO#$N" >> /tmp/steward-out.txt
+                  # The local merge was clean, so the base moved underneath us
+                  # between the gate and the call. Still never silent.
+                  echo "server-side merge failed after a green gate — $BASE moved?"
+                  SKIPPED=$((SKIPPED+1))
+                  echo "- merge FAILED after a green gate on kevinrhaas/$REPO#$N ($BASE moved under it)" >> /tmp/steward-out.txt
+                  if ! bash "$GHREST" comments-list "kevinrhaas/$REPO" "$N" | grep -q "$CONFLICT_MARKER"; then
+                    printf '%s — the gate was green on `%s` merged into this branch, but GitHub then refused the merge, so `%s` moved in between. The next sweep will re-gate and retry; if it keeps happening, rebase.\n' \
+                      "$CONFLICT_MARKER" "$BASE" "$BASE" > /tmp/janitor-comment.md
+                    bash "$GHREST" pr-comment "kevinrhaas/$REPO" "$N" /tmp/janitor-comment.md || true
+                  fi
                 fi
               else
                 FAILED=$((FAILED+1))
@@ -169,7 +353,7 @@ jobs:
                   # backticks and quotes. A file also keeps the YAML block
                   # scalar from having to escape a fenced code block.
                   {
-                    printf 'Steward janitor: smoke gate FAILED (`%s`) — leaving this PR open. Add the `hold` label to keep the janitor away while investigating. Log tail:\n\n' "$GATE"
+                    printf 'Steward janitor: smoke gate FAILED (`%s`) — leaving this PR open. The sweep keeps coming back for it: fix the red on the branch, or hand it on with `gh-rest.sh pr-resume <N> --why "…"` so the reason is written where it can be read. `hold` is the owner'"'"'s park switch and no run applies it. Log tail:\n\n' "$GATE"
                     printf '```\n%s\n```\n' "$TAIL"
                   } > /tmp/janitor-comment.md
                   bash "$GHREST" pr-comment "kevinrhaas/$REPO" "$N" /tmp/janitor-comment.md || true
@@ -177,11 +361,15 @@ jobs:
               fi
             done 3<<< "$PRS"
           done
-          [ -s /tmp/steward-out.txt ] || echo "Nothing to do — no open automation PRs outside hold/draft." >> /tmp/steward-out.txt
+          [ -s /tmp/steward-out.txt ] || echo "Nothing to do — no open automation PRs outside hold/draft (\`resume\` PRs are swept, not skipped)." >> /tmp/steward-out.txt
           echo "janitor done: merged=$MERGED red=$FAILED skipped=$SKIPPED" | tee -a /tmp/steward-out.txt
 
       - name: Journal the run
         if: always()
         env:
-          GH_TOKEN: ${{ secrets.STEWARD_PAT }}
+          # Same-repo only: journal.sh hardcodes kevinrhaas/polecat-platform,
+          # so this never needed the cross-repo PAT. GITHUB_TOKEN bills to a
+          # per-repository pool instead of the account-wide one the PAT shares
+          # with every parallel slice and with Manager.
+          GH_TOKEN: ${{ github.token }}
         run: bash .github/steward/journal.sh "${{ github.run_id }}" "Steward janitor" "${{ job.status }}" /tmp/steward-out.txt

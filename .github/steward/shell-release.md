@@ -17,9 +17,19 @@ STEPS:
    branch `chore/polecat-shell-vX.Y.Z`, replace vendor/polecat-shell/ with the
    released lib/ (minus demo/), bump the sw.js cache name if the app has one,
    PR titled `chore: polecat-shell vX.Y.Z`.
-3. Run each app's own smoke test against its PR branch; `bash "$GHREST" pr-merge --squash
-   --delete-branch` ONLY the green ones. Leave failures OPEN with a comment
-   describing exactly what broke.
+3. Run each app's own smoke test against its PR branch; merge ONLY the green ones
+   with `bash "$GHREST" pr-automerge <owner/repo> <N> squash "<commit title>"`
+   then `bash "$GHREST" branch-delete <owner/repo> <head-branch>`. Leave failures
+   OPEN with a comment describing exactly what broke.
+   (`--squash --delete-branch` are `gh pr merge` flags and were never this
+   wrapper's: it takes positional arguments, so the old line would have been read
+   as repo `--squash`, PR number `--delete-branch`. `bash "$GHREST"` with no
+   arguments prints the usage.)
+   Read the exit status, because two of them are not failures: **3** means it
+   refused on a RED check and has already labelled that PR `resume` — leave it
+   open, that is the "failures OPEN" case above. **4** means the app's gate was
+   still RUNNING, which is no verdict at all: call `pr-automerge` again for that
+   PR and it merges when the gate lands (T-1609).
 4. Print: version shipped, apps merged, apps left open and why.
 
 HARD RULES: nothing beyond the vendor dir + SW cache bump changes in app PRs;

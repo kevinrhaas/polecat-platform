@@ -1,7 +1,7 @@
 name: Steward improve
 # Annotate each run with the app it targets (shows in the Actions list and in
 # Manager's Fleet Ops panel). Mirrors the FOCUS_APP env resolution below.
-run-name: "Steward improve — ${{ github.event.inputs.app || 'fleet pick' }}${{ github.event.inputs.slices != '' && github.event.inputs.slices != '1' && format(' [{0}/{1}]', github.event.inputs.slice, github.event.inputs.slices) || '' }}"
+run-name: "Steward improve — ${{ github.event.inputs.app || 'fleet pick' }}${{ github.event.inputs.lane && format(' {{{0}}}', github.event.inputs.lane) || '' }}${{ github.event.inputs.slices != '' && github.event.inputs.slices != '1' && format(' [{0}/{1}]', github.event.inputs.slice, github.event.inputs.slices) || '' }}"
 
 # The fleet improvement loop (see .github/steward/improve.md + docs/AUTOMATION.md).
 # One unit of work per run, shipped via PR, merged only when smoke is green.
@@ -41,7 +41,27 @@ on:
         required: false
         default: '1'
       model:
-        description: 'Claude model for this run (focus.json lane `model`; empty = CLI default).'
+        description: 'Exact model ID for the selected processor; empty = fleet default.'
+        required: false
+        default: ''
+      processor:
+        description: 'Processor: claude or gpt (Codex CLI).'
+        type: choice
+        options: [claude, gpt]
+        default: claude
+      effort:
+        description: 'Reasoning effort; empty uses the model default.'
+        type: choice
+        options: ['', low, medium, high, xhigh, max]
+        default: ''
+      lane:
+        description: 'Stable named lane ID; empty preserves the default app lane.'
+        default: ''
+      queue_position:
+        description: 'Scheduler queue position across all enabled lanes for this app (k/N).'
+        default: ''
+      max_turns:
+        description: 'Tool-call ceiling for this run (focus.json lane `max_turns`; empty = 200).'
         required: false
         default: ''
 
@@ -50,10 +70,19 @@ env:
   # enabled app). Empty — a manual dispatch with no app, or the literal
   # 'fleet' — means the suite-wide fleet pick.
   FOCUS_APP: ${{ github.event.inputs.app }}
+  PROCESSOR: ${{ github.event.inputs.processor || 'claude' }}
+  MODEL: ${{ github.event.inputs.model }}
+  EFFORT: ${{ github.event.inputs.effort }}
+  LANE: ${{ github.event.inputs.lane }}
+  QUEUE_POSITION: ${{ github.event.inputs.queue_position }}
+  INPUT_SLICE: ${{ github.event.inputs.slice }}
+  INPUT_SLICES: ${{ github.event.inputs.slices }}
+  INPUT_MAX_TURNS: ${{ github.event.inputs.max_turns }}
 
 permissions:
   contents: read
-  actions: write   # lets the last slice of a batch kick steward-focus (see the final step)
+  actions: write   # lets a finishing run kick steward-focus to refill its slot (final step)
+  issues: write    # lets GITHUB_TOKEN journal to THIS repo (see "Journal the run")
 
 # Per-app-PER-SLICE concurrency. Runs on DIFFERENT apps have always proceeded in
 # parallel (separate repos — no contention); as of 2026-08 a lane's `slices: N`
@@ -64,11 +93,12 @@ permissions:
 # Same app + same slice still queues (never overlaps itself), which is what makes
 # a re-dispatch of slice k safe.
 concurrency:
-  group: steward-improve-${{ github.event.inputs.app || 'fleet' }}-s${{ github.event.inputs.slice || '1' }}
+  group: steward-improve-${{ github.event.inputs.app || 'fleet' }}${{ github.event.inputs.lane && format('-lane-{0}', github.event.inputs.lane) || '' }}-s${{ github.event.inputs.slice || '1' }}
   cancel-in-progress: false
 
 jobs:
   improve:
+    if: inputs.processor != 'gpt' || vars.STEWARD_GPT_AUTH != 'chatgpt'
     runs-on: ubuntu-latest
     # 150, raised from 90 on 2026-08-14, because 90 had started DISCARDING
     # FINISHED WORK rather than protecting anything.
@@ -79,10 +109,11 @@ jobs:
     # not a hang: the successes cluster right underneath it, and 81 minutes of
     # genuine work sits four minutes from being thrown away.
     #
-    # A cancelled run costs more than its own hour. The scheduler's skip-if-busy
-    # rule holds the next tick while a run is in flight, so a run that dies at
-    # minute 89 with nothing committed loses the work AND the following slot.
-    # Three cancellations cost roughly three hours of lane time in a day.
+    # A cancelled run costs more than its own hour. It holds one of the lane's
+    # slots for the full 150 minutes and then hands back nothing — and because a
+    # failed run deliberately does not kick the scheduler, that slot stays empty
+    # until a cron tick notices. (Under the older batch gate it was worse still:
+    # one dying run held the ENTIRE lane, not one slot of it.)
     #
     # The parcels grew, which is why the old ceiling stopped fitting. A unit of
     # work was "add a block of roofs" when the lanes opened; the queue now holds
@@ -90,18 +121,22 @@ jobs:
     # to prove a measured before-and-after, and that alone is most of an hour.
     #
     # Raising this does not make an app's lane fire more work than it is set to:
-    # the batch size is `slices` and nothing else, `concurrency` above still
-    # queues a re-dispatch of the same slice, and the scheduler's skip-if-busy
-    # holds the next batch while any slice of this one is in flight. It only
-    # stops the clock killing work that was about to land.
+    # `slices` is a hard concurrency target the scheduler tops up to and never
+    # past, and `concurrency` above still queues a re-dispatch of the same slice.
+    # It only stops the clock killing work that was about to land.
     timeout-minutes: 150
     steps:
       - name: Check secrets
         env:
           T: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           P: ${{ secrets.STEWARD_PAT }}
+          O: ${{ secrets.OPENAI_API_KEY }}
         run: |
-          [ -n "$T" ] || { echo "::error::CLAUDE_CODE_OAUTH_TOKEN secret is missing"; exit 1; }
+          case "$PROCESSOR" in
+            claude) [ -n "$T" ] || { echo "::error::CLAUDE_CODE_OAUTH_TOKEN secret is missing"; exit 1; } ;;
+            gpt) [ -n "$O" ] || { echo "::error::OPENAI_API_KEY secret is missing; add it to polecat-platform Actions secrets"; exit 1; } ;;
+            *) echo "::error::Unknown processor"; exit 1 ;;
+          esac
           [ -n "$P" ] || { echo "::error::STEWARD_PAT secret is missing"; exit 1; }
 
       - uses: actions/checkout@v4
@@ -109,6 +144,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+
+      - name: Validate lane settings
+        run: node .github/steward/validate-run.mjs
 
       - name: Authenticate git + gh for all kevinrhaas repos
         env:
@@ -129,14 +167,14 @@ jobs:
           path: ~/.cache/ms-playwright
           key: pw-${{ runner.os }}-${{ steps.pw.outputs.version }}-chromium-webkit
 
-      - name: Install Claude Code + browsers
+      - name: Install selected processor + browsers
         # A HUNG INSTALL USED TO EAT THE WHOLE JOB CAP. On 2026-08-19 runs 939 and
         # 940 (custom) each sat in `playwright install` for the full 150 minutes and
         # were cancelled with `Run steward` never starting — the orphan-process line
         # at the kill names it: `npm exec playwright install --with-deps chromium
         # webkit`. Between them they held the lane from 00:00 to 05:04 CT and shipped
-        # nothing, because skip-if-busy hands the next tick to a run that is already
-        # dying.
+        # nothing — under the batch gate of the day, a stalled run held the whole
+        # lane; it now holds one slot, but a wasted slot is still a wasted slot.
         #
         # Raising `timeout-minutes` is the wrong lever for this: the step is 40-70
         # SECONDS on a warm browser cache, so a step still running at four minutes is
@@ -144,23 +182,91 @@ jobs:
         # finish. Cap each command, retry it once — most registry stalls clear on the
         # second attempt — and if it still will not go, fail the job in ~10 minutes
         # and leave the slot to the next hourly fire.
-        timeout-minutes: 25
+        #
+        # THE RETRY MUST WAIT FOR THE LOCK TOO, BECAUSE THE THING HOLDING IT IS US.
+        # Run 1582 (custom [5/10], 2026-09-05) died here in five minutes:
+        #
+        #   01:13:05  attempt 1 starts apt-get — 114 MB, 183 packages
+        #   01:15:05  one 5.6 MB file has taken two minutes (the mirror is crawling)
+        #   01:16:47  attempt 1 hits the 4-minute cap and is killed
+        #   01:17:04  attempt 2 → lock-frontend held by process 2731 (apt-get)
+        #   01:17:49  attempt 3 → held by process 2731
+        #   01:17:51  gives up — while Get:31 is still downloading
+        #
+        # Process 2731 IS attempt 1. `--with-deps` runs apt-get under sudo, so the
+        # apt-get is root-owned and this unprivileged step cannot signal it: the cap
+        # kills the npx wrapper, the root apt-get survives, and every retry then slams
+        # into the orphan its own predecessor left holding the lock. Three attempts
+        # bought three collisions with one process.
+        #
+        # So `wait_for_apt` runs before EACH retry, not once before the first. The
+        # orphan is installing exactly the dependencies we want, so waiting for it is
+        # not merely polite — when it finishes, the next attempt finds the deps present
+        # and returns fast. The retry cap is longer than the opening one for the same
+        # reason: we are waiting on known work, not on a stall. `timeout-minutes` rises
+        # to cover the worst case (4 + 10 + 4 + 10 + 4 = 32 min) and still fails far
+        # below the 150-minute job cap that runs 939/940 ate.
+        timeout-minutes: 35
         run: |
           set -euo pipefail
-          try() {                      # try <minutes> <command...> — twice, then fail
+          try() {                      # try <minutes> <command...> — thrice, then fail
             local m=$1; shift
-            for i in 1 2; do
+            local backoff=15
+            for i in 1 2 3; do
               if timeout "${m}m" "$@"; then return 0; fi
-              echo "::warning::install attempt $i of 2 stalled or failed: $*"
-              sleep 15
+              echo "::warning::install attempt $i of 3 stalled or failed: $*"
+              # Wait out whatever holds the dpkg lock — very often the attempt that
+              # just timed out, whose root-owned apt-get we cannot kill (see above).
+              [ "$i" -lt 3 ] && { sleep "$backoff"; backoff=$((backoff * 3)); wait_for_apt 600; }
             done
-            echo "::error::install gave up after 2 attempts: $*"
+            echo "::error::install gave up after 3 attempts: $*"
             return 1
           }
-          try 4 npm install -g @anthropic-ai/claude-code
+
+          # WAIT FOR THE dpkg LOCK RATHER THAN RETRY INTO IT.
+          #
+          # Run 1553 (custom [1/5], 2026-09-04) died here and never claimed a ticket:
+          # `--with-deps` shells out to apt-get, ANOTHER apt-get on the runner held
+          # /var/lib/dpkg/lock-frontend, and playwright exited 100 in under a second.
+          # The retry slept 15 s, hit the same lock, and the job gave up FIFTEEN
+          # SECONDS after it started — while that other apt was still fetching
+          # fonts-wqy-zenhei and would have released the lock shortly after.
+          #
+          # THIS IS NOT THE STALL THE TIMEOUT ABOVE IS FOR, and the distinction is the
+          # whole fix. A stall is slow, so capping it and retrying is right. A held
+          # dpkg lock is an IMMEDIATE refusal that clears on its own in well under a
+          # minute, so the lever is to WAIT for it, not to retry into it faster.
+          #
+          # Degrades safely: if `fuser` is absent the probe fails, the loop does not
+          # run, and the behaviour is exactly what it was before this existed.
+          # The cap is an argument because the two callers wait on different things:
+          # 300 s before the first attempt (an UNRELATED apt, run 1553's case, which
+          # clears in well under a minute), 600 s between retries (our own orphaned
+          # apt-get, run 1582's case, which is fetching 114 MB and deserves the room).
+          wait_for_apt() {
+            local waited=0 cap=${1:-300}
+            while sudo fuser /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock \
+                             /var/lib/apt/lists/lock >/dev/null 2>&1; do
+              if [ "$waited" -ge "$cap" ]; then
+                echo "::warning::dpkg lock still held after ${waited}s — going ahead anyway"
+                return 0
+              fi
+              [ $((waited % 30)) -eq 0 ] && echo "another apt holds the dpkg lock; waited ${waited}s"
+              sleep 5; waited=$((waited + 5))
+            done
+            [ "$waited" -gt 0 ] && echo "dpkg lock free after ${waited}s"
+            return 0
+          }
+
+          if [ "$PROCESSOR" = gpt ]; then
+            try 4 npm install -g @openai/codex
+          else
+            try 4 npm install -g @anthropic-ai/claude-code
+          fi
           try 4 npm install --no-save playwright
           # webkit too: several app smoke tests (jobtracker) run the iOS engine
           # (~215MB of downloads skipped on a warm browser cache)
+          wait_for_apt
           try 4 npx playwright install --with-deps chromium webkit
 
       # ---- the chicago/4d lane can bake geometry ------------------------------
@@ -190,11 +296,11 @@ jobs:
       # pure cost.
       - name: Read chicago/4d's Blender pin
         id: blender
-        if: github.event.inputs.app == 'custom'
+        if: github.event.inputs.app == 'chicago'
         run: |
           # From dev, where the pipeline keeps it — the pin is the cache key, so a
           # bump misses naturally and re-fetches instead of running a stale binary.
-          if pin=$(gh api "repos/kevinrhaas/custom/contents/chicago/4d/generators/blender.pin?ref=dev" \
+          if pin=$(gh api "repos/kevinrhaas/chicago/contents/chicago/4d/generators/blender.pin?ref=dev" \
                      --jq .content 2>/dev/null | base64 -d); then
             version=$(printf '%s\n' "$pin" | sed -n 's/^BLENDER_VERSION=//p' | head -1)
             [ -n "$version" ] && echo "version=$version" >> "$GITHUB_OUTPUT"
@@ -203,14 +309,14 @@ jobs:
           echo "${version:-unresolved}"
 
       - name: Cache Blender (chicago/4d geometry bakes)
-        if: github.event.inputs.app == 'custom' && steps.blender.outputs.version != ''
+        if: github.event.inputs.app == 'chicago' && steps.blender.outputs.version != ''
         uses: actions/cache@v4
         with:
           path: ~/blender-dl
           key: blender-${{ steps.blender.outputs.version }}
 
       - name: Point bake.sh at the cache, and install what it bakes with
-        if: github.event.inputs.app == 'custom'
+        if: github.event.inputs.app == 'chicago'
         timeout-minutes: 10
         run: |
           set -euo pipefail
@@ -218,12 +324,79 @@ jobs:
           echo "BLENDER_CACHE=$HOME/blender-dl" >> "$GITHUB_ENV"
           # build.py's dependencies. Blender's own bundled Python does not see
           # these, but the generators and validate.py that run beside it do.
-          timeout 4m pip install --quiet jsonschema pyproj \
+          #
+          # NUMPY AND SCIPY ARE PART OF THAT SET, and their absence was costing
+          # the runner work rather than merely degrading it. Two things measured
+          # on 2026-09-15:
+          #   * custom's own gate says so out loud. chicago/4d/tools/check.sh ran
+          #     here and reported "numpy (numpy) is not installed, so 5 step(s)
+          #     below stand on a banked reading" and "a GATE may not count a skip
+          #     as a pass — pip install numpy". Five steps of the gate this
+          #     workflow runs before every PR were not being taken.
+          #   * chicago-4d-check.yml — CI's gate for the same repo — installs
+          #     `jsonschema pyproj openpyxl pypdf numpy scipy Pillow`. The steward
+          #     was running the same script against a thinner environment, so a
+          #     run could ship green here and meet those five steps in CI.
+          # The terrain generators need them too, which is every ground ticket in
+          # SOUTH THROUGH TIME (T-0465 and down). A ticket that cannot be verified
+          # is a ticket a run steps over, and T-0465 was stepped over.
+          timeout 6m pip install --quiet jsonschema pyproj Pillow numpy scipy \
             || echo "::warning::pip install failed — a bake will report the missing module"
+
+      # ---- the chicago/4d resident source sweep reads scans and writes workbooks --
+      #
+      # WHY THIS EXISTS. On 2026-09-03 the owner queued the resident-source sweep
+      # (custom T-0491..T-0518): the Hubbard and H. H. Porter autobiographies are
+      # PDF scans, the 1840 census and the St Mary's baptismal register are page
+      # images, and every research package ships an XLSX beside its CSV. A run
+      # that lands on one of those tickets needs a PDF text extractor, a
+      # rasteriser for the odd garbled page, an OCR fallback, and a workbook
+      # writer — and ubuntu-latest carries none of them, so the first run would
+      # have spent its budget discovering that. The owner asked for them on the
+      # runner. Custom-lane only, like Blender: no other app reads a scan.
+      #
+      # Best-effort by construction: a package mirror hiccup must not cost the
+      # run — the tickets say "CSV always, XLSX when openpyxl imports", and the
+      # warning below is what a run reads to know which fallback it is on.
+      - name: Install the research tools the chicago/4d resident sweep reads with
+        if: github.event.inputs.app == 'chicago'
+        timeout-minutes: 8
+        run: |
+          set -uo pipefail
+          # poppler-utils: pdftotext + pdftoppm. tesseract-ocr: the OCR fallback.
+          if timeout 5m sudo apt-get install -y --no-install-recommends poppler-utils tesseract-ocr >/dev/null; then
+            echo "pdftotext $(pdftotext -v 2>&1 | head -1); tesseract $(tesseract --version 2>&1 | head -1)"
+          else
+            echo "::warning::apt-get install of poppler-utils/tesseract-ocr failed — the run falls back to pypdf and page reads"
+          fi
+          # openpyxl: the XLSX half of every reference package. pypdf: the pure-python PDF fallback.
+          timeout 3m pip install --quiet openpyxl pypdf \
+            || echo "::warning::pip install of openpyxl/pypdf failed — packages ship CSV only this run"
+          python3 -c "import openpyxl, pypdf; print('openpyxl', openpyxl.__version__, 'pypdf', pypdf.__version__)" || true
+
+      # BUDGET, BEFORE AND AFTER — the measurement nobody was taking.
+      #
+      # The GraphQL exhaustion that shaped this whole design (run 1140,
+      # 2026-08-27: graphql 0/5000 while core sat at 4969) was a ONE-OFF
+      # reading, taken by hand, mid-incident. gh-rest.sh and the playbook ban on
+      # `gh pr`/`gh issue` were written to fix it, and then nothing ever checked
+      # whether they had — so "are we still short of budget?" has been answered
+      # by argument rather than data ever since, including when deciding whether
+      # to buy more capacity.
+      #
+      # Two cheap lines fix that. /rate_limit is free (it is not itself
+      # metered), so bracketing the agent costs nothing and turns every run into
+      # a datapoint: what this slice found, and what it left behind.
+      # Deliberately never fatal — a budget probe must not fail a run.
+      - name: Budget before the run
+        if: always()
+        continue-on-error: true
+        run: bash .github/steward/gh-rest.sh budget || echo "budget probe unavailable"
 
       - name: Run steward
         env:
-          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ (github.event.inputs.processor != 'gpt') && secrets.CLAUDE_CODE_OAUTH_TOKEN || '' }}
+          CODEX_API_KEY: ${{ github.event.inputs.processor == 'gpt' && secrets.OPENAI_API_KEY || '' }}
           # Optional per-app admin tokens: unlock each app's client-side
           # invite/admin gate (live AND locally-served copies — same key) so
           # focused runs can drive the real UI. Never echo their values into
@@ -266,16 +439,35 @@ jobs:
           # AT ONCE from an identical repo state, so the agent has to be told its
           # position or all N pick the same top-of-queue item (see improve.md
           # § PARALLEL SLICES — slice k takes the k-th workable item).
-          SLICE="${{ github.event.inputs.slice }}"; SLICE="${SLICE:-1}"
-          SLICES="${{ github.event.inputs.slices }}"; SLICES="${SLICES:-1}"
+          SLICE="$INPUT_SLICE"; SLICE="${SLICE:-1}"
+          SLICES="$INPUT_SLICES"; SLICES="${SLICES:-1}"
+          # The later steps run in their own shells, so the slice has to be
+          # handed forward: the journal entry has to say WHICH of five parallel
+          # runs it is, and until it did, five slices posted five entries under
+          # one heading and none of them could be told apart.
+          { echo "SLICE=${SLICE}"; echo "SLICES=${SLICES}";
+            echo "STEWARD_APP=${FOCUS_APP:-fleet}"; } >> "$GITHUB_ENV"
+          QUEUE_POSITION="${QUEUE_POSITION:-${SLICE}/${SLICES}}"
           PROMPT="$(cat .github/steward/improve.md)
           ---
           FOCUS_APP: ${FOCUS_APP:-'(none — fleet pick)'}
-          SLICE: ${SLICE} of ${SLICES}"
+          SLICE: ${QUEUE_POSITION%/*} of ${QUEUE_POSITION#*/}
+          LANE: ${LANE:-default} (local slot ${SLICE} of ${SLICES})
+          Read CLAUDE.md and AGENTS.md in each repository before working, regardless of processor.
+          Claim work through the repository protocol; if another lane owns the ticket, choose an unclaimed item."
           # Per-lane model pin (focus.json `model` via the dispatch input);
           # empty falls back to the fleet default: opus.
-          MODEL="${{ github.event.inputs.model }}"
-          MODEL="${MODEL:-claude-opus-5}"
+          if [ "$PROCESSOR" = gpt ]; then MODEL="${MODEL:-gpt-6-astra}"; else MODEL="${MODEL:-claude-opus-5}"; fi
+          # Per-lane tool-call ceiling (focus.json `max_turns` via the dispatch
+          # input). The clock below is 150 minutes; this is the OTHER bound, and
+          # on 2026-09-03 it was the binding one twice on the custom lane: #1459
+          # hit 200 calls at 39 minutes mid-reading (one census sheet is ~60
+          # calls of crop-and-Read), and #1466 hit it at 81 minutes on the merge
+          # itself, with the gate green, the PR open and 70 minutes of clock
+          # left. The owner raised custom to 400 the same day; other lanes keep
+          # the default.
+          MAX_TURNS="$INPUT_MAX_TURNS"
+          MAX_TURNS="${MAX_TURNS:-200}"
 
           # A HEARTBEAT, SO SILENCE IS ITSELF REPORTED. The stream below prints
           # as the agent works, but a WEDGED agent prints nothing — and "nothing
@@ -314,13 +506,57 @@ jobs:
           # issue #139. stream-json emits one JSON event per action; stream-log
           # renders it live, keeps the raw trail on disk, and still leaves the
           # run's closing summary in /tmp/steward-out.txt for journal.sh.
-          claude -p "$PROMPT" \
-            ${MODEL:+--model "$MODEL"} \
-            --dangerously-skip-permissions \
-            --max-turns 200 \
-            --output-format stream-json --verbose \
-            --allowedTools "Bash,Edit,Write,Read,Glob,Grep" \
-            | node .github/steward/stream-log.mjs /tmp/steward-out.txt /tmp/steward-stream.jsonl
+          run_steward() {  # $1 = the prompt, $2 = the stream file, $3... = extra flags
+            local prompt="$1" stream="$2"; shift 2
+            if [ "$PROCESSOR" = gpt ]; then
+              local args=(exec --model "$MODEL" --dangerously-bypass-approvals-and-sandbox --json)
+              [ -z "$EFFORT" ] || args+=(-c "model_reasoning_effort=\"$EFFORT\"")
+              printf '%s' "$prompt" | codex "${args[@]}" - \
+                | node .github/steward/codex-stream.mjs \
+                | node .github/steward/stream-log.mjs /tmp/steward-out.txt "$stream"
+            else
+              local args=()
+              [ -z "$EFFORT" ] || args+=(--effort "$EFFORT")
+              claude -p "$prompt" --model "$MODEL" \
+                --dangerously-skip-permissions --max-turns "$MAX_TURNS" \
+                --output-format stream-json --verbose \
+                --allowedTools "Bash,Edit,Write,Read,Glob,Grep" "${args[@]}" "$@" \
+                | node .github/steward/stream-log.mjs /tmp/steward-out.txt "$stream"
+            fi
+          }
+          RC=0; run_steward "$PROMPT" /tmp/steward-stream.jsonl || RC=$?
+
+          # RESUME ON A TRANSIENT API 5xx — up to twice, after a wait. Run #1464
+          # (2026-09-03) had read two census sheets, pushed them and was on its
+          # smoke legs when the API answered a 500; the CLI wrote the error as its
+          # final summary and exited 1, and 85 minutes of a finishable run ended
+          # with no PR. Later the same day two whole batches — nine runs at 13:33Z
+          # and 13:43Z — died inside four minutes on `API Error: 529 Overloaded`
+          # with ZERO tool calls: the API itself was overloaded, and a resume in
+          # the same second would have met the same answer. So: wait five minutes
+          # first. Then, if the attempt did no work at all, start the unit FRESH on
+          # the original prompt with the full budget (`--continue` into a session
+          # that never began is a continuation of nothing); otherwise `--continue`
+          # the conversation with 120 calls, enough for the endgame and not for a
+          # second unit. The marker text is the guard: a run that ended any other
+          # way never re-enters. Two retries, never past two hours of the job.
+          attempt=0
+          while [ "$PROCESSOR" = claude ] && grep -qE 'API Error: 5[0-9][0-9]' /tmp/steward-out.txt 2>/dev/null \
+                && [ "$attempt" -lt 2 ] && [ "$SECONDS" -lt 7200 ]; do
+            attempt=$((attempt + 1))
+            calls=$(grep -c '"type":"tool_use"' /tmp/steward-stream.jsonl 2>/dev/null || true)
+            calls=${calls:-0}
+            echo "::warning::the run ended on a transient API 5xx at $((SECONDS / 60)) min after ${calls} tool call(s) — retry ${attempt} of 2 in five minutes"
+            { echo "----- attempt ${attempt} ended on -----"; cat /tmp/steward-out.txt; } >> /tmp/steward-out.first.txt
+            sleep 300
+            if [ "$calls" -eq 0 ]; then
+              RC=0; run_steward "$PROMPT" /tmp/steward-stream.jsonl || RC=$?
+            else
+              MAX_TURNS=120
+              RC=0; run_steward "Your previous turn ended on a transient API error (5xx). Continue exactly where you left off — do not start over, and do not re-run verification that already passed. Finish the unit: push, PR, merge (or hold, with the reason), close the ticket." /tmp/steward-stream.resume.jsonl --continue || RC=$?
+            fi
+          done
+          exit "$RC"
 
       # RESCUE WHAT THE RUN DID NOT GET TO PUSH. The runner is destroyed with
       # the job, so a run cancelled at the cap used to lose every commit it had
@@ -329,11 +565,47 @@ jobs:
       # journal's API calls, because a cancelled job's grace period is short and
       # the work is worth more than its write-up. On a successful run it is a
       # no-op that costs a few seconds and prints the trees for the record.
+      # The other half of the bracket. Read BEFORE salvage/journal so it
+      # measures what the AGENT spent, not what the wrap-up steps then added.
+      - name: Budget after the run
+        if: always()
+        continue-on-error: true
+        run: bash .github/steward/gh-rest.sh budget || echo "budget probe unavailable"
+
       - name: Salvage unpushed work
         if: always()
         continue-on-error: true
         timeout-minutes: 5
-        run: bash .github/steward/salvage.sh "${{ github.run_id }}" "${{ job.status }}"
+        run: bash .github/steward/salvage.sh "${{ github.run_id }}" "${{ job.status }}" | tee /tmp/steward-salvage.txt
+
+      # WHAT THE RUN ACTUALLY PICKED UP. Read from the event stream, not from the
+      # agent's prose: the claim, the branch, the pr-create's number and the
+      # pr-merge's sha are all in there verbatim. Before this, the journal was
+      # the last 4000 characters of free text and no two entries were comparable
+      # — five parallel slices posted five entries under one heading and the
+      # owner could not tell which ticket any of them had taken.
+      - name: Record what the run did (ticket, branch, PR, outcome)
+        if: always()
+        continue-on-error: true
+        run: |
+          node .github/steward/run-record.mjs \
+            --stream /tmp/steward-stream.jsonl --resume /tmp/steward-stream.resume.jsonl \
+            --salvage /tmp/steward-salvage.txt \
+            --app "${STEWARD_APP:-fleet}" --slice "${SLICE:-1}" --slices "${SLICES:-1}" \
+            --run-id "${{ github.run_id }}" \
+            --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            --status "${{ job.status }}" \
+            --json /tmp/steward-record.json --md /tmp/steward-record.md
+          # The journal body: the record first (it survives any truncation),
+          # then the run's own words. The tail is applied HERE so the header
+          # cannot be the thing that gets cut.
+          {
+            cat /tmp/steward-record.md
+            echo; echo '---'; echo
+            if [ -s /tmp/steward-out.txt ]; then tail -c 3500 /tmp/steward-out.txt
+            else echo '_(no summary captured)_'; fi
+          } > /tmp/steward-journal.md
+          cat /tmp/steward-record.md >> "$GITHUB_STEP_SUMMARY"
 
       # The machine-readable trail: one JSON event per action the agent took,
       # written as it went. This is the artefact to download when a run needs
@@ -347,6 +619,10 @@ jobs:
           path: |
             /tmp/steward-stream.jsonl
             /tmp/steward-out.txt
+            /tmp/steward-stream.resume.jsonl
+            /tmp/steward-out.first.txt
+            /tmp/steward-record.json
+            /tmp/steward-record.md
           if-no-files-found: ignore
           retention-days: 14
 
@@ -361,49 +637,110 @@ jobs:
       - name: Journal the run
         if: always()
         continue-on-error: true
-        run: bash .github/steward/journal.sh "${{ github.run_id }}" "Steward improve — ${{ github.event.inputs.app || 'fleet pick' }}" "${{ job.status }}" /tmp/steward-out.txt
+        env:
+          # The journal is the one thing here that never leaves THIS repo —
+          # journal.sh hardcodes kevinrhaas/polecat-platform — so it has no
+          # business spending the cross-repo PAT's budget. GITHUB_TOKEN is
+          # metered per REPOSITORY (1,000/hour) and is a different bucket
+          # entirely from the account-wide pool that STEWARD_PAT, five parallel
+          # slices and Manager's Fleet Ops all draw on.
+          #
+          # This is the fix the step's own comment below was asking for: it
+          # already noted that a rate-limited journal loses a shipped run's
+          # write-up. Now journaling cannot be starved by PR traffic, and it
+          # stops adding to the pressure that starves the PR traffic.
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # The record-led body when the record step produced one; the raw
+          # summary when it did not, so a journal entry is never lost to it.
+          F=/tmp/steward-journal.md; MODE=--whole
+          [ -s "$F" ] || { F=/tmp/steward-out.txt; MODE=tail; }
+          bash .github/steward/journal.sh "${{ github.run_id }}" \
+            "Steward improve — ${{ github.event.inputs.app || 'fleet pick' }}${{ github.event.inputs.lane && format(' {{{0}}}', github.event.inputs.lane) || '' }}${{ github.event.inputs.slices != '' && github.event.inputs.slices != '1' && format(' [{0}/{1}]', github.event.inputs.slice, github.event.inputs.slices) || '' }}" \
+            "${{ job.status }}" "$F" "$MODE"
 
       # KEEP THE LOOP MOVING — do not wait for the cron.
       #
-      # There is no "chain next slice" step any more: slices fire together, so a
-      # run never dispatches WORK. But the loop still needs something to start
-      # the NEXT batch, and the `*/10` cron cannot be trusted to do it. Measured
-      # 2026-08-27: scheduled steward-focus ticks arrived 99, 110, 135, 193 and
-      # 214 minutes apart, then stopped for ~6 hours. GitHub queues schedule
-      # events at low priority and drops them under load — a busy Actions
-      # account (this one) gets throttled hardest. The old chain accidentally
-      # hid this, because each run dispatched the next itself and only the FIRST
-      # slice of a batch needed a tick.
+      # A run never dispatches WORK: `slices` is a concurrency target and only
+      # the scheduler decides what to start. But the scheduler has to be TOLD,
+      # because the `*/10` cron cannot be trusted to notice. Measured 2026-08-27:
+      # scheduled steward-focus ticks arrived 99, 110, 135, 193 and 214 minutes
+      # apart, then stopped for ~6 hours. GitHub queues schedule events at low
+      # priority and drops them under load, and this account is a heavy user.
       #
-      # So the last slice out turns the lights back on: when no sibling of this
-      # batch is still running, dispatch steward-focus (Claude-free, seconds,
-      # roster-gated). The next batch then starts within a minute of the last
-      # one finishing instead of whenever GitHub feels like it, and the cron
-      # becomes a backstop rather than the mechanism.
+      # So a finishing run tells it directly — see the step below for why every
+      # run kicks rather than only the last one out.
       #
-      # Gated on job.status == 'success', exactly as the old chain was: an
-      # unconditional re-dispatch is what let a week of failing analytics runs
-      # burn the fleet's shared quota (tech-sweep issue #106). A wholly failed
-      # batch waits for the cron, which is the safe direction. Any single
-      # succeeding slice is enough to keep the lane alive.
-      - name: Kick the scheduler when this batch finishes
+      - name: Free this slot, and tell the scheduler to refill it
         if: always() && job.status == 'success' && github.event.inputs.app != '' && github.event.inputs.app != 'fleet'
         continue-on-error: true   # a rate-limited kick must not fail a shipped run; the cron still backstops
         env:
           GH_TOKEN: ${{ github.token }}
-          APP: ${{ github.event.inputs.app }}
-          SELF: ${{ github.run_id }}
         run: |
-          # Any OTHER slice of this app still going? Exclude this run — it is
-          # still "in_progress" while this step executes. Defaults to 1 (assume a
-          # sibling is alive) if the query fails, so a hiccup can't double-fire a
-          # batch; the cron covers that case.
-          SIBS=$(gh run list -R kevinrhaas/polecat-platform --workflow steward-improve.yml \
-            --limit 60 --json status,displayTitle,databaseId \
-            -q "[.[] | select(.databaseId != ${SELF}) | select(.status==\"in_progress\" or .status==\"queued\") | .displayTitle] | map(select(. == \"Steward improve — ${APP}\" or startswith(\"Steward improve — ${APP} [\"))) | length" 2>/dev/null || echo 1)
-          if [ "${SIBS:-1}" -gt 0 ]; then
-            echo "↷ ${SIBS} sibling slice(s) still running — the last one out kicks the scheduler"
-            exit 0
-          fi
-          echo "→ last slice of the batch; kicking steward-focus so the next batch starts now"
+          # EVERY run kicks, not just the last one out.
+          #
+          # Under the old batch gate this step first checked whether any sibling
+          # was still running and stayed quiet if so, because a kick mid-batch
+          # would have been refused by the scheduler anyway. Slots changed that:
+          # this run finishing frees ITS slot right now, and the lane should be
+          # back to full strength within the minute rather than at the mercy of
+          # the next cron tick (measured 2026-08-27: scheduled ticks arrived 99,
+          # 110, 135, 193 and 214 minutes apart, then stopped for ~6 hours).
+          #
+          # Safe to fire unconditionally because the scheduler is idempotent: it
+          # fills only the slots it finds empty, so a redundant tick dispatches
+          # nothing. Several runs finishing together produce several kicks, and
+          # steward-focus's own concurrency group (1 running + 1 pending) drops
+          # the surplus — also harmless, because whichever tick does run refills
+          # ALL free slots, not one.
+          #
+          # Still gated on job.status == 'success', exactly as before: an
+          # unconditional re-dispatch is what let a week of failing analytics
+          # runs burn the fleet's shared quota (tech-sweep issue #106). A slot
+          # whose run FAILED is refilled by the cron instead — slower, and the
+          # safe direction.
+          echo "→ slot freed; kicking steward-focus to refill it"
           gh workflow run steward-focus.yml -R kevinrhaas/polecat-platform
+
+
+  chatgpt:
+    if: inputs.processor == 'gpt' && vars.STEWARD_GPT_AUTH == 'chatgpt'
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate lane settings
+        run: node .github/steward/validate-run.mjs
+      - name: Run private ChatGPT worker
+        env:
+          GH_TOKEN: ${{ secrets.STEWARD_PAT }}
+          WORKER_INPUTS: ${{ toJSON(inputs) }}
+        run: node .github/steward/private-worker.mjs
+      - name: Stop private worker if parent failed or was cancelled
+        if: always() && (failure() || cancelled())
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.STEWARD_PAT }}
+        run: |
+          [ -f /tmp/private-worker-id ] || exit 0
+          WORKER_ID=$(cat /tmp/private-worker-id)
+          [[ "$WORKER_ID" =~ ^[0-9]+$ ]] || exit 1
+          STATE=$(gh api "repos/kevinrhaas/polecat-steward/actions/runs/$WORKER_ID" --jq .status)
+          [ "$STATE" = completed ] || gh api --method POST "repos/kevinrhaas/polecat-steward/actions/runs/$WORKER_ID/cancel"
+      - name: Journal private worker link
+        if: always()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          bash .github/steward/journal.sh "$GITHUB_RUN_ID" "Steward ChatGPT worker" "${{ job.status }}" /tmp/private-worker.md --whole
+      - name: Ask scheduler to refill after success
+        if: success() && inputs.app != '' && inputs.app != 'fleet'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run steward-focus.yml -R kevinrhaas/polecat-platform

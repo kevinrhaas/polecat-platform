@@ -3,14 +3,28 @@
 #
 #   gh-rest.sh pr-create   <repo> <head> <base> <title> <body-file>   → prints the PR number
 #   gh-rest.sh pr-merge    <repo> <number> <method> [commit-title]    → prints the merge sha
+#   gh-rest.sh pr-automerge <repo> <number> [method] [commit-title]   → 'armed', 'pending', 'refused', or merges
+#       Arms GitHub's auto-merge where the repository allows it. Where it does
+#       NOT (kevinrhaas/chicago), it reads the head commit's own check runs,
+#       waits GH_REST_GATE_WAIT_SECONDS (540) for a pending gate to settle, and
+#       merges only on green. The two ways it does not merge are DIFFERENT, and
+#       T-1609 is why:
+#         • a RED check is a verdict — it refuses, labels the PR `resume`
+#           (never `hold`, T-1577), says which check, and exits 3;
+#         • a still-PENDING gate is not a verdict — it prints `pending`, exits
+#           4 and changes nothing, for the caller to wait again or hand on.
+#       GH_REST_MERGE_BLIND=1 restores the old unconditional merge.
 #   gh-rest.sh pr-comment  <repo> <number> <body-file>
 #   gh-rest.sh pr-list     <repo> [state] [per-page]                  → number<TAB>head<TAB>base<TAB>title
 #   gh-rest.sh pr-get      <repo> <number> [--jq FILTER]
+#   gh-rest.sh pr-resume   <repo> <number> --why "…" [--waits-on T-NNNN|nothing]
 #   gh-rest.sh issue-create  <repo> <title> <body-file> [label]       → prints the issue number
 #   gh-rest.sh issue-comment <repo> <number> <body-file>
 #   gh-rest.sh comment-find    <repo> <number> <marker>          → comment id, or empty
 #   gh-rest.sh comment-update  <repo> <comment-id> <body-file>
 #   gh-rest.sh issue-find    <repo> <label>                           → first open number, or empty
+#   gh-rest.sh issue-comments <repo> <number>                         → the issue's comment count
+#   gh-rest.sh issue-close   <repo> <number>
 #   gh-rest.sh label-create  <repo> <name> <color> [description]
 #   gh-rest.sh budget                                                 → both meters, one line
 #
@@ -122,6 +136,137 @@ api() {
 
 jqf() { python3 -c 'import json,sys;d=json.load(sys.stdin);print(d.get(sys.argv[1],"") if isinstance(d,dict) else "")' "$1"; }
 
+# ── The merge gate, for repositories where auto-merge cannot be armed ────────
+#
+# `pr-automerge` is documented as "arm and walk away", and that documentation is
+# only true where GitHub's auto-merge is ENABLED on the repository. Where it is
+# not, the arming mutation comes back UNPROCESSABLE and the fallback below used
+# to merge on the spot, with no gate consulted at all.
+#
+# MEASURED on kevinrhaas/chicago, 2026-09-25 (chicago-tickets T-1572). PR #43
+# printed
+#
+#     gh-rest: pr-automerge: could not arm ({"errors":[{"type":"UNPROCESSABLE",
+#       "message":"Auto merge is not allowed for this repository"}]}) — merging
+#       directly instead
+#
+# and merged into `dev` about one second after it was opened — onto a `dev`
+# whose own check was already red for an unrelated reason. Auto-merge is not a
+# nicety there: it is the ONLY thing that was reading the gate, so a repository
+# without it turned every slice's merge into a blind one.
+#
+# So the fallback now does by hand what arming would have done for us: read the
+# head commit's own check runs, wait a BOUNDED time for them to settle, merge
+# when they are green, and refuse — saying which check — when they are not.
+# `pr-merge` is unchanged and still merges on command; this is the difference
+# between the two, and the reason to keep reaching for `pr-automerge`.
+# HOW LONG IT WAITS, AND WHY THAT IS NOT ONE NUMBER (T-1609, measured 2026-09-26).
+#
+# 420 s was a guess, and it was shorter than the gate it waited for. The
+# `pull_request` runs of kevinrhaas/chicago's `chicago-4d-check.yml` that morning
+# took 502-583 s wall clock for a full pass (median 551 s over 17 runs), so the
+# budget expired BELOW EVERY ONE OF THEM. Two consecutive units proved it inside
+# one hour, both fully gated green in the foreground before they were pushed:
+#
+#   PR #60 (T-0419)   opened 04:13Z   refused 04:20Z   gate green 04:23:25Z
+#   PR #63 (T-1603)   opened 05:31Z   refused 05:38Z   gate green 05:40:51Z
+#
+# Each ended as a `resume` PR whose stated reason was stale within three minutes,
+# and #60 was merged UNCHANGED by the janitor an hour later. That is not a gate
+# doing its job; it is a timeout wearing a verdict's clothes, and the cost is a
+# janitor lap plus up to two hours of latency on work that was already green.
+#
+# 540 s is the largest wait that fits ONE foreground call. A steward run drives
+# this from a Bash tool call capped at 600 s, so a wait past ~570 s is killed by
+# the harness before it can merge anything — which moves the failure from
+# GitHub's clock to the runner's and loses the work instead of labelling it. The
+# measured maximum is 583 s, ABOVE that ceiling, so NO single value here can be
+# both honest and sufficient: raising it until it always covered the gate would
+# write a number this process cannot wait out.
+#
+# So the wait is split instead of stretched. One call waits 540 s; a gate still
+# running at the end of it comes back as `pending`/exit 4 — not a refusal — and
+# the caller laps it. Two laps cover 1080 s, nearly twice the slowest gate
+# measured, and neither lap holds a slice open past its own ceiling. The second
+# lap costs one more arming mutation (~1 GraphQL point of 5000/h; see the note on
+# the mutation below), which is the whole price of the change.
+GATE_WAIT="${GH_REST_GATE_WAIT_SECONDS:-540}"   # seconds to wait, PER CALL, for a pending gate
+GATE_POLL="${GH_REST_GATE_POLL_SECONDS:-20}"    # seconds between reads
+
+# gate_state <repo> <sha> → one line:
+#   clear | none | unreadable | "red <check> (<conclusion>)" | "pending <check> (<status>)"
+#
+# `none` and `unreadable` are deliberately NOT refusals. Bot-opened PRs on some
+# repos trigger no workflow at all, so "no check runs" is the normal state of a
+# perfectly good PR and refusing it would stop every merge in the fleet; and a
+# REST blip must not do that either — the same contract `pr-state` already
+# states for itself.
+gate_state() {
+  local repo="$1" sha="$2" body
+  body=$(api GET "repos/${repo}/commits/${sha}/check-runs?per_page=100" 2>/dev/null) || { printf 'unreadable\n'; return 0; }
+  printf '%s' "$body" | python3 -c '
+import json,sys
+RED={"failure","timed_out","cancelled","action_required","stale"}
+try: runs=(json.load(sys.stdin) or {}).get("check_runs") or []
+except Exception: print("unreadable"); raise SystemExit
+if not runs: print("none"); raise SystemExit
+for r in runs:
+    if r.get("status")=="completed" and (r.get("conclusion") or "") in RED:
+        print("red %s (%s)"%(r.get("name","?"), r.get("conclusion"))); raise SystemExit
+for r in runs:
+    if r.get("status")!="completed":
+        print("pending %s (%s)"%(r.get("name","?"), r.get("status"))); raise SystemExit
+print("clear")' 2>/dev/null || printf 'unreadable\n'
+}
+
+# refuse_merge <repo> <number> <why> — leave the PR OPEN, labelled and explained.
+#
+# IT APPLIES `resume`, NOT `hold`, and T-1577 is why: `hold` means THE OWNER IS
+# DECIDING, a run never applies it, and every automated pass skips a held PR on
+# purpose. A PR refused here needs no ruling from anybody — it needs a machine to
+# lap it, re-gate it and merge it once the check goes green, which is exactly
+# what `resume` asks for and what keeps the janitor sweeping it. Labelling these
+# `hold` would recreate, from inside the tooling, the very silt T-1577 cleared:
+# three complete PRs parked for a red gate with nothing coming for them.
+#
+# Doing it HERE rather than trusting each caller is what makes the outcome true
+# by construction. `pr-resume` owns the label vocabulary and the reason line, so
+# this spends no opinion of its own on either.
+refuse_merge() {
+  local repo="$1" number="$2" why="$3"
+  log "pr-automerge: REFUSING to merge ${repo}#${number} — ${why}"
+  bash "$0" pr-resume "$repo" "$number" \
+    --why "not merged: ${why} — pr-automerge read the gate rather than merging blind" >/dev/null 2>&1 || true
+  printf 'refused\n'
+  exit 3
+}
+
+# defer_merge <repo> <number> <check> — the gate has not answered yet, so there is
+# no verdict to act on. Print `pending`, exit 4, and change NOTHING about the PR.
+#
+# THIS IS NOT A REFUSAL, and T-1609 is why the two are separate calls. A red check
+# is GitHub saying the work is wrong; a pending one is GitHub not having said
+# anything. Collapsing them wrote "not merged" onto finished, green work — twice in
+# one hour — and bought a janitor lap to re-prove what the run had already proved.
+#
+# IT LEAVES NO LABEL, ON PURPOSE. `resume` means A RUN COULD NOT FINISH, and the
+# caller has not finished: its next move is to lap this call. Nothing is stranded
+# if the run dies here instead — the janitor sweeps by HEAD PATTERN, not by label
+# (`pr-sweepable` filters open, non-draft, `steward/*`, minus `hold`), so an
+# unlabelled open steward PR is already in the next sweep. The run that GIVES UP
+# waiting is the one that owes a reason, and it says so with `pr-resume` itself;
+# writing one here would put a stale reason on a PR that is about to merge, which
+# is the exact drift T-1577 measured.
+defer_merge() {
+  local repo="$1" number="$2" check="$3"
+  log "pr-automerge: ${check} is STILL RUNNING after ${GATE_WAIT}s on ${repo}#${number}"
+  log 'pr-automerge: that is not a red gate and not a refusal — nothing has been decided.'
+  log "pr-automerge: call pr-automerge again to keep waiting (each lap waits ${GATE_WAIT}s), or"
+  log "pr-automerge: hand it on: pr-resume ${repo} ${number} --why 'gate still running'"
+  printf 'pending\n'
+  exit 4
+}
+
 cmd="${1:-}"; shift || true
 case "$cmd" in
   pr-create)
@@ -142,6 +287,115 @@ if len(sys.argv)>2 and sys.argv[2]: d["commit_title"]=sys.argv[2]
 json.dump(d,sys.stdout)' "$method" "$ctitle")
     printf '%s' "$payload" > /tmp/gh-rest-merge.json
     api PUT "repos/${repo}/pulls/${number}/merge" --input /tmp/gh-rest-merge.json | jqf sha ;;
+  pr-automerge)
+    # Arm GitHub's auto-merge, so the PR lands the moment its required checks go
+    # green and nobody has to hold a run open watching for it. Where arming is
+    # impossible it falls back to reading the gate by hand and merging on green,
+    # so it is still never worse than `pr-merge` — it is now strictly SAFER, and
+    # the caller can always use this instead.
+    #
+    # THIS IS THE ONE GraphQL CALL IN THIS FILE, and the header's rule is being
+    # applied rather than bent. `enablePullRequestAutoMerge` has NO REST
+    # endpoint; there is no other way to arm it. What emptied the meter on run
+    # 1140 was `gh pr view|list|create`, which fetch nested objects and are
+    # billed by COMPLEXITY — that is why `used: 6690` was nowhere near 6,690
+    # commands. This is one mutation against one object, once per unit of work:
+    # five slices spend about five points of five thousand an hour. `gh pr ...`
+    # stays forbidden; a single priced mutation is not what ran the meter down.
+    #
+    # WHY IT IS WORTH THE POINT. Without it a run must either sit through its
+    # own PR's checks — minutes of a capped slice, spent waiting — or merge
+    # before they finish. And the base branch moves underneath it meanwhile:
+    # eleven merge attempts were lost to that on 2026-09-05, each one a rebuild
+    # and a gate, because `dev` advanced between the push and the merge.
+    repo="$1"; number="$2"
+    method=$(printf '%s' "${3:-squash}" | tr '[:lower:]' '[:upper:]')
+    # One REST call for both the node id (to arm with) and the head sha (to read
+    # the gate on, if arming fails).
+    prbody=$(api GET "repos/${repo}/pulls/${number}")
+    node=$(printf '%s' "$prbody" | jqf node_id)
+    sha=$(printf '%s' "$prbody" | python3 -c 'import json,sys
+try: print(((json.load(sys.stdin) or {}).get("head") or {}).get("sha",""))
+except Exception: print("")' 2>/dev/null)
+    if [ -z "$node" ]; then
+      log "pr-automerge: could not read the PR's node id — merging directly instead"
+      bash "$0" pr-merge "$repo" "$number" "${3:-squash}" "${4:-}"; exit $?
+    fi
+    # One line on purpose: the test harness logs one line per call, so a query
+    # broken over six lines reads as six calls and the "how many requests did
+    # this cost" assertion — the whole point of this file — stops meaning anything.
+    out=$(gh api graphql -f query='mutation($id:ID!, $m:PullRequestMergeMethod!) { enablePullRequestAutoMerge(input:{pullRequestId:$id, mergeMethod:$m}) { pullRequest { number autoMergeRequest { enabledAt } } } }' -f id="$node" -f m="$method" 2>&1)
+    if [ $? -eq 0 ] && ! grep -qi '"errors"\|GraphQL:' <<<"$out"; then
+      log "pr-automerge: armed on ${repo}#${number} (${method}) — GitHub will merge it when the gate is green"
+      printf 'armed\n'; exit 0
+    fi
+    # The ways it legitimately cannot arm:
+    #   • "Pull request is in clean status" — nothing left to wait for.
+    #   • auto-merge is not enabled on the repository (kevinrhaas/chicago).
+    #   • no required status check on the base branch, so a clean PR is
+    #     immediately mergeable and GitHub refuses to queue it.
+    #
+    # ALL THREE USED TO MEAN "just merge", and that is the bug T-1572 reported:
+    # on a repository with auto-merge switched off, the second bullet is the
+    # ONLY branch ever taken, so "arm and walk away" silently became "merge now,
+    # gate unread". The merge still happens — but on the gate's word, not in
+    # spite of it. See gate_state()/refuse_merge() above for why `none` and
+    # `unreadable` still merge.
+    log "pr-automerge: could not arm (${out//$'\n'/ }) — reading the PR's own checks instead"
+    if [ "${GH_REST_MERGE_BLIND:-}" = "1" ]; then
+      log "pr-automerge: GH_REST_MERGE_BLIND=1 — merging without reading the gate"
+      bash "$0" pr-merge "$repo" "$number" "${3:-squash}" "${4:-}"; exit $?
+    fi
+    if [ -z "$sha" ]; then
+      log "pr-automerge: could not read the PR's head sha — merging directly instead"
+      bash "$0" pr-merge "$repo" "$number" "${3:-squash}" "${4:-}"; exit $?
+    fi
+    deadline=$(( $(date -u +%s) + GATE_WAIT )); empties=0
+    while :; do
+      verdict=$(gate_state "$repo" "$sha")
+      case "$verdict" in
+        clear)
+          log "pr-automerge: every check on ${sha:0:7} is green — merging"
+          bash "$0" pr-merge "$repo" "$number" "${3:-squash}" "${4:-}"; exit $? ;;
+        red\ *)
+          refuse_merge "$repo" "$number" "check ${verdict#red }" ;;
+        unreadable)
+          log "pr-automerge: could not read the checks on ${sha:0:7} — merging directly instead"
+          bash "$0" pr-merge "$repo" "$number" "${3:-squash}" "${4:-}"; exit $? ;;
+        none)
+          # Checks can take a few seconds to appear. Give them ONE poll to show
+          # up, then treat a still-empty list as "this PR has no gate" — which
+          # is the truth on repos where a bot-opened PR triggers no workflow.
+          empties=$(( empties + 1 ))
+          if (( empties > 1 )) || (( $(date -u +%s) + GATE_POLL > deadline )); then
+            log "pr-automerge: no check runs on ${sha:0:7} — nothing to gate on, merging"
+            bash "$0" pr-merge "$repo" "$number" "${3:-squash}" "${4:-}"; exit $?
+          fi
+          log "pr-automerge: no check runs on ${sha:0:7} yet — one more look in ${GATE_POLL}s"
+          sleep "$GATE_POLL" ;;
+        pending\ *)
+          # SLEEP ONLY WHAT IS LEFT, AND READ THE GATE **AT** THE DEADLINE.
+          #
+          # The old test was `now + GATE_POLL > deadline`, which gave up a whole
+          # poll interval EARLY: the effective wait was GATE_WAIT - GATE_POLL, and
+          # the gate was never once read at the moment the budget actually ran out.
+          # On a 20 s poll that is 20 s discarded at the end of every wait —
+          # precisely where a gate that is about to go green lives. PR #63's gate
+          # went green 6 s after the 540 s mark this file now budgets, so the
+          # interval the old arithmetic threw away is the difference between a
+          # merged unit and a lap (T-1609).
+          now=$(date -u +%s)
+          if (( now >= deadline )); then
+            defer_merge "$repo" "$number" "check ${verdict#pending }"
+          fi
+          nap=$(( deadline - now )); (( nap > GATE_POLL )) && nap=$GATE_POLL
+          log "pr-automerge: ${verdict} — waiting ${nap}s (budget ends in $(( deadline - now ))s)"
+          sleep "$nap" ;;
+        *)
+          log "pr-automerge: unrecognised gate verdict [${verdict}] — merging directly instead"
+          bash "$0" pr-merge "$repo" "$number" "${3:-squash}" "${4:-}"; exit $? ;;
+      esac
+    done ;;
   pr-comment|issue-comment)
     repo="$1"; number="$2"; bodyfile="$3"
     python3 -c 'import json,sys;json.dump({"body":open(sys.argv[1],encoding="utf-8").read()},sys.stdout)' \
@@ -159,10 +413,23 @@ for p in json.load(sys.stdin):
     api GET "repos/${repo}/pulls/${number}" "$@" ;;
   pr-sweepable)
     # What the janitor asks for, in ONE request: open, not draft, not `hold`,
-    # head matching <regex>. REST's pull list already carries draft, labels and
-    # head.ref, so this also retires the per-PR `gh pr view` the janitor used to
-    # make just to learn the branch name — one call per PR saved, on top of the
-    # bucket change.
+    # head matching <regex>. REST's pull list already carries draft, labels,
+    # head.ref AND base.ref, so this also retires the per-PR `gh pr view` the
+    # janitor used to make just to learn the branch name — one call per PR
+    # saved, on top of the bucket change.
+    #
+    # `hold` IS THE ONLY LABEL THAT TAKES A PR OUT OF THE SWEEP, and `resume` is
+    # deliberately NOT one of them (T-1577). The two labels mean different
+    # things: `hold` is the owner deciding, so nothing comes for it until he says
+    # so; `resume` is a run's own unfinished handoff, which is work the loop
+    # still owes and therefore exactly what this sweep is for. A resumable PR is
+    # lapped, gated and merged like any other, and the test below asserts both
+    # halves so a future filter cannot quietly silence the second one.
+    #
+    # The BASE is the third column, added for T-0809: the janitor merges the
+    # base into the branch and gates THAT, so it has to know which base. It
+    # cannot assume `main` — jobtracker, analytics and chicago/4d are all on a
+    # dev-first pipeline and their automation PRs target `dev`.
     repo="$1"; pattern="$2"
     api GET "repos/${repo}/pulls?state=open&per_page=100" \
       | python3 -c '
@@ -173,7 +440,95 @@ for p in json.load(sys.stdin):
     if any(l["name"]=="hold" for l in p.get("labels",[])): continue
     ref = p["head"]["ref"]
     if not pat.search(ref): continue
-    print("%d\t%s" % (p["number"], ref))' "$pattern" ;;
+    print("%d\t%s\t%s" % (p["number"], ref, p["base"]["ref"]))' "$pattern" ;;
+  pr-resume)
+    # THE RUN'S OWN UNFINISHED WORK, HANDED TO THE NEXT RUN — the verb that
+    # replaced `hold` in a steward run's hands (T-1577; chicago/4d AGENTS.md
+    # § the two labels is the fleet statement of it).
+    #
+    #   `hold` means THE OWNER IS DECIDING, and every automated pass skips a held
+    #   PR on purpose — a park a robot can overrule is not a park. The steward
+    #   prompt used to tell a run to apply that same label when it merely could
+    #   not finish, so work that needed nobody's decision had nothing coming for
+    #   it either. Measured 2026-09-25 on chicago's three open PRs: #39's stated
+    #   reason was already stale (CI had since passed all 620 steps) and it had
+    #   drifted into conflict while held; #41 and #42 were COMPLETE, held only
+    #   because dev's gate was red. Not one needed a ruling; each needed a
+    #   machine to lap it, re-gate it and merge it, and each got a person.
+    #
+    # So: a run never applies `hold`, and this is what it applies instead.
+    repo="$1"; number="$2"; shift 2
+    why=""; waits="nothing"
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --why)      why="$2"; shift 2 ;;
+        --waits-on) waits="${2:-nothing}"; shift 2 ;;
+        *) echo "gh-rest.sh pr-resume: unknown argument $1" >&2; exit 2 ;;
+      esac
+    done
+    # A HANDOFF WITH NO REASON IS THE FAULT THIS VERB EXISTS TO END, so a missing
+    # reason is a usage error and not a default. The three PRs above each had a
+    # reason; it was in the PR body, which is the one place nobody reads.
+    [ -n "$why" ] || { echo "gh-rest.sh pr-resume: --why is required — a handoff whose reason is not written down is the fault this verb exists to end" >&2; exit 2; }
+    # ONE LINE, ALWAYS. A newline in the reason would push the machine-readable
+    # part off the first line, and every reader below would see a handoff with no
+    # reason — the same silence, wearing a new label.
+    why=$(printf '%s' "$why" | tr '\n\r\t' '   ')
+    [ -n "$waits" ] || waits=nothing
+    case "$waits" in
+      nothing|T-[0-9][0-9][0-9][0-9]) ;;
+      *) echo "gh-rest.sh pr-resume: --waits-on takes a ticket id like T-1567, or the word 'nothing' — got '$waits'" >&2; exit 2 ;;
+    esac
+    # The label vocabulary, created once and idempotently. Adding a label that
+    # does not exist is a 422 on the issues endpoint, so the first handoff in a
+    # repo that has never seen one would otherwise leave the comment and no label
+    # — visible to a person and invisible to every pass.
+    bash "$0" label-create "$repo" resume 0E8A16 \
+      "A run could not finish this; the next one picks it up — reason in the resume: comment"
+    # THE REASON GOES ON BEFORE THE LABEL, and the order is the point: a labelled
+    # PR must never exist without its reason beside it. If the comment fails the
+    # label is never applied and the run is told — better an unlabelled PR with a
+    # loud failure than a labelled one nobody can interpret.
+    {
+      printf 'resume: %s · waits on: %s\n\n' "$why" "$waits"
+      printf 'This pull request is the loop'"'"'s own unfinished work, and it is NOT parked.\n'
+      printf 'The run that opened it could not finish inside its own budget; the branch\n'
+      printf 'carries the work. A later run picks it up before it takes new queue work:\n'
+      printf 'merge the base in, re-derive, fix what is red, gate, merge. The janitor\n'
+      printf 'keeps sweeping it in the meantime — `resume` is work the loop still owes.\n\n'
+      if [ "$waits" != "nothing" ]; then
+        printf 'It waits on **%s**. Until that ticket closes this PR cannot go green, so an\n' "$waits"
+        printf 'agentic run that finds it says so and takes the next row rather than\n'
+        printf 're-gating it. A machine merge of an already-green PR is not gated by this.\n\n'
+      fi
+      printf '`hold` is the owner'"'"'s park switch and no run applies it.\n\n'
+      printf -- '---\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n'
+    } > /tmp/gh-rest-resume.md
+    bash "$0" pr-comment "$repo" "$number" /tmp/gh-rest-resume.md
+    api POST "repos/${repo}/issues/${number}/labels" -f 'labels[]=resume' >/dev/null
+    # AND `hold` COMES OFF. A run reaching for this verb is declaring the work
+    # unfinished, not parked; leaving both on would leave every pass skipping it,
+    # which is exactly the state being fixed. A PR that never had `hold` answers
+    # 404 here, and that is not a failure.
+    api DELETE "repos/${repo}/issues/${number}/labels/hold" >/dev/null 2>&1 \
+      && echo "  hold removed — hold is the owner's switch and no run applies it"
+    echo "resume: #${number} handed off · waits on: ${waits}" ;;
+  pr-state)
+    # `open` or `closed`, one field, one REST request. The janitor asks this
+    # AFTER a gate that can run for minutes, so it does not merge a pull request
+    # that was closed while that gate ran — see steward-janitor.yml for the run
+    # that made it necessary.
+    #
+    # IT PRINTS NOTHING WHEN THE REQUEST FAILS, and exits 0 while doing it. That
+    # is the contract the caller is written against: an empty answer means
+    # "could not tell", and the caller carries on and merges, which is what it
+    # did before this existed. Returning non-zero would put a REST hiccup in the
+    # path of every merge in the fleet, and this is a guard against one bad
+    # merge, not a safety interlock worth paying that for.
+    repo="$1"; number="$2"
+    body=$(api GET "repos/${repo}/pulls/${number}") || {
+      log "pr-state: could not read ${repo}#${number} — answering empty"; exit 0; }
+    printf '%s' "$body" | jqf state ;;
   pr-find)
     # Open PR number for a head branch, or empty. `head` must be qualified with
     # the owner — GitHub's REST filter takes `owner:branch` and silently matches
@@ -190,8 +545,12 @@ print(d[0]["number"] if d else "")' ;;
     # First comment on <number> whose body contains <marker>, by id. Empty when
     # there is none — a caller must be able to tell "no comment yet" from "the
     # lookup failed", so a genuine API failure exits non-zero via api().
+    # The journal holds thousands of comments and the list is oldest-first, so
+    # page one would never reach a live run's notice: ask only for comments
+    # touched in the last day, which covers any run still going.
     repo="$1"; number="$2"; marker="$3"
-    api GET "repos/${repo}/issues/${number}/comments?per_page=100" \
+    since=$(python3 -c 'import datetime as d;print((d.datetime.now(d.timezone.utc)-d.timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ"))')
+    api GET "repos/${repo}/issues/${number}/comments?per_page=100&since=${since}" \
       | python3 -c '
 import json,sys
 m=sys.argv[1]
@@ -231,6 +590,15 @@ json.dump(d,sys.stdout)' "$title" "$bodyfile" "$label" > /tmp/gh-rest-issue.json
 import json,sys
 d=json.load(sys.stdin)
 print(d[0]["number"] if d else "")' ;;
+  issue-comments)
+    # The count GitHub keeps on the issue itself — one GET, no paging. journal.sh
+    # reads it to roll the journal over before GitHub's 2,500-comment cap does.
+    repo="$1"; num="$2"
+    api GET "repos/${repo}/issues/${num}" | jqf comments ;;
+  issue-close)
+    repo="$1"; num="$2"
+    printf '{"state":"closed","state_reason":"completed"}' > /tmp/gh-rest-close.json
+    api PATCH "repos/${repo}/issues/${num}" --input /tmp/gh-rest-close.json >/dev/null ;;
   label-create)
     repo="$1"; name="$2"; color="$3"; desc="${4:-}"
     python3 -c '
@@ -240,8 +608,12 @@ json.dump({"name":sys.argv[1],"color":sys.argv[2],"description":sys.argv[3]},sys
     # A label that already exists is a 422, which is success for our purposes.
     api POST "repos/${repo}/labels" --input /tmp/gh-rest-label.json >/dev/null 2>&1 || true ;;
   budget)
+    # All THREE pools. Reporting core+graphql only repeated the mistake this
+    # file exists to correct — a meter that omits a pool reads "fine" during the
+    # outage that pool is causing. Free to call: /rate_limit is not itself
+    # metered.
     gh api rate_limit --jq \
-      '"core \(.resources.core.remaining)/\(.resources.core.limit)  graphql \(.resources.graphql.remaining)/\(.resources.graphql.limit)"' ;;
+      '"core \(.resources.core.remaining)/\(.resources.core.limit)  graphql \(.resources.graphql.remaining)/\(.resources.graphql.limit)  search \(.resources.search.remaining)/\(.resources.search.limit)"' ;;
   *)
-    sed -n '2,12p' "$0" >&2; exit 2 ;;
+    sed -n '2,21p' "$0" >&2; exit 2 ;;
 esac
