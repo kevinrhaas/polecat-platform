@@ -25,6 +25,11 @@ STEPS:
    wrapper's: it takes positional arguments, so the old line would have been read
    as repo `--squash`, PR number `--delete-branch`. `bash "$GHREST"` with no
    arguments prints the usage.)
+   Read the exit status, because two of them are not failures: **3** means it
+   refused on a RED check and has already labelled that PR `resume` — leave it
+   open, that is the "failures OPEN" case above. **4** means the app's gate was
+   still RUNNING, which is no verdict at all: call `pr-automerge` again for that
+   PR and it merges when the gate lands (T-1609).
 4. Print: version shipped, apps merged, apps left open and why.
 
 HARD RULES: nothing beyond the vendor dir + SW cache bump changes in app PRs;

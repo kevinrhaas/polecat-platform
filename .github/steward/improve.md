@@ -4,11 +4,13 @@ for all kevinrhaas repos (clone/push any of them with plain https URLs) and the
 `gh` CLI is authenticated for PRs. Fleet repos: polecat-platform,
 games.polecat.live, jobtracker.polecat.live, manager.polecat.live,
 analytics.polecat.live, autoselector.polecat.live, relay.polecat.live,
-polecat-app, polecat, custom (SCOPED — see the CUSTOM / CHICAGO 4D rule).
+polecat-app, polecat, chicago (4D Chicago — see the CHICAGO 4D rule; its
+tickets live in chicago-tickets). custom is NOT stewarded any more — see the
+CHICAGO 4D rule.
 
 MISSION: exactly ONE high-quality unit of work this run — shipped as its OWN PR,
-verified green in the foreground, and merged (or left on `hold` if it can't go
-green). Then finish. How many units the fleet does per hour is set ELSEWHERE, NOT
+verified green in the foreground, and merged (or handed to the next run on
+`resume`, with its reason, if it can't go green). Then finish. How many units the fleet does per hour is set ELSEWHERE, NOT
 by you: focus.json's per-lane `slices` field keeps that many INDEPENDENT runs
 going on the lane at all times — yours is one of them, and a replacement starts
 the moment it ends (each a separate process with its own PR + verification —
@@ -33,8 +35,9 @@ the picking logic. Otherwise pick, in priority order:
 3. The app with the stalest latest release (fetch each app's live
    /js/changelog.js, compare newest ts) → build the top item of ITS OWN playbook
    (games: CLAUDE.md + BUILD_LOOP.md + REBUILD_QUEUE.md; analytics: STATUS.md
-   NEXT ★ items + tests/run.js green; custom: chicago/4d/tickets/QUEUE.md —
-   the ROADMAP is NO LONGER the backlog there; others: ROADMAP.md). Fixing a top finding
+   NEXT ★ items + tests/run.js green; chicago: QUEUE.md in
+   kevinrhaas/chicago-tickets (cloned at chicago/4d/tickets/) — the ROADMAP is
+   NO LONGER the backlog there; others: ROADMAP.md). Fixing a top finding
    from an open "UX sweep" / "Tech sweep" issue is a first-class unit.
 
 PARALLEL SLICES (from the workflow input, printed below as `SLICE: k of N`):
@@ -82,83 +85,85 @@ HARD RULES:
   Kevin's dispatch — do NOT PR into main, do NOT dispatch promote-to-prod.
 - NON-PIPELINE REPOS: branch `steward/<short-topic>` from origin/main.
   NEVER push to main directly (merge via your green PR).
-- CUSTOM / CHICAGO 4D — a SCOPED lane, not a whole-repo lane. kevinrhaas/custom
-  is a monorepo of unrelated personal projects (CAD, 3D-print models, the Joliet
-  game, a landing site). Your lane is EXACTLY ONE subtree: `chicago/4d/` — a
-  walkable, historically-sourced 3D reconstruction of 1835 Chicago — plus its
-  published mirror `site/chicago/4d/`. Touch NOTHING else in that repo, ever.
-  Read `chicago/4d/AGENTS.md` (§ THE QUEUE) and `tickets/README.md` first;
-  STATUS.md is deliberately unflattering and is the honest state of play.
-  PIPELINE (since 2026-08-14): this app is on a TWO-TIER dev -> main pipeline —
-  read `chicago/4d/docs/PIPELINE.md`. Branch from origin/DEV, PR into DEV, merge
-  when the dev gate is green. Merging to dev is STAGE, not ship: it publishes only
-  the preview at /custom/chicago/4d/dev/walk/?year=1835. PRODUCTION MOVES ONLY WHEN
-  THE OWNER DISPATCHES `chicago-4d-promote-to-prod.yml` — never promote, never push
-  to main, and never merge a 4D PR into main. (If `dev` does not exist yet the
-  pipeline is not activated; say so in the PR and target main as before.)
-  * START WITH `chicago/4d/tickets/QUEUE.md` — THE TICKET QUEUE IS THE BACKLOG
-    since 2026-08-17, on the owner's direct request, and `docs/ROADMAP.md` is now
-    only the reasoning ARCHIVE (its NEXT UP table is frozen under a tombstone; do
-    not pick from it, do not add rows to it). Read `chicago/4d/tickets/README.md`
-    and `AGENTS.md` § THE QUEUE — one page, and it is the contract. In short:
-      - TAKE THE TOPMOST ticket in QUEUE.md you can actually run — and since
-        2026-08-19 that includes `needs_bake: true`, because this runner now
-        bakes (see BLENDER below). Do not skip the top of the queue any more.
-        `node tools/ticket.mjs list --workable` prints the same order.
-        WITH `SLICE: k of N` AND N > 1, take the **k-th** ticket in that
-        `--workable` list instead of the 1st (see PARALLEL SLICES above): the
-        other N-1 slots are working the other rows, and the ordering is stable
-        for all of you because a `claimed` ticket keeps its place in
-        `--workable`, so the k-th row is the one your slot owns. If a sibling
-        already holds it (`inflight` / a refused `claim`), drop to the topmost
-        workable ticket nobody is on.
-      - CHECK NOBODY ELSE HAS IT: `node tools/ticket.mjs inflight` names the
-        remote branches already carrying a ticket number. `claim` refuses a
-        ticket with a rival branch unless you pass `--force`, so look at that
-        branch's PR before you force past it. Two runs rebuilt T-0062 the same
-        morning for want of this check. Under parallel slices this is the
-        backstop for the race the k-th-ticket rule already avoids: a sibling
-        dispatched seconds ahead of you may have claimed by the time you look —
-        if so, take the next workable ticket BELOW yours and claim that.
-      - A RIVAL BRANCH CAN BE A CORPSE. A branch on your ticket that is older
-        than a run, has no PR, and whose only commits past `origin/dev` touch
-        `tickets/` alone (`git log --stat origin/dev..origin/<branch>`) is what a
-        run leaves when it dies right after claiming — #1459 left
-        `steward/t-0531-census-1840-sheets-210-215-219` that way on 2026-09-03
-        and it locked T-0531 for every run after. Delete it (`git push origin
-        --delete <branch>`; this runner's token may, a session's proxy may not)
-        and claim `--force`. A branch with real work past the claim is a
-        salvage, not a corpse: leave it and take the next ticket.
-      - AND READ IT BEFORE YOU REBUILD IT. `ticket.mjs inflight` now prints a
-        RECOVERABLE band: an old branch, on an unfinished ticket, with no claim
-        lock, that no merged PR accounts for — work a cancelled run left on the
-        remote where nothing could see it. custom's T-1155 was written in full,
-        pushed, cancelled before its PR, and rebuilt from scratch by the next run
-        three hours later; the second run's 71 files already existed. If your
-        ticket is in that band, open the compare URL it prints and take the
-        branch's reasoning into your own before you write a line. Salvage now
-        opens a DRAFT PR for such a branch, so you may find one already: FINISH
-        THAT PR rather than opening a second one for the same work.
+- CHICAGO 4D — its own repo since 2026-09-23. The 4D reconstruction of 1835
+  Chicago moved OUT of kevinrhaas/custom into **kevinrhaas/chicago** (served at
+  https://chicago.polecat.live/4d/, dev preview /4d/dev/, year doors /4d/1835/),
+  and its tickets moved into **kevinrhaas/chicago-tickets**. The `custom` lane has
+  nothing scoped left in it: a run started on `custom` says so and finishes
+  without changing anything. Inside kevinrhaas/chicago the project still lives
+  at `chicago/4d/` (the paths every tool and doc use did not change); its
+  published mirror is `site/4d/` (generated, untracked). Read
+  `chicago/4d/AGENTS.md` and the tickets repo's `README.md` first; STATUS.md is
+  deliberately unflattering and is the honest state of play.
+  PIPELINE: a TWO-TIER dev -> main pipeline — read `chicago/4d/docs/PIPELINE.md`.
+  Branch from origin/DEV, PR into DEV, merge when the dev gate is green. Merging
+  to dev is STAGE, not ship: it publishes only the preview at
+  chicago.polecat.live/4d/dev/. PRODUCTION MOVES ONLY WHEN THE OWNER DISPATCHES
+  `chicago-4d-promote-to-prod.yml` — never promote, never push to main, and never
+  merge a 4D PR into main.
+  * THE TICKETS ARE A SEPARATE REPO, AND THAT IS WHAT KEEPS THEM OUT OF YOUR PR.
+    `bash chicago/4d/tools/tickets.sh` clones kevinrhaas/chicago-tickets into
+    `chicago/4d/tickets/` (gitignored in the code repo) or pulls it if present;
+    `check.sh` and `publish.sh` run it themselves. Every `ticket.mjs` command
+    that changes a ticket COMMITS AND PUSHES IT TO THE TICKETS REPO'S main
+    DIRECTLY — no branch, no PR, no merge lap — pulling and retrying if main
+    moved. Your code PR never touches a ticket file or QUEUE.md, so it can no
+    longer conflict on them. Tickets sit in folders of 250 by number
+    (`T-1500-1749/T-1519-….md`); QUEUE.md is at the tickets repo's root.
+    THE QUEUE IS THE BACKLOG, and `docs/ROADMAP.md` is only the reasoning
+    ARCHIVE (its NEXT UP table is frozen; do not pick from it or add to it).
+      - TAKE THE TOPMOST ticket in QUEUE.md you can actually run — that includes
+        `needs_bake: true` (this runner bakes, see BLENDER below) — and SKIP any
+        ticket carrying `decision: pending`: it is waiting on the owner, whose
+        question sits in its `## Decision needed` section and on Manager's
+        board. `node tools/ticket.mjs list --workable` prints the order and
+        leaves those out. WITH `SLICE: k of N` AND N > 1, take the **k-th**
+        ticket in that `--workable` list (see PARALLEL SLICES above).
+      - CLAIM FIRST, before any work: `node tools/ticket.mjs claim T-NNNN`. The
+        claim is a commit pushed to the tickets repo's main, so it is visible
+        to every other run THE MOMENT it lands — no waiting on a PR — and two
+        runs racing for one ticket cannot both win: the second push conflicts
+        and `claim` says the ticket is taken. Take the next one. A claim older
+        than three hours is a dead run and `claim` steals it.
+      - `node tools/ticket.mjs inflight` still names the code-repo branches
+        carrying a ticket number: look before forcing past a claim.
+      - READ A RECOVERABLE BRANCH BEFORE YOU REBUILD IT. `ticket.mjs inflight`
+        prints a RECOVERABLE band: an old branch on an unfinished ticket, with no
+        claim, that no merged PR accounts for — work a cancelled run left on the
+        remote. Open the compare URL it prints and take the branch's reasoning
+        into your own before you write a line. Salvage opens a DRAFT PR for such
+        a branch, so you may find one already: FINISH THAT PR rather than opening
+        a second one for the same work.
       - FINISH THE PR YOU OPEN, INSIDE THIS RUN. Merge it on a green gate, or
-        `block` it, or label it `hold` and say why. A ticket's state only reaches
-        `dev` when its PR merges, so an abandoned open PR reads as `open` to the
-        next run, which then does the work again.
-      - THE OWNER ORDERS QUEUE.md. You append (new work, at the BOTTOM) and
-        remove (on close). NEVER reorder it — his ranking is the point.
-      - CLAIM in your first commit: `node tools/ticket.mjs claim T-NNNN`. That is
-        the collision lock two runs must not race.
-      - CLOSE in the merging PR: `node tools/ticket.mjs done T-NNNN --pr N`, or
-        `block --owner --on "the question"` if it is genuinely his call.
+        `block` it, or hand it on with `.github/steward/pr-rest.sh resume <N>
+        --why "…"` (that repo's own verb — see AGENTS.md § the two labels).
+        NEVER `hold`: that label is the owner's alone.
+      - CLOSE with `node tools/ticket.mjs done T-NNNN --pr N` once the PR is
+        open. That sets the ticket to `review` with its PR; the tickets repo's
+        settle workflow flips it to `done` (and takes its QUEUE line) when the PR
+        MERGES, or back to `open` if the PR is closed unmerged. So the ticket can
+        never read done for work that did not land.
+      - THE OWNER ORDERS QUEUE.md. You append (new work, beside the ticket it
+        serves: `new "title" --after T-NNNN`) and the tools remove on close.
+        NEVER reorder it — his ranking is the point.
+      - A QUESTION ONLY THE OWNER CAN ANSWER is not a reason to stop silently:
+        `node tools/ticket.mjs ask T-NNNN --question "…" --option a="…"
+        --option b="…" --rec a --why "…"`. The ticket STAYS IN THE QUEUE where it
+        was, marked `decision: pending`, with the question and options written
+        into it and onto Manager's board; runs skip it until he answers. Four
+        things only are his (AGENTS.md): rights/licensing, the depiction of
+        people, spending money, and what the project IS. A missing number is not.
       - SIZE BEFORE YOU CLAIM. Effort is measured in RUNS (XS part of one, S one,
         M one tight or one plus a bake, L more than one). `claim` REFUSES an L.
         If you discover mid-run that your ticket needs more than one
         demonstration, `ticket.mjs split T-NNNN "piece" "piece"` — do NOT ship a
         self-invented "(1/2)" and leave the ticket claimed.
-      - FOUND SOMETHING NEW? `ticket.mjs new "title" --by loop`. An owner report
-        becomes a ticket `--by owner` the moment it is made.
+      - FOUND SOMETHING NEW? Add it to the ticket that owns the question first;
+        otherwise `ticket.mjs new "title" --after T-NNNN --by loop`. An owner
+        report becomes a ticket `--by owner` the moment it is made.
   * THE GATE (both, in the foreground, from `chicago/4d/`):
       pip install --quiet jsonschema pyproj Pillow   # the runner has none of them
-        # The custom lane ALSO pre-installs, since 2026-09-03, what the resident
+        # The chicago lane ALSO pre-installs, since 2026-09-03, what the resident
         # source sweep (T-0491..T-0518) reads with: pdftotext + pdftoppm
         # (poppler-utils), tesseract, openpyxl and pypdf. Check with
         # `command -v pdftotext tesseract` before falling back to page reads;
@@ -188,14 +193,14 @@ HARD RULES:
     MERGE → close the ticket. Merge BEFORE any optional bookkeeping (filing
     smoke readings, README polish, a second look at a footing). #1466 spent
     its 200th call on the merge itself, with the gate green and the PR open.
-  * WHEN `--for-diff` NAMES PARTS 1-13 because `site/chicago/4d/walk/index.html`
+  * WHEN `--for-diff` NAMES PARTS 1-13 because `site/4d/walk/index.html`
     or the mirror as a whole changed, that is the publish stamp every PR
     rewrites: run desktop part 1 as the scaffold check and nothing more. Never
     run more than four legs in one run — the smoke is a check on YOUR diff,
     not the whole gate re-proved (#1464 ran seven legs and lost the run).
   * A TRANSIENT API 5xx does not end the unit: the workflow resumes you once
     with `--continue` and 120 calls. Pick up where you were; do not start over.
-    Clone `custom` INSIDE the workspace ($GITHUB_WORKSPACE) so the smoke's
+    Clone `chicago` INSIDE the workspace ($GITHUB_WORKSPACE) so the smoke's
     `import('playwright')` resolves up to the workspace node_modules.
   * NUMPY AND SCIPY ARE INSTALLED HERE since 2026-09-15, so TERRAIN tickets are
     yours too — which is every ground line in SOUTH THROUGH TIME, T-0465 first.
@@ -232,16 +237,17 @@ HARD RULES:
     **Budget it before you claim.** A full bake plus the smoke will not fit
     beside a large unit of work in one run. If the ticket needs a town-wide bake
     AND a measured before/after, that is more than one run — `split` it.
-  * PUBLISH IN THE SAME COMMIT. `site/chicago/4d/` is a generated mirror and
-    deploy.yml only fires on `site/**` — a renderer or data change that skips
-    `./tools/publish.sh` is invisible on the live site while looking merged.
+  * PUBLISH BEFORE YOU GATE. `site/4d/` is a generated, untracked mirror that
+    deploy.yml rebuilds with `./tools/publish.sh`; `check.sh` publishes it and
+    gates what it produced, so run the gate on the tree you mean to ship.
   * CHANGELOG: authored at `chicago/4d/renderers/web/js/changelog.js` (fleet
     format, new entry on TOP with `v: null, ts: '', date: ''`) — inside the app, because the
     walkthrough's What's-new tab imports it and a page cannot import from its
     own publish mirror. Stamp with `node chicago/4d/tools/stamp-changelog.mjs`
     and verify with `node chicago/4d/tools/check-changelog.mjs` before merging.
-    `publish.sh` mirrors it to `site/chicago/4d/js/changelog.js`, the URL
-    Manager and the launcher parse — that path is a contract and must not move.
+    `publish.sh` mirrors it to `site/4d/js/changelog.js` —
+    chicago.polecat.live/4d/js/changelog.js, the URL Manager and the launcher
+    parse — that path is a contract and must not move.
   * PROVENANCE IS THE PRODUCT — the one invariant that outranks everything else
     here. Every attribute carries a confidence (`documented` / `inferred` /
     `conjectural`); `documented` REQUIRES a source record, `inferred` REQUIRES a
@@ -267,7 +273,7 @@ HARD RULES:
   docs/SHELL-API.md § the fleet changelog contract. STAMP
   timestamps with the repo's own tool (games tools/stamp-changelog.mjs;
   jobtracker/relay/autoselector .github/stamp-changelog.mjs; analytics
-  tools/changelog-normalize.js; custom chicago/4d/tools/stamp-changelog.mjs;
+  tools/changelog-normalize.js; chicago chicago/4d/tools/stamp-changelog.mjs;
   polecat-app its generator; polecat-platform
   itself scripts/stamp-changelog.mjs) — also stamp older empty-ts entries.
   Must stay parseable by manager's ingest.
@@ -287,18 +293,86 @@ HARD RULES:
   base branch, so dev-based PRs land on dev). On non-pipeline repos merge is
   ship (deploy.yml publishes on merge); on pipeline repos merge stages to
   /dev/ and the pipeline ships it. Ambiguous, architecturally significant, or
-  not fully verified → leave the PR OPEN with the `hold` label and an
-  explanation for Kevin instead; `hold` keeps the janitor away.
+  not fully verified → leave the PR OPEN and hand it on with `resume` (below).
+- **THE TWO LABELS, AND A RUN ONLY EVER APPLIES ONE OF THEM** (T-1571/T-1577;
+  owner, 2026-09-25, on finding three PRs parked on `hold` whose reasons he had
+  not seen: *"that seems like a bad move because i am not aware of why they are
+  held"*).
+
+  | label | means | who applies it | what comes for it |
+  |---|---|---|---|
+  | `hold` | **the owner is deciding** | Kevin, NEVER a run | nothing, until he says so |
+  | `resume` | **a run could not finish** | the run, with its reason | the janitor, and the next run |
+
+  * **YOU NEVER APPLY `hold`.** Every automated pass skips a held PR on purpose
+    — a park a robot can overrule is not a park — so a run that labels its own
+    unfinished work `hold` has parked it where nothing will ever come for it.
+    Measured on chicago's three open PRs at 17:35Z that day: one's stated reason
+    was already stale (CI had since passed all 620 steps) and it had drifted
+    into conflict while held; two were COMPLETE, held only because dev's gate
+    was red. Not one needed a ruling; each needed a machine to lap it, re-gate
+    it and merge it, and each got a person instead. If the thing in your way is
+    genuinely the owner's — rights, the depiction of people, money, what the
+    project IS — that is a QUESTION, not a label: `ticket.mjs ask` on chicago,
+    or say so in your summary elsewhere.
+  * **A RUN THAT CANNOT FINISH APPLIES `resume`, WITH ITS REASON**, in one call:
+
+        bash "$GHREST" pr-resume <owner/repo> <N> --why "dev's gate is red on T-1567" --waits-on T-1567
+
+    which writes `resume: <reason> · waits on: <T-NNNN|nothing>` as the first
+    line of a PR comment, applies the label, and takes `hold` off if one is
+    there. `--why` is required and `--waits-on` defaults to `nothing`. The
+    reason goes on BEFORE the label, so a labelled PR never exists without it.
+    (Inside kevinrhaas/chicago use that repo's own `.github/steward/pr-rest.sh
+    resume <N> --why "…"`, which is the same verb against the same contract.)
+  * **RESUMABLE WORK COMES BEFORE NEW QUEUE WORK.** Before you pick, look for an
+    open `resume` PR on your focus app. If there is one, THAT is your unit:
+    merge its base in, re-derive, fix what is red, gate it, merge it — the same
+    endgame as any unit, on a branch already most of the way there. **Skip one
+    whose `waits on` ticket is still open** and say so in your summary; it
+    cannot go green yet and re-gating it would spend a run proving that.
+  * **The janitor reads the two the same way**: `resume` is work the loop still
+    owes, so it keeps sweeping, gating and merging a resumable PR every 2h;
+    `hold` it never touches. So `resume` does NOT keep the janitor away, and
+    that is the point — nothing should have to keep it away from the loop's own
+    unfinished work.
 - **`pr-automerge` ARMS GitHub's auto-merge and returns**, so the PR lands the
   moment its required checks go green and you are not holding the slice open to
-  watch for it. If it cannot arm — no required check on the base branch, or the
-  PR is already clean with nothing to wait for — it merges immediately instead,
-  so it is never worse than `pr-merge` and `pr-merge` needs no separate call.
-  **Do not then sit and wait for the merge**: arm it, delete the branch, write
-  the journal and finish. Two things this buys, both measured: a slice stops
-  spending minutes of its cap watching its own gate, and it stops LOSING the
-  merge to a base branch that moved underneath it — that cost eleven rebuild-
-  and-regate laps on 2026-09-05 while `dev` advanced between push and merge.
+  watch for it. **Do not then sit and wait for the merge**: arm it, delete the
+  branch, write the journal and finish. Two things this buys, both measured: a
+  slice stops spending minutes of its cap watching its own gate, and it stops
+  LOSING the merge to a base branch that moved underneath it — that cost eleven
+  rebuild-and-regate laps on 2026-09-05 while `dev` advanced between push and
+  merge.
+- **ARMING IS NOT AVAILABLE EVERYWHERE, and where it is not the call BLOCKS
+  instead of returning.** Auto-merge is a repository setting and it is OFF on
+  `kevinrhaas/chicago`, so there the arming mutation comes back UNPROCESSABLE
+  every time. Until 2026-09-25 the fallback merged on the spot with no gate
+  consulted at all — that is how #43 landed on a red `dev` about one second
+  after it was opened (chicago-tickets T-1572). It now does by hand what arming
+  would have done: reads the head commit's own check runs, waits up to
+  `GH_REST_GATE_WAIT_SECONDS` (**540**) for a pending gate to settle, and then
+  merges on green. So on those repos budget one foreground call of up to ~9
+  minutes for the merge, and **READ ITS EXIT STATUS — the two ways it does not
+  merge are different things** (T-1609):
+  * **exit 3, `refused` — a RED check.** That is a verdict. It has already
+    called `pr-resume` for you with the check it refused on (so `resume`, never
+    `hold`: nobody has to rule on a red check, the next pass just re-gates it).
+    **Your unit is now a `resume` PR, which is a clean outcome** — say so in the
+    summary and finish. Do not re-merge past it.
+  * **exit 4, `pending` — the gate is STILL RUNNING.** That is not a verdict and
+    not a refusal; nothing has been decided and the PR is untouched. **Call
+    `pr-automerge` again** — one more lap, one more foreground call, and it
+    merges when the gate lands. Measured 2026-09-26: chicago's gate takes
+    502-583 s, so a second lap covers it with room to spare and the unit merges
+    inside its own run. If the SECOND lap also comes back `pending`, stop waiting
+    and hand it on yourself with `pr-resume … --why "gate still running"`; the
+    janitor will lap and merge it. **Never answer a `pending` with
+    `GH_REST_MERGE_BLIND=1`** — that is merging a gate nobody read, which is
+    exactly what #43 did.
+  `GH_REST_MERGE_BLIND=1` restores the old unconditional merge; use it only when
+  you have gated the merge yourself and know the red check is irrelevant, and say
+  in the PR why.
 - **NEVER `gh pr ...` OR `gh issue ...` — they spend the wrong budget, and it
   runs out.** `gh pr create|merge|comment|view|list` and `gh issue
   create|comment|list` all go through GitHub's **GraphQL** API, which is a
@@ -345,7 +419,7 @@ HARD RULES:
   If a suite is too slow to finish inside one run, cut the SCOPE of the unit
   (smaller slice), NEVER the synchrony. Your one unit runs its full foreground
   verification before it merges. "Full" means the parts that cover your diff:
-  where an app prices its suite by part (custom's `smoke_budget.mjs --for-diff`),
+  where an app prices its suite by part (chicago's `smoke_budget.mjs --for-diff`),
   run the parts it names, each inside the 600 s cap, and do NOT start a command
   you already know cannot finish in 600 s — a backgrounded suite is the same
   failure as a backgrounded suite you meant to background.
@@ -353,32 +427,34 @@ HARD RULES:
   and does NOT mean — it does NOT mean pushing through failures):
   * Verification PASSES → merge the green PR. The run is done.
   * Verification FAILS for real, or you're blocked/uncertain → STOP cleanly:
-    leave the PR OPEN with the `hold` label + a short written explanation for
-    Kevin. Do NOT merge broken work, and do NOT retry the same thing forever.
+    leave the PR OPEN and hand it on — `bash "$GHREST" pr-resume <owner/repo>
+    <N> --why "<what stopped you>" [--waits-on T-NNNN]`. Do NOT merge broken
+    work, do NOT apply `hold`, and do NOT retry the same thing forever.
     Then finish the run — do NOT start a different unit to compensate; the
     lane's other slices and the next hourly tick cover the rest.
   * Contention / rate-limit THRASH — the #1 way a run wastes its whole turn
-    budget and dies on "Reached max turns" with NOTHING shipped. BAIL TO HOLD,
-    FAST, and preserve the work. Concretely: if GitHub rate-limits you (403 /
+    budget and dies on "Reached max turns" with NOTHING shipped. BAIL TO
+    `resume`, FAST, and preserve the work. Concretely: if GitHub rate-limits you (403 /
     "secondary rate limit" / "abuse detection") more than TWICE, OR `main` moved
     under you and you've had to rebase more than TWICE, STOP fighting — do NOT
     keep retrying the limited call, do NOT keep re-rebasing, do NOT route around
     the limit with a dozen REST calls. Instead: commit what you have to the
-    steward branch, push it, open a PR with the `hold` label + a one-line note
-    ("parked: main moving faster than I can rebase" or "parked: GitHub API
-    rate-limited — re-run when quieter"), and END the run. A `hold` PR that
-    preserves the work is a SUCCESS; thrashing to max-turns with nothing is the
-    failure to avoid. The next tick retries fresh when it's quieter. (Watch your
-    turn budget: if you're past ~two-thirds of it and not yet verified-green,
-    assume you won't make it — bail to `hold` now rather than dying with nothing.)
+    steward branch, push it, open a PR and `pr-resume` it with a one-line reason
+    ("main moving faster than I can rebase" or "GitHub API rate-limited — re-run
+    when quieter"), and END the run. A `resume` PR that preserves the work is a
+    SUCCESS; thrashing to max-turns with nothing is the failure to avoid. The
+    next tick retries fresh when it's quieter, and the janitor may well have
+    landed it by then. (Watch your turn budget: if you're past ~two-thirds of it
+    and not yet verified-green, assume you won't make it — bail to `resume` now
+    rather than dying with nothing.)
   * Runner hiccup / network blip → let the run end; the next tick retries fresh.
     Don't loop, don't self-suspend to "wait it out."
-  Your run is complete when your one unit is either a merged green PR or a `hold`
-  PR + explanation — reached SYNCHRONOUSLY, never by waiting on a background
-  process.
+  Your run is complete when your one unit is either a merged green PR or a
+  `resume` PR whose reason is written on it — reached SYNCHRONOUSLY, never by
+  waiting on a background process.
 - ONE UNIT PER RUN — do exactly one, then finish:
   * The unit is its OWN steward branch + PR, fully verified (green suite/smoke
-    in the foreground) and MERGED (or left on `hold`). NEVER bundle unrelated
+    in the foreground) and MERGED (or handed on with `resume`). NEVER bundle unrelated
     work into one PR: Guard-main auto-revert and the janitor operate per-PR, so
     a PR must stay one revertible unit. Bundling unrelated work into one PR is a
     defect, not efficiency.
@@ -394,7 +470,7 @@ HARD RULES:
   Update the app's ROADMAP/queue file in the SAME PR as the unit. No model
   identifiers in repo artifacts. Do all work synchronously and finish by printing
   a summary whose FIRST line is
-      Ticket: T-NNNN · PR: <url or none> · Outcome: merged|hold|blocked|no-pr
+      Ticket: T-NNNN · PR: <url or none> · Outcome: merged|resume|blocked|no-pr
   and which then says: app picked, why, what shipped, verification run, and the
   PR URL. That first line is for a person reading fast; the journal's own record
   of the ticket, branch, PR and outcome is read from your tool calls, so it stays

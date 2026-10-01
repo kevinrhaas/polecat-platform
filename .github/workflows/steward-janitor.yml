@@ -8,6 +8,24 @@ name: Steward janitor
 # explanatory comment and stay open. Draft PRs and PRs labeled `hold` are never
 # touched — the `hold` label is Kevin's "I want to look at this myself" switch.
 #
+# THE TWO LABELS, AND THIS SWEEP READS THEM DIFFERENTLY (T-1577):
+#
+#   `hold`   — THE OWNER IS DECIDING. No run applies it, and nothing automated
+#              comes for it until he says so. A park a robot can overrule is not
+#              a park, so `pr-sweepable` drops it and this job never sees it.
+#   `resume` — A RUN COULD NOT FINISH, with its reason on the first line of a
+#              `resume:` comment (`gh-rest.sh pr-resume`). That is WORK THE LOOP
+#              STILL OWES, not a park: it is swept, lapped, gated and merged
+#              like any other PR, and this job is the machine that owes it.
+#
+# Before the split, `hold` was the only label a steward run had, so it was
+# applied to both — and because every automated pass skips a held PR on purpose,
+# work that needed nobody's decision had nothing coming for it either. Measured
+# 2026-09-25 on chicago's three open PRs: one's stated reason was already stale
+# (CI had since passed all 620 steps) and it had drifted into conflict while
+# held; two were COMPLETE, held only because dev's own gate was red. Each needed
+# a sweep exactly like this one, and each got a person instead.
+#
 # This backstops the normal flow (agents merge their own green PRs): a run
 # that died before merging, or a PR left open out of caution that actually
 # passes, still ships without a human. Requires STEWARD_PAT.
@@ -228,7 +246,7 @@ jobs:
                   # queue and the next slice rebuilds the same work.
                   if ! bash "$GHREST" comments-list "kevinrhaas/$REPO" "$N" | grep -q "$CONFLICT_MARKER"; then
                     {
-                      printf '%s — this branch no longer merges into `%s`, so the janitor cannot gate it and has not merged it. Rebase it on `%s`, or add the `hold` label if it should stay parked.\n\n' \
+                      printf '%s — this branch no longer merges into `%s`, so the janitor cannot gate it and has not merged it. Rebase it on `%s`, or hand it on with `gh-rest.sh pr-resume <N> --why "…"` so the next run does. Only the owner applies `hold`.\n\n' \
                         "$CONFLICT_MARKER" "$BASE" "$BASE"
                       printf 'Conflicting paths:\n\n```\n%s\n```\n' "$PATHS"
                     } > /tmp/janitor-comment.md
@@ -335,7 +353,7 @@ jobs:
                   # backticks and quotes. A file also keeps the YAML block
                   # scalar from having to escape a fenced code block.
                   {
-                    printf 'Steward janitor: smoke gate FAILED (`%s`) — leaving this PR open. Add the `hold` label to keep the janitor away while investigating. Log tail:\n\n' "$GATE"
+                    printf 'Steward janitor: smoke gate FAILED (`%s`) — leaving this PR open. The sweep keeps coming back for it: fix the red on the branch, or hand it on with `gh-rest.sh pr-resume <N> --why "…"` so the reason is written where it can be read. `hold` is the owner'"'"'s park switch and no run applies it. Log tail:\n\n' "$GATE"
                     printf '```\n%s\n```\n' "$TAIL"
                   } > /tmp/janitor-comment.md
                   bash "$GHREST" pr-comment "kevinrhaas/$REPO" "$N" /tmp/janitor-comment.md || true
@@ -343,7 +361,7 @@ jobs:
               fi
             done 3<<< "$PRS"
           done
-          [ -s /tmp/steward-out.txt ] || echo "Nothing to do — no open automation PRs outside hold/draft." >> /tmp/steward-out.txt
+          [ -s /tmp/steward-out.txt ] || echo "Nothing to do — no open automation PRs outside hold/draft (\`resume\` PRs are swept, not skipped)." >> /tmp/steward-out.txt
           echo "janitor done: merged=$MERGED red=$FAILED skipped=$SKIPPED" | tee -a /tmp/steward-out.txt
 
       - name: Journal the run

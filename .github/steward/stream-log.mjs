@@ -136,7 +136,7 @@ function handle (ev) {
       const text = ev.result || ev.error || ''
       const mins = ((ev.duration_ms || (Date.now() - T0)) / 60000).toFixed(1)
       say('■', `${ev.subtype || 'result'} · ${mins} min · ${ev.num_turns ?? '?'} turns · ` +
-               `${tools} tool calls · $${(ev.total_cost_usd ?? 0).toFixed(2)}`)
+               `${tools} tool calls · ${typeof ev.total_cost_usd === 'number' ? '$' + ev.total_cost_usd.toFixed(2) : 'cost not reported'}`)
       // The prompt's closing summary — this is what the journal wants.
       if (String(text).trim()) {
         try { fs.writeFileSync(OUT, String(text).trimEnd() + '\n') } catch {}
@@ -193,3 +193,4 @@ rl.on('close', () => {
 
 // A broken pipe must not take the agent down with it.
 process.stdout.on('error', () => {})
+

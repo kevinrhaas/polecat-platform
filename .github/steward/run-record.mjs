@@ -101,6 +101,13 @@ const rx = {
   prFind: /\bpr-find\s+(\S+)\s+(\S+)/,
   prMerge: /\bpr-merge\s+(\S+)\s+(\d+)/,
   branchDelete: /\bbranch-delete\s+\S+\s+(\S+)/,
+  // T-1577: the handoff verb. A run that cannot finish no longer applies
+  // `hold` — that label is the owner's — so the record has to learn the one it
+  // applies instead, or every handed-off run reads as a bare `open` PR and the
+  // journal loses the distinction the split was made for. The old `hold`
+  // detection stays: PRs labelled before the switch, and the owner's own, are
+  // still real.
+  prResume: /\b(?:pr-resume|pr-rest\.sh\s+resume)\b[^\n]*?--why\s+/,
   bareNumber: /^\s*(\d+)\s*$/,
   sha: /^\s*([0-9a-f]{40})\s*$/,
   api5xx: /API Error: 5\d\d/,
@@ -119,7 +126,7 @@ export function extract(uses) {
   const r = {
     tickets_claimed: [], tickets_done: [], tickets_split: [], tickets_blocked: [],
     tickets_filed: [], branch: null, pr: null, pr_repo: null, pr_url: null,
-    merge_sha: null, held: false, branch_deleted: null, tool_calls: uses.length,
+    merge_sha: null, held: false, resumed: false, branch_deleted: null, tool_calls: uses.length,
     tool_errors: uses.filter((u) => u.result?.is_error).length,
   };
   const add = (list, v) => { if (v && !list.includes(v)) list.push(v); };
@@ -167,6 +174,7 @@ export function extract(uses) {
       if (sha && Number(pm[2]) === r.pr) r.merge_sha = sha[1];
     }
     if (/\bhold\b/.test(cmd) && /label|pr-comment|issue-comment/.test(cmd)) r.held = true;
+    if (rx.prResume.test(cmd)) r.resumed = true;
 
     const bd = rx.branchDelete.exec(cmd);
     if (bd) r.branch_deleted = bd[1];
@@ -179,6 +187,11 @@ export function extract(uses) {
  *  attempted, and "died" is reserved for a run whose process did not come back. */
 export function outcomeOf(x, { status, hasResult, subtype }) {
   if (x.merge_sha) return 'merged';
+  // `resume` before `hold`: a run that reached for the handoff verb has declared
+  // the work unfinished, so that is what it is — even on a PR that still carries
+  // a `hold` someone else applied (pr-resume takes it off, but the record reads
+  // the calls, not the labels).
+  if (x.pr && x.resumed) return 'resume';
   if (x.pr && x.held) return 'hold';
   if (x.pr) return 'open';
   if (x.tickets_blocked.length) return 'blocked';
@@ -233,7 +246,7 @@ export function buildRecord({ streams, salvage, app, slice, slices, runId, runUr
 
 /* ---------------------------------------------------------------- render */
 
-const DOT = { merged: '🟢', open: '🔵', hold: '🟡', blocked: '🟠', died: '🔴', 'no-pr': '⚪' };
+const DOT = { merged: '🟢', open: '🔵', resume: '🟣', hold: '🟡', blocked: '🟠', died: '🔴', 'no-pr': '⚪' };
 
 /** The journal body's opening. The HTML comment is the machine copy Manager
  *  parses; the table is what a person reads. `--` cannot appear inside an HTML
@@ -273,6 +286,11 @@ function selfTest() {
       tickets_claimed: ['T-0533'], done: null, merged: false, tool_calls: 5, branch_deleted: null } },
     { file: 'improve-died.jsonl', want: { outcome: 'died', pr: null, branch: 'steward/t-0526-census-1840-sheets-216-224',
       tickets_claimed: ['T-0526'], done: null, merged: false, tool_calls: 3, branch_deleted: null } },
+    // T-1577: the handoff a run actually makes now. `hold` above is kept because
+    // the owner still applies it and old runs are still read; this is the one a
+    // run writes, and without it a handed-off run records as a bare `open` PR.
+    { file: 'improve-resume.jsonl', want: { outcome: 'resume', pr: 41, branch: 'steward/t1521-lap-publish-before-rebuild',
+      tickets_claimed: ['T-1521'], done: null, merged: false, tool_calls: 4, branch_deleted: null } },
   ];
   let bad = 0;
   const ok = (what, cond, detail = '') => {

@@ -41,6 +41,12 @@ jobs:
       - name: Salvage leaves nothing on the remote that nobody can see
         run: bash .github/steward/test-salvage.sh
 
+      # The journal filled on 2026-09-27 (GitHub caps an issue at 2,500
+      # comments) and turned every janitor run red on its last step. It rolls
+      # over now, and a failed post is a warning — both held here.
+      - name: The steward journal rolls over when full, and never fails a run
+        run: bash .github/steward/test-journal.sh
+
       - name: The janitor gates the merge, and names a conflict out loud
         run: |
           bash .github/steward/janitor-mergeability.sh --self-test
@@ -54,8 +60,15 @@ jobs:
       - name: A roster job is dispatched once, not once per tick
         run: bash .github/steward/test-focus-jobs.sh
 
+      - name: Mixed processor lanes and GPT stream evidence
+        run: node .github/steward/test-lanes.mjs
+
+      - name: Private ChatGPT worker routing
+        run: node .github/steward/test-private-worker.mjs
+
       - name: Manifest freshness
         run: |
           node scripts/gen-manifest.mjs
           git diff --exit-code lib/MANIFEST.json || {
             echo '::error::lib/MANIFEST.json is stale — run node scripts/gen-manifest.mjs'; exit 1; }
+

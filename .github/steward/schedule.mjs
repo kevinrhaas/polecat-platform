@@ -59,6 +59,8 @@
 // Manager's Fleet Ops mirrors this logic for its next-run previews in
 // js/schedule.js — KEEP THE TWO IN SYNC (they are deliberately tiny).
 import { readFileSync } from 'node:fs';
+import { appLanes } from './lanes.mjs';
+import { pathToFileURL } from 'node:url';
 
 export function isDueAt(lane, date){
   if(!lane || !lane.enabled) return false;
@@ -113,7 +115,7 @@ export function nextRunAt(lane, from = new Date(), tick = TICK_MINUTES){
 //   due-jobs  → platform job names due at THIS tick (focus.json `jobs`)
 //   next      → "name<TAB>iso-or-never" for every app lane AND job
 const cmd = process.argv[2];
-if(cmd){
+if(cmd && process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href){
   const f = JSON.parse(readFileSync(new URL('./focus.json', import.meta.url), 'utf8'));
   const now = new Date();
   if(cmd === 'due'){
@@ -144,9 +146,10 @@ if(cmd){
   }else if(cmd === 'due-jobs'){
     for(const [job, lane] of Object.entries(f.jobs || {})) if(isDueAt(lane, now)) console.log(job);
   }else if(cmd === 'next'){
-    for(const [app, lane] of Object.entries(f.apps || {})) console.log(`${app}\t${nextRunAt(lane, now)?.toISOString() || 'never'}`);
+    for(const {app, id, config} of appLanes(f)) console.log(`${app}${id ? ' {' + id + '}' : ''}\t${nextRunAt(config, now)?.toISOString() || 'never'}`);
     for(const [job, lane] of Object.entries(f.jobs || {})) console.log(`job:${job}\t${nextRunAt(lane, now)?.toISOString() || 'never'}`);
   }else{
     console.error('usage: schedule.mjs due|slices-of <app>|model-of <app>|max-turns-of <app>|due-jobs|next'); process.exit(2);
   }
 }
+
