@@ -17,7 +17,16 @@
 #   2. Pushes any branch holding commits the remote does not have. Safe by
 #      construction: default branches are refused outright, so this can only
 #      ever complete a push the run itself intended to make.
-#   3. Only when the job did NOT succeed, and only if the tree is dirty, commits
+#   3. Opens a DRAFT pull request for any working branch it pushed that has none.
+#      A pushed branch nobody can see is the fault this step exists to prevent and
+#      did not: on 2026-09-17 a run wrote the whole of custom's T-1155, pushed it,
+#      and was cancelled before it opened a PR. The branch was on the remote and
+#      complete; the ticket still read `open`, `ticket.mjs landed` looks for a
+#      merged PR and found none, and `inflight` filed the branch under "finished,
+#      or litter". The claim went stale at three hours, another run stole it, and
+#      rebuilt the same 71-file fix. A draft PR costs one REST call and makes the
+#      work impossible to miss, while saying plainly that it is not reviewed.
+#   4. Only when the job did NOT succeed, and only if the tree is dirty, commits
 #      the leftovers to a SEPARATE branch `steward/salvage/<run-id>` and pushes
 #      that. Deliberately not the working branch: half-finished work must be
 #      recoverable without being mistaken for work the run meant to ship, and a
@@ -51,6 +60,73 @@ run () {
   out=$("$@" 2>&1); rc=$?
   [ -n "$out" ] && printf '%s\n' "$out" | sed 's/^/    /'
   return $rc
+}
+
+GH_REST="${GH_REST:-$(dirname "$0")/gh-rest.sh}"
+
+# The owner/repo slug for a clone, read off its origin URL. Empty when there is no
+# origin, or it is not a GitHub remote — in which case there is no PR to open.
+slug_of () {
+  local url
+  # The RAW configured url, not `remote get-url`, which applies any `insteadOf`
+  # rewrite a runner has configured and would hand back whatever that points at.
+  url=$(git -C "$1" config --get remote.origin.url 2>/dev/null) || return 1
+  case "$url" in
+    *github.com[:/]*) printf '%s\n' "${url##*github.com[:/]}" | sed 's/\.git$//' ;;
+    *) return 1 ;;
+  esac
+}
+
+# Where a pull request from this clone should go. `dev` when the repo HAS one —
+# every app on the two-tier pipeline takes its work there and never into main —
+# otherwise the remote's default branch. Never the branch we are on.
+base_of () {
+  if git -C "$1" ls-remote --exit-code --heads origin dev >/dev/null 2>&1; then
+    printf 'dev\n'; return
+  fi
+  local head
+  head=$(git -C "$1" symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null)
+  printf '%s\n' "${head##*/}"
+}
+
+# A DRAFT PULL REQUEST FOR WORK NOBODY CAN SEE — step 3 of the contract above.
+# Best-effort in every direction: no slug, no base, an existing PR, or a REST
+# refusal all end in a note and exit 0. Salvage must never colour the run.
+open_draft_pr () {
+  local repo="$1" branch="$2" name="$3" base slug existing body title
+  slug=$(slug_of "$repo") || { echo "  no github origin — no draft PR to open"; return 0; }
+  base=$(base_of "$repo")
+  [ -n "$base" ] || { echo "  cannot tell which branch to target — no draft PR opened"; return 0; }
+  [ "$base" = "$branch" ] && return 0
+  if [ ! -x "$GH_REST" ]; then echo "  gh-rest.sh not found at ${GH_REST} — no draft PR opened"; return 0; fi
+
+  # Did this branch EVER have one? An open PR is already visible, and a closed or
+  # merged one means the branch was never invisible, which is the only fault here.
+  existing=$(bash "$GH_REST" pr-find "$slug" "$branch" all 2>/dev/null || true)
+  if [ -n "$existing" ]; then echo "  ${slug}#${existing} already carries ${branch} — nothing to open"; return 0; fi
+
+  title="WIP: ${branch} — rescued from run ${RUN_ID}"
+  body="$(mktemp)"
+  cat > "$body" <<EOF
+**This pull request was opened by salvage, not by the run that did the work.**
+
+Run \`${RUN_ID}\` ended as \`${STATUS}\` with commits pushed to \`${branch}\` and no pull
+request of its own. It is opened as a **draft** so the work is visible instead of sitting on the
+remote where nothing can find it, and it is **not reviewed, not gated and not ready to merge**.
+
+Whoever picks this up: read the branch, run the repo's own gate, and either finish this pull
+request or take what is useful and close it. If it carries a ticket number, that ticket is still
+open and the queue is still offering it, so the next run will rebuild this work unless somebody
+reads it first.
+
+Run log: https://github.com/kevinrhaas/polecat-platform/actions/runs/${RUN_ID}
+EOF
+  local number
+  number=$(bash "$GH_REST" pr-create "$slug" "$branch" "$base" "$title" "$body" draft 2>&1) || {
+    echo "::warning::salvage could not open a draft PR for ${name}:${branch}"
+    printf '%s\n' "$number" | sed 's/^/    /'; rm -f "$body"; return 0; }
+  rm -f "$body"
+  echo "  draft PR ${slug}#${number} opened for ${branch} → ${base}"
 }
 
 for repo in "${repos[@]}"; do
@@ -88,11 +164,18 @@ for repo in "${repos[@]}"; do
     echo "  ${ahead} commit(s) not on origin — pushing ${branch}"
     if run git -C "$repo" push -u origin "$branch"; then
       salvaged=$((salvaged + 1))
+      open_draft_pr "$repo" "$branch" "$name"
     else
       echo "::warning::salvage could not push ${name}:${branch}"
     fi
   else
     echo "  no unpushed commits"
+    # …which is not the same as "nothing to see". A run cancelled AFTER its last push
+    # and before its PR leaves exactly this: a branch the remote already has, carrying
+    # an unfinished ticket, with nothing pointing at it. That is T-1155 precisely.
+    if [ "$STATUS" != "success" ] && git -C "$repo" rev-parse --verify --quiet "origin/${branch}" >/dev/null 2>&1; then
+      open_draft_pr "$repo" "$branch" "$name"
+    fi
   fi
 
   # --- leftovers, only when the run did not finish -------------------------
