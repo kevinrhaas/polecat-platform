@@ -85,6 +85,18 @@ fi
   echo
   echo "[Run log](https://github.com/${REPO}/actions/runs/${RUN_ID})"
 } > /tmp/journal-body.md
+# claim-notice.sh may already have posted a comment carrying this run's marker
+# when it claimed its ticket, so that Fleet Ops could show the ticket while the
+# run was still going. Replace that one rather than adding a second: two
+# comments per run would double the journal, and `journalFor` takes the NEWEST
+# match, so a stale "in progress" line surviving next to the real summary is
+# only ever confusing. Falls back to posting when there is nothing to replace —
+# the claim notice is best-effort and may never have run.
+CID="$(bash "$GHREST" comment-find "$REPO" "$JR" "steward-run:${RUN_ID}" 2>/dev/null || true)"
+if [ -n "$CID" ] && bash "$GHREST" comment-update "$REPO" "$CID" /tmp/journal-body.md 2>/dev/null; then
+  echo "journaled run ${RUN_ID} → issue #${JR} (replaced the claim notice, comment ${CID})"
+  exit 0
+fi
 post() { bash "$GHREST" issue-comment "$REPO" "$JR" /tmp/journal-body.md 2>/tmp/journal-post-err.txt; }
 if ! post; then
   if grep -qi 'more than 2500 comments' /tmp/journal-post-err.txt && roll_journal "$JR" && post; then

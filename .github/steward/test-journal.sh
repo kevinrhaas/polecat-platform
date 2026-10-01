@@ -48,7 +48,8 @@ newplan plain
 resp 1 "422 Unprocessable Entity" '{"message":"already_exists"}'   # label-create
 resp 2 "200 OK" '[{"number":56}]'                                  # issue-find
 resp 3 "200 OK" '{"number":56,"comments":10}'                      # issue-comments
-resp 4 "201 Created" '{"id":1}'                                    # issue-comment
+resp 4 "200 OK" '[]'                                         # comment-find: no claim notice
+resp 5 "201 Created" '{"id":1}'                                    # issue-comment
 run plain
 has   "posts to the open journal" "→ issue #56" "$TMP/out.plain"
 has   "exit 0" "0" "$TMP/rc.plain"
@@ -61,7 +62,8 @@ resp 2 "200 OK" '[{"number":56}]'
 resp 3 "200 OK" '{"number":56,"comments":2450}'
 resp 4 "201 Created" '{"number":200}'                              # issue-create
 resp 5 "200 OK" '{"number":56,"state":"closed"}'                   # issue-close
-resp 6 "201 Created" '{"id":2}'                                    # issue-comment
+resp 6 "200 OK" '[]'                                         # comment-find: no claim notice
+resp 7 "201 Created" '{"id":2}'                                    # issue-comment
 run roll
 has "the successor is opened" "POST repos/kevinrhaas/polecat-platform/issues --input" "$FAKE_CALLS"
 has "the full journal is closed" "PATCH repos/kevinrhaas/polecat-platform/issues/56" "$FAKE_CALLS"
@@ -78,10 +80,11 @@ newplan refused
 resp 1 "422 Unprocessable Entity" '{"message":"already_exists"}'
 resp 2 "200 OK" '[{"number":56}]'
 resp 3 "404 Not Found" '{"message":"Not Found"}'                  # count unreadable (not retried)
-resp 4 "403 Forbidden" "$CAP"                                      # the real refusal
-resp 5 "201 Created" '{"number":201}'
-resp 6 "200 OK" '{"number":56,"state":"closed"}'
-resp 7 "201 Created" '{"id":3}'
+resp 4 "200 OK" '[]'                                         # comment-find: no claim notice
+resp 5 "403 Forbidden" "$CAP"                                      # the real refusal
+resp 6 "201 Created" '{"number":201}'
+resp 7 "200 OK" '{"number":56,"state":"closed"}'
+resp 8 "201 Created" '{"id":3}'
 run refused
 has "the refusal rolls the journal" "rolled over to #201" "$TMP/err.refused"
 has "and the entry is retried on the successor" "→ issue #201" "$TMP/out.refused"
@@ -92,11 +95,24 @@ newplan broken
 resp 1 "422 Unprocessable Entity" '{"message":"already_exists"}'
 resp 2 "200 OK" '[{"number":56}]'
 resp 3 "200 OK" '{"number":56,"comments":10}'
-resp 4 "404 Not Found" '{"message":"Not Found"}'
+resp 4 "200 OK" '[]'                                         # comment-find: no claim notice
+resp 5 "404 Not Found" '{"message":"Not Found"}'
 run broken
 has "it says the entry was not posted" "was not posted" "$TMP/err.broken"
 has "exit 0 — the journal is the write-up, not the verdict" "0" "$TMP/rc.broken"
 hasnt "a non-cap failure does not roll" "PATCH" "$FAKE_CALLS"
+
+# ── 5. A claim notice for this run is REPLACED, not answered with a second ────
+newplan notice
+resp 1 "422 Unprocessable Entity" '{"message":"already_exists"}'
+resp 2 "200 OK" '[{"number":56}]'
+resp 3 "200 OK" '{"number":56,"comments":10}'
+resp 4 "200 OK" '[{"id":77,"body":"<!-- steward-run:9001 -->\nin progress"}]'
+resp 5 "200 OK" '{"id":77}'                                        # comment-update
+run notice
+has   "the claim notice is replaced in place" "PATCH repos/kevinrhaas/polecat-platform/issues/comments/77" "$FAKE_CALLS"
+hasnt "and no second comment is posted" "issues/56/comments --input" "$FAKE_CALLS"
+has   "exit 0" "0" "$TMP/rc.notice"
 
 echo
 echo "journal.sh: ${pass} passed, ${fail} failed"

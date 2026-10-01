@@ -373,6 +373,14 @@ HARD RULES:
   `GH_REST_MERGE_BLIND=1` restores the old unconditional merge; use it only when
   you have gated the merge yourself and know the red check is irrelevant, and say
   in the PR why.
+- **THE MOMENT YOU CLAIM A TICKET, ANNOUNCE IT**: `bash "$CLAIM_NOTICE" <slice>
+  <slices> <T-NNNN> "<the ticket's title>"`. Until you do, your run is anonymous
+  — the Actions list can only show `[k/N]` and an elapsed time, because the run
+  name is fixed at dispatch, and Fleet Ops has nothing until your journal is
+  written at the end. With a batch of 8 in flight "which ticket is slice 3 on"
+  is the question actually being asked, and only you can answer it. One command,
+  best-effort, never fails your run. Do it immediately after `ticket.mjs claim`
+  and before the work, not at the end.
 - **NEVER `gh pr ...` OR `gh issue ...` — they spend the wrong budget, and it
   runs out.** `gh pr create|merge|comment|view|list` and `gh issue
   create|comment|list` all go through GitHub's **GraphQL** API, which is a
