@@ -127,6 +127,13 @@ HARD RULES:
         than three hours is a dead run and `claim` steals it.
       - `node tools/ticket.mjs inflight` still names the code-repo branches
         carrying a ticket number: look before forcing past a claim.
+      - READ A RECOVERABLE BRANCH BEFORE YOU REBUILD IT. `ticket.mjs inflight`
+        prints a RECOVERABLE band: an old branch on an unfinished ticket, with no
+        claim, that no merged PR accounts for — work a cancelled run left on the
+        remote. Open the compare URL it prints and take the branch's reasoning
+        into your own before you write a line. Salvage opens a DRAFT PR for such
+        a branch, so you may find one already: FINISH THAT PR rather than opening
+        a second one for the same work.
       - FINISH THE PR YOU OPEN, INSIDE THIS RUN. Merge it on a green gate, or
         `block` it, or hand it on with `.github/steward/pr-rest.sh resume <N>
         --why "…"` (that repo's own verb — see AGENTS.md § the two labels).
