@@ -203,10 +203,11 @@ jobs:
         # orphan is installing exactly the dependencies we want, so waiting for it is
         # not merely polite — when it finishes, the next attempt finds the deps present
         # and returns fast. The retry cap is longer than the opening one for the same
-        # reason: we are waiting on known work, not on a stall. `timeout-minutes` rises
-        # to cover the worst case (4 + 10 + 4 + 10 + 4 = 32 min) and still fails far
-        # below the 150-minute job cap that runs 939/940 ate.
-        timeout-minutes: 35
+        # reason: we are waiting on known work, not on a stall. `timeout-minutes`
+        # covers the worst case (npm installs, then 5 + 12 + 2 + 12 min of system
+        # deps, then the browser download) and still fails far below the
+        # 150-minute job cap that runs 939/940 ate.
+        timeout-minutes: 45
         run: |
           set -euo pipefail
           try() {                      # try <minutes> <command...> — thrice, then fail
@@ -264,10 +265,39 @@ jobs:
             try 4 npm install -g @anthropic-ai/claude-code
           fi
           try 4 npm install --no-save playwright
+          # THE SYSTEM DEPS ARE INSTALLED AS ROOT, UNDER A ROOT-OWNED TIMEOUT.
+          #
+          # Run 2582 (chicago [1/5], 2026-10-01) died here after 25 minutes and
+          # never started the agent. The Azure Ubuntu mirror was crawling, not
+          # stalled (~5 MB/min: fonts-freefont-ttf took 72 s, fonts-wqy-zenhei
+          # 75 s), so the 4-minute cap on `--with-deps` fired mid-download. The
+          # cap killed the unprivileged npx wrapper and, exactly as run 1582's
+          # note above describes, left its root apt-get running. Attempt 2 waited
+          # the full 600 s for that orphan, went ahead anyway and hit the lock;
+          # attempt 3 did the same; the step gave up while the orphan was STILL
+          # downloading the packages we wanted.
+          #
+          # So the deps are now their own command, run under `sudo timeout`:
+          # timeout is root, and on expiry it signals its whole process group,
+          # apt-get included, so an attempt that is cut off leaves no orphan
+          # holding the lock. The cap is long because a slow mirror is progress,
+          # not a stall, and a retry is not wasted: apt keeps every .deb it
+          # finished in /var/cache/apt/archives, so attempt 2 resumes. The
+          # browser download that follows needs no root and keeps its short cap.
+          wait_for_apt
+          deps_ok=0
+          for i in 1 2; do
+            if sudo env "PATH=$PATH" timeout -k 30s 12m \
+                 npx --no-install playwright install-deps chromium webkit; then
+              deps_ok=1; break
+            fi
+            echo "::warning::browser system deps attempt $i of 2 failed or timed out"
+            wait_for_apt 120
+          done
+          [ "$deps_ok" = 1 ] || { echo "::error::browser system deps gave up after 2 attempts"; exit 1; }
           # webkit too: several app smoke tests (jobtracker) run the iOS engine
           # (~215MB of downloads skipped on a warm browser cache)
-          wait_for_apt
-          try 4 npx playwright install --with-deps chromium webkit
+          try 4 npx playwright install chromium webkit
 
       # ---- the chicago/4d lane can bake geometry ------------------------------
       #
