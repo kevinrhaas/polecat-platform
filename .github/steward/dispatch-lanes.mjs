@@ -7,14 +7,35 @@ const repo = process.env.GITHUB_REPOSITORY || 'kevinrhaas/polecat-platform';
 const gh = args => execFileSync('gh', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] });
 const roster = JSON.parse(readFileSync(new URL('./focus.json', import.meta.url)));
 const lanes = appLanes(roster);
-// Query every non-completed state and paginate: recent completed runs cannot
-// hide long-running slots. Fail closed if GitHub cannot establish occupancy.
-const runs = [];
+// Occupancy comes from TWO listings, unioned by run id, because neither is
+// enough alone.
+//
+// 1. Status-FILTERED, paginated: every non-completed state. This is what keeps
+//    a long-pending or long-running slot visible however many completed runs
+//    have been created since.
+// 2. UNFILTERED, the newest page: the filtered listing LAGS. A run that has
+//    just changed state (pending -> in_progress as the run ahead of it in its
+//    slice group finishes) shows up under neither filter for a while. Measured
+//    2026-10-01 on chicago x5: every dispatch that duplicated a busy slice
+//    landed within seconds of that slice's pending run being promoted (2585 at
+//    16:19:01 vs 2584 promoted 16:18:55; 2586 at 16:20:16 vs 2579 at 16:20:11;
+//    2588 at 17:21:32 vs 2586 at 17:21:27). The duplicate then sat pending
+//    behind the busy slice, and when THAT slice finished its kick raced the
+//    duplicate's own promotion and made another, so one miss kept three
+//    slices permanently carrying a stuck pending run. The unfiltered listing
+//    reports each run's current status, so a run caught mid-transition is
+//    still counted as occupying its slot.
+//
+// Fail closed if GitHub cannot establish occupancy.
+const byId = new Map();
+const add = page => { for (const r of page.workflow_runs) byId.set(r.id, { status: r.status, displayTitle: r.display_title }); };
 for (const status of ['in_progress', 'queued', 'waiting', 'pending', 'requested']) {
   const pages = JSON.parse(gh(['api', '--paginate', '--slurp',
     `repos/${repo}/actions/workflows/steward-improve.yml/runs?status=${status}&per_page=100`]));
-  for (const page of pages) for (const r of page.workflow_runs) runs.push({ status: r.status, displayTitle: r.display_title });
+  for (const page of pages) add(page);
 }
+add(JSON.parse(gh(['api', `repos/${repo}/actions/workflows/steward-improve.yml/runs?per_page=100`])));
+const runs = [...byId.values()];
 const now = new Date();
 let count = 0;
 for (const lane of lanes) {

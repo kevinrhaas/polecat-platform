@@ -32,7 +32,10 @@ try {
   for (const file of ['dispatch-lanes.mjs','lanes.mjs','schedule.mjs']) cpSync(new URL(file, import.meta.url), path.join(dir,file));
   writeFileSync(path.join(dir,'focus.json'), JSON.stringify(roster));
   mkdirSync(path.join(dir,'bin'));
-  writeFileSync(path.join(dir,'bin/gh'), `#!/usr/bin/env node\nconst fs=require('fs');const a=process.argv.slice(2);if(a[0]==='api'){if(process.env.BROKEN)process.exit(1);const runs=JSON.parse(process.env.RUNS);console.log(JSON.stringify([{workflow_runs:runs.filter(r=>a.at(-1).includes('status='+r.status+'&')).map(r=>({status:r.status,display_title:r.displayTitle}))}]));}else fs.appendFileSync(process.env.CALLS,JSON.stringify(a)+'\\n');`, {mode:0o755});
+  // Fake GitHub: a status-filtered query is --slurp'd (array of pages); the
+  // unfiltered one returns one page. A run flagged `lagging` is missing from
+  // every FILTERED listing, as a just-promoted run is on the real API.
+  writeFileSync(path.join(dir,'bin/gh'), `#!/usr/bin/env node\nconst fs=require('fs');const a=process.argv.slice(2);if(a[0]==='api'){if(process.env.BROKEN)process.exit(1);const runs=JSON.parse(process.env.RUNS).map((r,i)=>({...r,id:i}));const url=a.at(-1);const out=rs=>rs.map(r=>({id:r.id,status:r.status,display_title:r.displayTitle}));if(url.includes('status=')){console.log(JSON.stringify([{workflow_runs:out(runs.filter(r=>!r.lagging&&url.includes('status='+r.status+'&')))}]));}else console.log(JSON.stringify({workflow_runs:out(runs)}));}else fs.appendFileSync(process.env.CALLS,JSON.stringify(a)+'\\n');`, {mode:0o755});
   const calls = path.join(dir,'calls');
   const env = {...process.env, PATH:path.join(dir,'bin')+':'+process.env.PATH, RUNS:JSON.stringify(runs), CALLS:calls};
   let result = spawnSync(process.execPath,[path.join(dir,'dispatch-lanes.mjs')], {env,encoding:'utf8'});
@@ -48,6 +51,13 @@ try {
   writeFileSync(path.join(dir,'focus.json'),JSON.stringify(roster));
   result=spawnSync(process.execPath,[path.join(dir,'dispatch-lanes.mjs')],{env:{...env,RUNS:JSON.stringify([{status:'in_progress',displayTitle:laneTitle(claude)+' [3/3]'}])},encoding:'utf8'});
   assert.equal(result.status,0,result.stderr);assert.equal(readFileSync(calls,'utf8'),'');
+  // A slot whose run is mid-transition (absent from every status filter) is
+  // still busy: no duplicate dispatch into its concurrency group.
+  result=spawnSync(process.execPath,[path.join(dir,'dispatch-lanes.mjs')],{env:{...env,RUNS:JSON.stringify([{status:'in_progress',lagging:true,displayTitle:laneTitle(claude)+' [1/1]'}])},encoding:'utf8'});
+  assert.equal(result.status,0,result.stderr);assert.equal(readFileSync(calls,'utf8'),'');
+  // ...and a completed run in the unfiltered page does not hold its slot.
+  result=spawnSync(process.execPath,[path.join(dir,'dispatch-lanes.mjs')],{env:{...env,RUNS:JSON.stringify([{status:'completed',displayTitle:laneTitle(claude)+' [1/1]'}])},encoding:'utf8'});
+  assert.equal(result.status,0,result.stderr);assert.equal(readFileSync(calls,'utf8').trim().split('\n').length,1);
 } finally { rmSync(dir,{recursive:true,force:true}); }
 
 const events = [
