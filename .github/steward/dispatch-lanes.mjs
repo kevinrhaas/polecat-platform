@@ -4,7 +4,10 @@ import { appLanes, busySlots, processorOf } from './lanes.mjs';
 import { isDueAt, slicesOf } from './schedule.mjs';
 
 const repo = process.env.GITHUB_REPOSITORY || 'kevinrhaas/polecat-platform';
-const gh = args => execFileSync('gh', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] });
+// maxBuffer: each run object carries its full head-commit message, so 100 runs
+// is over 1 MB, which is execFileSync's default cap. Overflowing it throws
+// ENOBUFS and the scheduler dispatches nothing (2026-10-01, 17:30-18:30Z).
+const gh = args => execFileSync('gh', args, { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024, stdio: ['ignore', 'pipe', 'inherit'] });
 const roster = JSON.parse(readFileSync(new URL('./focus.json', import.meta.url)));
 const lanes = appLanes(roster);
 // Occupancy comes from TWO listings, unioned by run id, because neither is
@@ -34,7 +37,8 @@ for (const status of ['in_progress', 'queued', 'waiting', 'pending', 'requested'
     `repos/${repo}/actions/workflows/steward-improve.yml/runs?status=${status}&per_page=100`]));
   for (const page of pages) add(page);
 }
-add(JSON.parse(gh(['api', `repos/${repo}/actions/workflows/steward-improve.yml/runs?per_page=100`])));
+// 30 newest is ample: this listing only has to catch runs mid-transition.
+add(JSON.parse(gh(['api', `repos/${repo}/actions/workflows/steward-improve.yml/runs?per_page=30`])));
 const runs = [...byId.values()];
 const now = new Date();
 let count = 0;
