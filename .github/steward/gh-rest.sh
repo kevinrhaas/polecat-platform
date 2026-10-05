@@ -3,7 +3,10 @@
 #
 #   gh-rest.sh pr-create   <repo> <head> <base> <title> <body-file> [draft]
 #                                                                     → prints the PR number
-#   gh-rest.sh pr-merge    <repo> <number> <method> [commit-title]    → prints the merge sha
+#   gh-rest.sh pr-merge    <repo> <number> <method> [commit-title] [sha]
+#                                                                     → prints the merge sha
+#       With a sha, GitHub merges ONLY if that is still the PR's head and
+#       answers 409 otherwise — the pin pr-automerge puts on every gated merge.
 #   gh-rest.sh pr-automerge <repo> <number> [method] [commit-title]   → 'armed', 'pending', 'refused', or merges
 #       Arms GitHub's auto-merge where the repository allows it. Where it does
 #       NOT (kevinrhaas/chicago), it reads the head commit's own check runs,
@@ -14,7 +17,10 @@
 #           (never `hold`, T-1577), says which check, and exits 3;
 #         • a still-PENDING gate is not a verdict — it prints `pending`, exits
 #           4 and changes nothing, for the caller to wait again or hand on.
-#       GH_REST_MERGE_BLIND=1 restores the old unconditional merge.
+#       Every merge it makes is PINNED to the sha whose gate it read (T-2128):
+#       a push after the read gets a 409 from GitHub, and the new head's gate
+#       is read under the same budget before anything merges.
+#       GH_REST_MERGE_BLIND=1 restores the old unconditional, unpinned merge.
 #   gh-rest.sh pr-comment  <repo> <number> <body-file>
 #   gh-rest.sh pr-list     <repo> [state] [per-page]                  → number<TAB>head<TAB>base<TAB>title
 #   gh-rest.sh pr-find     <repo> <branch> [state]                    → PR number for a head branch
@@ -260,13 +266,56 @@ refuse_merge() {
 # writing one here would put a stale reason on a PR that is about to merge, which
 # is the exact drift T-1577 measured.
 defer_merge() {
-  local repo="$1" number="$2" check="$3"
-  log "pr-automerge: ${check} is STILL RUNNING after ${GATE_WAIT}s on ${repo}#${number}"
+  local repo="$1" number="$2" check="$3" why="${4:-}"
+  log "pr-automerge: ${why:-${check} is STILL RUNNING after ${GATE_WAIT}s on ${repo}#${number}}"
   log 'pr-automerge: that is not a red gate and not a refusal — nothing has been decided.'
   log "pr-automerge: call pr-automerge again to keep waiting (each lap waits ${GATE_WAIT}s), or"
   log "pr-automerge: hand it on: pr-resume ${repo} ${number} --why 'gate still running'"
   printf 'pending\n'
   exit 4
+}
+
+# merge_gated <repo> <number> <method> <title> <sha> — merge THE COMMIT WHOSE GATE
+# WAS READ, and nothing else (T-2128).
+#
+# The gate is read on one sha and the merge PUT used to name none, so GitHub
+# merged whatever the head was by then. Twice that was a different commit: #450
+# merged 0c99665 on the green checks of 2b461e2, and #468 printed "every check on
+# faecc49 is green" and merged df31afc0 — the PR API still reported the old head
+# seconds after the push, so the gate read was of a commit that was no longer the
+# PR. Pinning the sha makes GitHub refuse with 409 instead, which is what
+# chicago's merge-ready.sh has always done.
+#
+# A 409 is not a verdict on the work, so it is not refused: the head moved, and
+# the new head has not been gated. This re-reads the head, points the caller's
+# loop at it (`sha`), and RETURNS so that loop reads the new commit's gate under
+# the same deadline. Only a successful merge or a different failure exits here.
+merge_gated() {
+  local repo="$1" number="$2" method="$3" ctitle="$4" pin="$5" out rc errf head now nap
+  errf=$(mktemp)
+  out=$(bash "$0" pr-merge "$repo" "$number" "$method" "$ctitle" "$pin" 2>"$errf"); rc=$?
+  cat "$errf" >&2
+  if [ "$rc" -eq 0 ] || ! grep -q 'HTTP 409' "$errf"; then
+    rm -f "$errf"; [ -n "$out" ] && printf '%s\n' "$out"; exit "$rc"
+  fi
+  rm -f "$errf"
+  log "pr-automerge: GitHub refused to merge ${pin:0:7} (409) — the head moved after its gate was read"
+  head=$(api GET "repos/${repo}/pulls/${number}" 2>/dev/null | python3 -c 'import json,sys
+try: print(((json.load(sys.stdin) or {}).get("head") or {}).get("sha",""))
+except Exception: print("")' 2>/dev/null)
+  now=$(date -u +%s)
+  if [ -n "$head" ] && [ "$head" != "$pin" ]; then
+    log "pr-automerge: the head is now ${head:0:7} — reading ITS gate before anything merges"
+    sha="$head"; empties=0; return 0
+  fi
+  # The PR API can lag the push by seconds (#468), so it may still name the sha
+  # GitHub just refused. Look again, but never past the budget.
+  if (( now >= deadline )); then
+    defer_merge "$repo" "$number" "" "the head of ${repo}#${number} moved after its gate was read, and the PR still reports ${pin:0:7}"
+  fi
+  nap=$(( deadline - now )); (( nap > GATE_POLL )) && nap=$GATE_POLL
+  log "pr-automerge: the PR still reports ${pin:0:7} — reading the head again in ${nap}s"
+  sleep "$nap"
 }
 
 cmd="${1:-}"; shift || true
@@ -287,12 +336,17 @@ json.dump(d, sys.stdout)' \
     printf '%s' "$payload" > /tmp/gh-rest-pr.json
     api POST "repos/${repo}/pulls" --input /tmp/gh-rest-pr.json | jqf number ;;
   pr-merge)
-    repo="$1"; number="$2"; method="${3:-squash}"; ctitle="${4:-}"
+    # The optional fifth argument PINS the merge to a head sha (T-2128). GitHub
+    # then merges only if that sha is still the PR's head and answers 409 if
+    # anything was pushed since — so a merge decided by reading one commit's
+    # gate can never land a different commit.
+    repo="$1"; number="$2"; method="${3:-squash}"; ctitle="${4:-}"; pin="${5:-}"
     payload=$(python3 -c '
 import json,sys
 d={"merge_method":sys.argv[1]}
-if len(sys.argv)>2 and sys.argv[2]: d["commit_title"]=sys.argv[2]
-json.dump(d,sys.stdout)' "$method" "$ctitle")
+if sys.argv[2]: d["commit_title"]=sys.argv[2]
+if sys.argv[3]: d["sha"]=sys.argv[3]
+json.dump(d,sys.stdout)' "$method" "$ctitle" "$pin")
     printf '%s' "$payload" > /tmp/gh-rest-merge.json
     api PUT "repos/${repo}/pulls/${number}/merge" --input /tmp/gh-rest-merge.json | jqf sha ;;
   pr-automerge)
@@ -363,21 +417,21 @@ except Exception: print("")' 2>/dev/null)
       verdict=$(gate_state "$repo" "$sha")
       case "$verdict" in
         clear)
-          log "pr-automerge: every check on ${sha:0:7} is green — merging"
-          bash "$0" pr-merge "$repo" "$number" "${3:-squash}" "${4:-}"; exit $? ;;
+          log "pr-automerge: every check on ${sha:0:7} is green — merging ${sha:0:7}, pinned"
+          merge_gated "$repo" "$number" "${3:-squash}" "${4:-}" "$sha" ;;
         red\ *)
           refuse_merge "$repo" "$number" "check ${verdict#red }" ;;
         unreadable)
-          log "pr-automerge: could not read the checks on ${sha:0:7} — merging directly instead"
-          bash "$0" pr-merge "$repo" "$number" "${3:-squash}" "${4:-}"; exit $? ;;
+          log "pr-automerge: could not read the checks on ${sha:0:7} — merging it directly instead"
+          merge_gated "$repo" "$number" "${3:-squash}" "${4:-}" "$sha" ;;
         none)
           # Checks can take a few seconds to appear. Give them ONE poll to show
           # up, then treat a still-empty list as "this PR has no gate" — which
           # is the truth on repos where a bot-opened PR triggers no workflow.
           empties=$(( empties + 1 ))
           if (( empties > 1 )) || (( $(date -u +%s) + GATE_POLL > deadline )); then
-            log "pr-automerge: no check runs on ${sha:0:7} — nothing to gate on, merging"
-            bash "$0" pr-merge "$repo" "$number" "${3:-squash}" "${4:-}"; exit $?
+            log "pr-automerge: no check runs on ${sha:0:7} — nothing to gate on, merging it"
+            merge_gated "$repo" "$number" "${3:-squash}" "${4:-}" "$sha"; continue
           fi
           log "pr-automerge: no check runs on ${sha:0:7} yet — one more look in ${GATE_POLL}s"
           sleep "$GATE_POLL" ;;
@@ -400,8 +454,8 @@ except Exception: print("")' 2>/dev/null)
           log "pr-automerge: ${verdict} — waiting ${nap}s (budget ends in $(( deadline - now ))s)"
           sleep "$nap" ;;
         *)
-          log "pr-automerge: unrecognised gate verdict [${verdict}] — merging directly instead"
-          bash "$0" pr-merge "$repo" "$number" "${3:-squash}" "${4:-}"; exit $? ;;
+          log "pr-automerge: unrecognised gate verdict [${verdict}] — merging ${sha:0:7} directly instead"
+          merge_gated "$repo" "$number" "${3:-squash}" "${4:-}" "$sha" ;;
       esac
     done ;;
   pr-comment|issue-comment)
