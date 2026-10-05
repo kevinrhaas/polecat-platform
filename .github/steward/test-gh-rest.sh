@@ -25,6 +25,11 @@ cat > "$TMP/bin/gh" <<'FAKE'
 # Replays $FAKE_PLAN (one response file per call) and logs each invocation.
 n=$(cat "$FAKE_STATE" 2>/dev/null || echo 0); n=$((n+1)); echo "$n" > "$FAKE_STATE"
 printf '%s\n' "$*" >> "$FAKE_CALLS"
+# A request body sent with --input is recorded too, one line per call, so a test
+# can assert what a PUT carried and not only where it went (T-2128's sha pin).
+prev=""; for a in "$@"; do
+  [ "$prev" = "--input" ] && [ -f "$a" ] && { tr -d '\n' < "$a"; echo; } >> "$FAKE_CALLS.input"
+  prev="$a"; done
 resp="${FAKE_PLAN}/${n}.txt"
 [ -f "$resp" ] || resp="${FAKE_PLAN}/last.txt"
 cat "$resp"
@@ -36,7 +41,7 @@ export GH_REST_ATTEMPTS=4
 
 newplan(){ FAKE_PLAN="$TMP/plan.$1"; FAKE_STATE="$TMP/state.$1"; FAKE_CALLS="$TMP/calls.$1"
            export FAKE_PLAN FAKE_STATE FAKE_CALLS; rm -rf "$FAKE_PLAN"; mkdir -p "$FAKE_PLAN"
-           : > "$FAKE_CALLS"; rm -f "$FAKE_STATE"; }
+           : > "$FAKE_CALLS"; : > "$FAKE_CALLS.input"; rm -f "$FAKE_STATE"; }
 calls(){ wc -l < "$FAKE_CALLS" | tr -d ' '; }
 
 echo "gh-rest.sh — the failure paths"
@@ -206,6 +211,74 @@ HTTP/2.0 200 OK
 EOF
 got=$(bash "$SUT" pr-automerge o/r 8 squash "title" 2>/dev/null)
 check "pr-automerge that cannot arm reads the gate, and merges it when green" "$got" "deadbee"
+check "…pinned to the sha whose gate it read (T-2128)" \
+      "$(grep -c '"sha": "c0ffee1234567"' "$FAKE_CALLS.input")" "1"
+
+# ── 7b-0. T-2128: a head that moved after its gate was read is re-gated ─────
+# #450 merged 0c99665 on the green checks of 2b461e2, and #468 printed "every
+# check on faecc49 is green" and merged df31afc0: the merge PUT named no sha, so
+# GitHub merged whatever the head had become. Pinned, GitHub answers 409 — and
+# the 409 is not a verdict on the work, so the NEW head's gate is read and that
+# commit, and only that commit, is merged when it is green.
+newplan automerge_moved
+cat > "$FAKE_PLAN/1.txt" <<'EOF'
+HTTP/2.0 200 OK
+
+{"number":450,"node_id":"PR_kwDO","head":{"sha":"2b461e2aaaaaa"}}
+EOF
+cat > "$FAKE_PLAN/2.txt" <<'EOF'
+GraphQL: Auto merge is not allowed for this repository (enablePullRequestAutoMerge)
+EOF
+cat > "$FAKE_PLAN/3.txt" <<'EOF'
+HTTP/2.0 200 OK
+
+{"total_count":1,"check_runs":[{"name":"chicago-4d-check","status":"completed","conclusion":"success"}]}
+EOF
+cat > "$FAKE_PLAN/4.txt" <<'EOF'
+HTTP/2.0 409 Conflict
+
+{"message":"Head branch was modified. Review and try the merge again."}
+EOF
+cat > "$FAKE_PLAN/5.txt" <<'EOF'
+HTTP/2.0 200 OK
+
+{"number":450,"node_id":"PR_kwDO","head":{"sha":"0c99665bbbbbb"}}
+EOF
+cp "$FAKE_PLAN/3.txt" "$FAKE_PLAN/6.txt"
+cat > "$FAKE_PLAN/7.txt" <<'EOF'
+HTTP/2.0 200 OK
+
+{"sha":"5afe450"}
+EOF
+got=$(GH_REST_GATE_WAIT_SECONDS=60 bash "$SUT" pr-automerge o/r 450 squash "title" 2>/dev/null); rc=$?
+check "a head that moved after its gate was read is re-gated, then merged" "$got" "5afe450"
+check "…exiting 0" "$rc" "0"
+if grep -q 'commits/0c99665bbbbbb/check-runs' "$FAKE_CALLS"; then ok "…having read the NEW head's own gate"
+else bad "the new head's gate was never read"; fi
+check "…and the second merge is pinned to the new head" \
+      "$(sed -n 2p "$FAKE_CALLS.input" | grep -c '"sha": "0c99665bbbbbb"')" "1"
+
+# The new head's gate has not answered: that is `pending`, not a merge.
+newplan automerge_moved_pending
+cp "$TMP/plan.automerge_moved/"[1-5].txt "$FAKE_PLAN/"
+cat > "$FAKE_PLAN/6.txt" <<'EOF'
+HTTP/2.0 200 OK
+
+{"total_count":1,"check_runs":[{"name":"chicago-4d-check","status":"in_progress","conclusion":null}]}
+EOF
+got=$(GH_REST_GATE_WAIT_SECONDS=0 bash "$SUT" pr-automerge o/r 450 squash "title" 2>/dev/null); rc=$?
+check "a moved head whose gate is still running is handed back as pending" "$got" "pending"
+check "…exit 4" "$rc" "4"
+check "…after exactly one merge attempt, the refused one" "$(grep -c 'pulls/450/merge' "$FAKE_CALLS")" "1"
+
+# The PR API can lag a push by seconds (#468), so the re-read may still name the
+# refused sha. That is not a merge either, and it is not an endless loop.
+newplan automerge_moved_stale
+cp "$TMP/plan.automerge_moved/"[1-4].txt "$FAKE_PLAN/"
+cp "$FAKE_PLAN/1.txt" "$FAKE_PLAN/5.txt"
+got=$(GH_REST_GATE_WAIT_SECONDS=0 bash "$SUT" pr-automerge o/r 450 squash "title" 2>/dev/null); rc=$?
+check "a 409 the PR API cannot yet explain is pending, not merged and not looped" "$got" "pending"
+check "…exit 4" "$rc" "4"
 
 # ── 7b-i. T-1572: a RED gate is refused, not merged ────────────────────────
 # The fault this is for: kevinrhaas/chicago has auto-merge switched OFF, so the
@@ -393,6 +466,7 @@ EOF
 got=$(GH_REST_MERGE_BLIND=1 bash "$SUT" pr-automerge o/r 12 squash "title" 2>/dev/null)
 check "GH_REST_MERGE_BLIND=1 restores the unconditional merge" "$got" "0ldway5"
 check "…and reads no gate to do it" "$(calls)" "3"
+check "…and pins no sha: blind means blind" "$(grep -c '"sha"' "$FAKE_CALLS.input")" "0"
 
 # ── 7c. pr-state answers, and answers EMPTY rather than failing ────────────
 # The janitor merges on an empty answer, so the failure path is the one that

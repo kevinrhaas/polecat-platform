@@ -370,6 +370,9 @@ HARD RULES:
     janitor will lap and merge it. **Never answer a `pending` with
     `GH_REST_MERGE_BLIND=1`** — that is merging a gate nobody read, which is
     exactly what #43 did.
+  It merges ONLY the commit whose gate it read (T-2128): a push that lands after
+  the read is refused by GitHub (409) and the new head is re-gated in the same
+  call, so pushing a fix and calling `pr-automerge` straight away is safe.
   `GH_REST_MERGE_BLIND=1` restores the old unconditional merge; use it only when
   you have gated the merge yourself and know the red check is irrelevant, and say
   in the PR why.
