@@ -110,10 +110,11 @@ jobs:
     # genuine work sits four minutes from being thrown away.
     #
     # A cancelled run costs more than its own hour. It holds one of the lane's
-    # slots for the full 150 minutes and then hands back nothing — and because a
-    # failed run deliberately does not kick the scheduler, that slot stays empty
-    # until a cron tick notices. (Under the older batch gate it was worse still:
-    # one dying run held the ENTIRE lane, not one slot of it.)
+    # slots for the full 150 minutes and then hands back nothing. It does at
+    # least kick the scheduler on its way out (T-1711), so its slot refills
+    # within the minute; a FAILED run does not, and waits for a cron tick.
+    # (Under the older batch gate it was worse still: one dying run held the
+    # ENTIRE lane, not one slot of it.)
     #
     # The parcels grew, which is why the old ceiling stopped fitting. A unit of
     # work was "add a block of roofs" when the lanes opened; the queue now holds
@@ -126,6 +127,11 @@ jobs:
     # It only stops the clock killing work that was about to land.
     timeout-minutes: 150
     steps:
+      # The refill step at the end reads this to tell a run cancelled at the
+      # cap above from one somebody cancelled by hand (T-1711).
+      - name: Stamp the job's start
+        run: echo "STEWARD_JOB_T0=$(date +%s)" >> "$GITHUB_ENV"
+
       - name: Check secrets
         env:
           T: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -702,10 +708,17 @@ jobs:
       # run kicks rather than only the last one out.
       #
       - name: Free this slot, and tell the scheduler to refill it
-        if: always() && job.status == 'success' && github.event.inputs.app != '' && github.event.inputs.app != 'fleet'
+        # A run cancelled at the cap kicks too (T-1711): it is the ceiling, not
+        # a fault, and its slot used to wait 20-40 minutes for a cron tick. A
+        # FAILED run still does not (tech-sweep issue #106), and neither does a
+        # hand cancel; refill-kick.sh tells the cases apart and says why.
+        if: always() && (job.status == 'success' || job.status == 'cancelled') && github.event.inputs.app != '' && github.event.inputs.app != 'fleet'
         continue-on-error: true   # a rate-limited kick must not fail a shipped run; the cron still backstops
         env:
           GH_TOKEN: ${{ github.token }}
+          # Must equal this job's `timeout-minutes` above; test-refill-kick.sh
+          # (ci.yml) fails if the two drift apart.
+          REFILL_CAP_MINUTES: 150
         run: |
           # EVERY run kicks, not just the last one out.
           #
@@ -723,14 +736,7 @@ jobs:
           # steward-focus's own concurrency group (1 running + 1 pending) drops
           # the surplus — also harmless, because whichever tick does run refills
           # ALL free slots, not one.
-          #
-          # Still gated on job.status == 'success', exactly as before: an
-          # unconditional re-dispatch is what let a week of failing analytics
-          # runs burn the fleet's shared quota (tech-sweep issue #106). A slot
-          # whose run FAILED is refilled by the cron instead — slower, and the
-          # safe direction.
-          echo "→ slot freed; kicking steward-focus to refill it"
-          gh workflow run steward-focus.yml -R kevinrhaas/polecat-platform
+          bash .github/steward/refill-kick.sh "${{ job.status }}" "${STEWARD_JOB_T0:-}" "$REFILL_CAP_MINUTES"
 
 
   chatgpt:

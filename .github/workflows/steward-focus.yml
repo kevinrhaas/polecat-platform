@@ -42,8 +42,8 @@ on:
     # Every 10 minutes: the tick is the loop's BACKSTOP, not the mechanism. A
     # finishing run kicks this workflow itself (steward-improve's last step), so
     # a freed slot normally refills within a minute; the cron catches slots freed
-    # by a run that FAILED (which deliberately does not kick) and any kick that
-    # went missing. Drop to '*/5 * * * *' to close that gap faster. GitHub delays
+    # by a run that FAILED or was cancelled by hand (neither kicks — a run
+    # cancelled at its cap does, T-1711) and any kick that went missing. Drop to '*/5 * * * *' to close that gap faster. GitHub delays
     # scheduled ticks badly under load — measured 99 to 214 minutes apart, then a
     # ~6 hour gap — which is exactly why the loop does not depend on them.
     - cron: '*/10 * * * *'

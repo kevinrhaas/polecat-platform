@@ -47,6 +47,13 @@ jobs:
       - name: The steward journal rolls over when full, and never fails a run
         run: bash .github/steward/test-journal.sh
 
+      # A run cancelled at its 150-minute cap kicks the scheduler like a
+      # success, and a failure or a hand cancel does not (T-1711). The test also
+      # reads steward-improve.yml, so the cap the step measures against cannot
+      # drift from the job's real timeout-minutes.
+      - name: A run cancelled at the cap refills its slot, and only that cancel
+        run: bash .github/steward/test-refill-kick.sh
+
       - name: The janitor gates the merge, and names a conflict out loud
         run: |
           bash .github/steward/janitor-mergeability.sh --self-test
