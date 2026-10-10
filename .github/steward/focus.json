@@ -26,11 +26,11 @@
       "slices": 3
     },
     "chicago": {
-      "enabled": false,
+      "enabled": true,
       "everyHours": 1,
       "max_turns": 400,
       "processor": "claude",
-      "slices": 7,
+      "slices": 5,
       "model": "claude-opus-5-5",
       "effort": "high"
     },
