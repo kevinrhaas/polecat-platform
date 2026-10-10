@@ -39,6 +39,15 @@ for (const status of ['in_progress', 'queued', 'waiting', 'pending', 'requested'
 }
 // 30 newest is ample: this listing only has to catch runs mid-transition.
 add(JSON.parse(gh(['api', `repos/${repo}/actions/workflows/steward-improve.yml/runs?per_page=30`])));
+// A FREED RUN is the steward-improve run whose last step kicked this tick
+// (refill-kick.sh passes its id as `freed_run`). It is still `in_progress`
+// while it kicks and through its post-job cleanup, so it would hold its slot
+// and the refill would wait for a cron tick. T-2153 measured that happen to
+// 37807547340: occupancy read at 18:47:47Z, job finished at 18:47:53Z, zero
+// dispatched. The run has finished its work, so its slot is free. Only that
+// one run is set aside; any other run in the slot still holds it.
+const freed = process.env.FREED_RUN || '';
+if (/^\d+$/.test(freed) && byId.delete(Number(freed))) console.log(`Run ${freed} kicked this tick, so its slot is free.`);
 const runs = [...byId.values()];
 const now = new Date();
 let count = 0;

@@ -60,6 +60,17 @@ try {
   // ...and a completed run in the unfiltered page does not hold its slot.
   result=spawnSync(process.execPath,[path.join(dir,'dispatch-lanes.mjs')],{env:{...env,RUNS:JSON.stringify([{status:'completed',displayTitle:laneTitle(claude)+' [1/1]'}])},encoding:'utf8'});
   assert.equal(result.status,0,result.stderr);assert.equal(readFileSync(calls,'utf8').trim().split('\n').length,1);
+  // T-2153: the run that kicked this tick (FREED_RUN) is still in_progress
+  // while it tears down, but its slot is free. Any OTHER id leaves the slot busy.
+  writeFileSync(calls,'');
+  const finishing=JSON.stringify([{status:'in_progress',displayTitle:laneTitle(claude)+' [1/1]'}]);
+  result=spawnSync(process.execPath,[path.join(dir,'dispatch-lanes.mjs')],{env:{...env,RUNS:finishing,FREED_RUN:'0'},encoding:'utf8'});
+  assert.equal(result.status,0,result.stderr);assert.match(result.stdout,/Run 0 kicked this tick/);
+  const refill=readFileSync(calls,'utf8').trim().split('\n').map(l=>JSON.parse(l));
+  assert.equal(refill.length,1);assert.ok(refill[0].includes('slice=1'));
+  writeFileSync(calls,'');
+  result=spawnSync(process.execPath,[path.join(dir,'dispatch-lanes.mjs')],{env:{...env,RUNS:finishing,FREED_RUN:'7'},encoding:'utf8'});
+  assert.equal(result.status,0,result.stderr);assert.equal(readFileSync(calls,'utf8'),'');
 } finally { rmSync(dir,{recursive:true,force:true}); }
 
 const events = [

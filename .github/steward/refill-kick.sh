@@ -16,6 +16,14 @@
 # apart. The lane ran a slot short until the owner noticed at 03:40Z and
 # dispatched steward-focus by hand.
 #
+# WHY THE KICK NAMES THIS RUN (T-2153, 2026-10-10). Seven runs were cancelled
+# at the cap between 2026-10-08 and 2026-10-10. Six kicks refilled the slot:
+# five in 12-16 s, one in 3m24s because its steward-focus run queued behind
+# another. One did not. The scheduler read the run list 6 s before the kicking
+# job finished tearing down, counted the slot as busy, and dispatched nothing.
+# The other six won the same race by 2-5 s. So the kick now passes
+# `freed_run=<this run id>`, and dispatch-lanes.mjs does not count that run.
+#
 # WHY A FAILURE STILL DOES NOT. An unconditional re-dispatch let a week of
 # failing analytics runs burn the fleet's shared quota (tech-sweep issue #106).
 # A run that hits the cap is not that loop: every cancellation measured so far
@@ -42,9 +50,19 @@ now="${REFILL_NOW:-$(date +%s)}"
 margin="${REFILL_MARGIN_MINUTES:-10}"
 repo="${REFILL_REPO:-kevinrhaas/polecat-platform}"
 
+# The run doing the kicking is still `in_progress` while it kicks, and stays so
+# through its post-job cleanup, so the scheduler would count its slot as busy.
+# Naming it lets the scheduler free that one slot (T-2153: 37807547340's kick
+# read occupancy at 18:47:47Z, the job ended at 18:47:53Z, nothing was
+# dispatched, and the slot waited 2 minutes for a cron tick).
+run_id="${GITHUB_RUN_ID:-}"
 kick() {
   echo "→ $1; kicking steward-focus to refill the slot"
-  gh workflow run steward-focus.yml -R "$repo"
+  if [[ "$run_id" =~ ^[0-9]+$ ]]; then
+    gh workflow run steward-focus.yml -R "$repo" -f freed_run="$run_id"
+  else
+    gh workflow run steward-focus.yml -R "$repo"
+  fi
 }
 
 case "$status" in

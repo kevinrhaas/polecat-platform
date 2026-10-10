@@ -73,7 +73,15 @@ on:
     branches: [main]
     paths: ['.github/steward/focus.json']
 
-  workflow_dispatch: {}         # manual tick for testing
+  workflow_dispatch:            # manual tick for testing, and the refill kick
+    inputs:
+      freed_run:
+        # Set by refill-kick.sh: the steward-improve run that sent the kick.
+        # It is still in_progress while it kicks, so the scheduler would count
+        # its slot as busy. dispatch-lanes.mjs leaves it out (T-2153).
+        description: 'steward-improve run id whose slot this kick frees (blank for a manual tick)'
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -93,6 +101,7 @@ jobs:
       - name: Dispatch app lanes
         env:
           GH_TOKEN: ${{ github.token }}
+          FREED_RUN: ${{ github.event.inputs.freed_run }}
         run: node .github/steward/dispatch-lanes.mjs
 
       - name: Dispatch focus runs per roster
