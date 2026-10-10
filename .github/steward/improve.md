@@ -240,12 +240,15 @@ HARD RULES:
   * PUBLISH BEFORE YOU GATE. `site/4d/` is a generated, untracked mirror that
     deploy.yml rebuilds with `./tools/publish.sh`; `check.sh` publishes it and
     gates what it produced, so run the gate on the tree you mean to ship.
-  * CHANGELOG: authored at `chicago/4d/renderers/web/js/changelog.js` (fleet
-    format, new entry on TOP with `v: null, ts: '', date: ''`) — inside the app, because the
-    walkthrough's What's-new tab imports it and a page cannot import from its
-    own publish mirror. Stamp with `node chicago/4d/tools/stamp-changelog.mjs`
-    and verify with `node chicago/4d/tools/check-changelog.mjs` before merging.
-    `publish.sh` mirrors it to `site/4d/js/changelog.js` —
+  * CHANGELOG: DO NOT EDIT `chicago/4d/renderers/web/js/changelog.js`. Add ONE
+    entry file, `chicago/4d/changelog.d/<ticket>.json`, holding
+    `{ "title", "kind", "items" }` and no number, ts or date; check it with
+    `node chicago/4d/tools/changelog-entries.mjs --check`. After the merge,
+    chicago-4d-changelog-fold.yml folds it into changelog.js on dev and stamps
+    it. Every PR editing changelog.js's top line conflicted with every landing,
+    so PRs spent laps on that one line; entry files never collide. The file
+    is authored inside the app because the walkthrough's What's-new tab
+    imports it; `publish.sh` mirrors it to `site/4d/js/changelog.js` —
     chicago.polecat.live/4d/js/changelog.js, the URL Manager and the launcher
     parse — that path is a contract and must not move.
   * PROVENANCE IS THE PRODUCT — the one invariant that outranks everything else
@@ -273,7 +276,7 @@ HARD RULES:
   docs/SHELL-API.md § the fleet changelog contract. STAMP
   timestamps with the repo's own tool (games tools/stamp-changelog.mjs;
   jobtracker/relay/autoselector .github/stamp-changelog.mjs; analytics
-  tools/changelog-normalize.js; chicago chicago/4d/tools/stamp-changelog.mjs;
+  tools/changelog-normalize.js; chicago: an entry FILE instead, see above;
   polecat-app its generator; polecat-platform
   itself scripts/stamp-changelog.mjs) — also stamp older empty-ts entries.
   Must stay parseable by manager's ingest.
