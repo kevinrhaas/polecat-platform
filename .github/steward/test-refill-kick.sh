@@ -33,10 +33,13 @@ case_() {
   local label="$1" want="$2" status="$3" mins="$4" cap="${5:-150}" start
   : > "$FAKE_CALLS"
   if [ "$mins" = - ]; then start=''; else start="$T0"; fi
-  local out; out=$(REFILL_NOW=$(( T0 + ${mins/-/0} * 60 )) bash "$SUT" "$status" "$start" "$cap" 2>&1)
+  # RUN_ID is the kicking run's GITHUB_RUN_ID (T-2153): 4242 unless a case sets it.
+  local rid="${RUN_ID-4242}" line='workflow run steward-focus.yml -R kevinrhaas/polecat-platform'
+  [[ "$rid" =~ ^[0-9]+$ ]] && line="$line -f freed_run=$rid"
+  local out; out=$(GITHUB_RUN_ID="$rid" REFILL_NOW=$(( T0 + ${mins/-/0} * 60 )) bash "$SUT" "$status" "$start" "$cap" 2>&1)
   local calls; calls=$(wc -l < "$FAKE_CALLS")
   if [ "$want" = kick ]; then
-    if [ "$calls" = 1 ] && grep -qx 'workflow run steward-focus.yml -R kevinrhaas/polecat-platform' "$FAKE_CALLS"; then ok "$label"
+    if [ "$calls" = 1 ] && grep -qxF -- "$line" "$FAKE_CALLS"; then ok "$label"
     else bad "$label — wanted one steward-focus dispatch, got $calls call(s): $out"; fi
   else
     if [ "$calls" = 0 ]; then ok "$label"; else bad "$label — wanted no dispatch, got: $(cat "$FAKE_CALLS")"; fi
@@ -54,6 +57,11 @@ case_ "cancelled with no start stamp stays quiet"       quiet cancelled -
 case_ "failure stays quiet (tech-sweep #106)"           quiet failure   150
 case_ "an empty status stays quiet"                     quiet ''        150
 case_ "the cap is a parameter: 90m cap, cancel at 85m"  kick  cancelled 85  90
+# T-2153: the kick names the run that sent it, so the scheduler frees its slot
+# even though the run is still in_progress. Without a numeric id it still kicks.
+RUN_ID=37807547340 case_ "a cap kick names its run as freed_run" kick cancelled 150
+RUN_ID=''  case_ "no GITHUB_RUN_ID still kicks, naming nothing"  kick  success   48
+RUN_ID='1;x' case_ "a non-numeric run id is not passed on"      kick  success   48
 
 echo "steward-improve.yml"
 # The improve job's own cap: the first `timeout-minutes:` at job level (4 spaces).
@@ -65,6 +73,13 @@ else bad "the refill step's cap ('$step_cap') is not the job's timeout-minutes (
 if printf '%s\n' "$step" | grep -q 'bash .github/steward/refill-kick.sh'; then ok "the refill step runs refill-kick.sh"; else bad "the refill step does not run refill-kick.sh"; fi
 if printf '%s\n' "$step" | grep -q "job.status == 'cancelled'"; then ok "the refill step's if: admits a cancelled run"; else bad "the refill step's if: skips a cancelled run (T-1711)"; fi
 if grep -q 'STEWARD_JOB_T0=' "$WF"; then ok "the job stamps its start for the refill step"; else bad "no STEWARD_JOB_T0 stamp in the workflow"; fi
+
+echo "steward-focus.yml"
+FOCUS="$HERE/../workflows/steward-focus.yml"
+if awk '/^  workflow_dispatch:/{d=1;next} d&&/^  [a-z]/{exit} d' "$FOCUS" | grep -q '^      freed_run:'; then ok "workflow_dispatch declares the freed_run input the kick sends"
+else bad "workflow_dispatch does not declare freed_run, so every kick would be rejected (T-2153)"; fi
+if awk '/- name: Dispatch app lanes/{s=1} s&&/run: node .github.steward.dispatch-lanes.mjs/{print;exit} s' "$FOCUS" | grep -q 'FREED_RUN: ${{ github.event.inputs.freed_run }}'; then ok "the lane dispatch step passes it as FREED_RUN"
+else bad "the lane dispatch step does not pass freed_run to dispatch-lanes.mjs as FREED_RUN"; fi
 
 echo; echo "$pass passed, $fail failed"
 [ "$fail" = 0 ]
