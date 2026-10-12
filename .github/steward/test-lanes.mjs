@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { appLanes, busySlots, processorOf, laneTitle } from './lanes.mjs';
+import { appLanes, busySlots, processorOf, laneTitle, queueGate, queueLimits } from './lanes.mjs';
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync, readFileSync, cpSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -37,7 +37,7 @@ try {
   // every FILTERED listing, as a just-promoted run is on the real API. The
   // unfiltered page is padded past 1 MB, as real pages are (full commit
   // messages), so a dispatcher using execFileSync's default buffer fails here.
-  writeFileSync(path.join(dir,'bin/gh'), `#!/usr/bin/env node\nconst fs=require('fs');const a=process.argv.slice(2);if(a[0]==='api'){if(process.env.BROKEN)process.exit(1);const runs=JSON.parse(process.env.RUNS).map((r,i)=>({...r,id:i}));const url=a.at(-1);const out=rs=>rs.map(r=>({id:r.id,status:r.status,display_title:r.displayTitle}));if(url.includes('status=')){console.log(JSON.stringify([{workflow_runs:out(runs.filter(r=>!r.lagging&&url.includes('status='+r.status+'&')))}]));}else console.log(JSON.stringify({workflow_runs:out(runs),pad:'x'.repeat(2e6)}));}else fs.appendFileSync(process.env.CALLS,JSON.stringify(a)+'\\n');`, {mode:0o755});
+  writeFileSync(path.join(dir,'bin/gh'), `#!/usr/bin/env node\nconst fs=require('fs');const a=process.argv.slice(2);if(a[0]==='api'&&a.some(x=>x.includes('/pulls'))){if(process.env.PRS_BROKEN)process.exit(1);fs.appendFileSync(process.env.TOKENS,process.env.GH_TOKEN+'\\n');console.log(JSON.stringify([JSON.parse(process.env.PRS||'[]')]));process.exit(0);}if(a[0]==='api'&&a.some(x=>x.includes('actions/variables'))){if(a.includes('--method')){fs.appendFileSync(process.env.VARS,a[a.indexOf('--method')+1]+' '+a.find(x=>x.includes('actions/variables'))+'\\n');process.exit(0);}process.exit(process.env.PAUSED?0:1);}if(a[0]==='api'){if(process.env.BROKEN)process.exit(1);const runs=JSON.parse(process.env.RUNS).map((r,i)=>({...r,id:i}));const url=a.at(-1);const out=rs=>rs.map(r=>({id:r.id,status:r.status,display_title:r.displayTitle}));if(url.includes('status=')){console.log(JSON.stringify([{workflow_runs:out(runs.filter(r=>!r.lagging&&url.includes('status='+r.status+'&')))}]));}else console.log(JSON.stringify({workflow_runs:out(runs),pad:'x'.repeat(2e6)}));}else fs.appendFileSync(process.env.CALLS,JSON.stringify(a)+'\\n');`, {mode:0o755});
   const calls = path.join(dir,'calls');
   const env = {...process.env, PATH:path.join(dir,'bin')+':'+process.env.PATH, RUNS:JSON.stringify(runs), CALLS:calls};
   let result = spawnSync(process.execPath,[path.join(dir,'dispatch-lanes.mjs')], {env,encoding:'utf8'});
@@ -71,6 +71,53 @@ try {
   writeFileSync(calls,'');
   result=spawnSync(process.execPath,[path.join(dir,'dispatch-lanes.mjs')],{env:{...env,RUNS:finishing,FREED_RUN:'7'},encoding:'utf8'});
   assert.equal(result.status,0,result.stderr);assert.equal(readFileSync(calls,'utf8'),'');
+
+  // PR-queue backpressure (lanes.mjs § queueGate). Pure gate first.
+  const qc={prQueue:{pauseAt:6,resumeAt:3}};
+  assert.equal(queueGate({},{open:40}).cap,Infinity);
+  assert.equal(queueGate(qc,{open:null}).paused,false);
+  assert.deepEqual(queueLimits({prQueue:{pauseAt:6}}),{pauseAt:6,resumeAt:3});
+  assert.deepEqual(queueLimits({prQueue:{pauseAt:2,resumeAt:9}}),{pauseAt:2,resumeAt:1});
+  assert.equal(queueLimits({prQueue:{pauseAt:'x'}}),null);
+  assert.deepEqual([queueGate(qc,{open:2}).paused,queueGate(qc,{open:2}).cap],[false,4]);
+  assert.deepEqual([queueGate(qc,{open:6,resumable:4,busy:1}).paused,queueGate(qc,{open:6,resumable:4,busy:1}).cap,queueGate(qc,{open:6,resumable:4,busy:1}).finishOnly],[true,3,true]);
+  // Hysteresis: between the two limits the last tick's state holds.
+  assert.equal(queueGate(qc,{open:4,wasPaused:true}).paused,true);
+  assert.equal(queueGate(qc,{open:4,wasPaused:false}).paused,false);
+  assert.equal(queueGate(qc,{open:3,wasPaused:true}).paused,false);
+
+  // Then the real dispatcher: a lane over its limit pauses, records it, and
+  // sends finish-only slices only for resume PRs nobody touched for 30 min.
+  roster.apps.chicago={enabled:true,slices:5,prQueue:{pauseAt:6,resumeAt:3}};
+  writeFileSync(path.join(dir,'focus.json'),JSON.stringify(roster));
+  const vars=path.join(dir,'vars'), tokens=path.join(dir,'tokens'); writeFileSync(vars,''); writeFileSync(tokens,''); writeFileSync(calls,'');
+  const old='2026-01-01T00:00:00Z', fresh=new Date().toISOString();
+  const pr=(labels,extra={})=>({draft:false,labels:labels.map(name=>({name})),updated_at:old,...extra});
+  const seven=[pr(['resume']),pr(['resume']),pr(['resume'],{updated_at:fresh}),pr([]),pr([]),pr([]),pr(['hold']),pr([],{draft:true})];
+  const qenv={...env,RUNS:'[]',VARS:vars,TOKENS:tokens,PR_TOKEN:'pat',PRS:JSON.stringify(seven)};
+  result=spawnSync(process.execPath,[path.join(dir,'dispatch-lanes.mjs')],{env:qenv,encoding:'utf8'});
+  assert.equal(result.status,0,result.stderr);
+  assert.match(result.stdout,/chicago lane PAUSED: 6 open PRs/);
+  let sent=readFileSync(calls,'utf8').trim().split('\n').map(l=>JSON.parse(l));
+  assert.equal(sent.length,2); assert.ok(sent.every(c=>c.includes('finish_only=1')));
+  assert.match(readFileSync(vars,'utf8'),/^POST repos\/.*\/actions\/variables\n$/);
+  assert.equal(readFileSync(tokens,'utf8').trim(),'pat');
+  // Still paused at 4 (above resumeAt): finish-only, no state change.
+  writeFileSync(calls,''); writeFileSync(vars,'');
+  result=spawnSync(process.execPath,[path.join(dir,'dispatch-lanes.mjs')],{env:{...qenv,PAUSED:'1',PRS:JSON.stringify(seven.slice(2))},encoding:'utf8'});
+  assert.equal(result.status,0,result.stderr); assert.equal(readFileSync(vars,'utf8'),'');
+  assert.equal(readFileSync(calls,'utf8'),'');
+  // Down to 3: restarts, deletes the variable, and tops up to pauseAt.
+  writeFileSync(calls,''); writeFileSync(vars,'');
+  result=spawnSync(process.execPath,[path.join(dir,'dispatch-lanes.mjs')],{env:{...qenv,PAUSED:'1',PRS:JSON.stringify(seven.slice(3,6))},encoding:'utf8'});
+  assert.equal(result.status,0,result.stderr); assert.match(result.stdout,/RESTARTED/);
+  assert.match(readFileSync(vars,'utf8'),/^DELETE repos\/.*STEWARD_PAUSED_CHICAGO\n$/);
+  sent=readFileSync(calls,'utf8').trim().split('\n').map(l=>JSON.parse(l));
+  assert.equal(sent.length,3); assert.ok(sent.every(c=>!c.includes('finish_only=1')));
+  // A failed PR count fails OPEN: the lane fills as if it had no limit.
+  writeFileSync(calls,'');
+  result=spawnSync(process.execPath,[path.join(dir,'dispatch-lanes.mjs')],{env:{...qenv,PRS_BROKEN:'1'},encoding:'utf8'});
+  assert.equal(result.status,0,result.stderr); assert.equal(readFileSync(calls,'utf8').trim().split('\n').length,5);
 } finally { rmSync(dir,{recursive:true,force:true}); }
 
 const events = [
@@ -91,4 +138,4 @@ try {
 } finally {rmSync(logDir,{recursive:true,force:true});}
 const failure=spawnSync(process.execPath,[new URL('codex-stream.mjs',import.meta.url).pathname],{input:JSON.stringify({type:'turn.failed',error:{message:'No model access'}})+'\n',encoding:'utf8'});
 assert.equal(failure.status,1);assert.match(failure.stdout,/No model access/);
-console.log('Mixed lane dispatch, occupancy, draining, validation and GPT evidence: PASS');
+console.log('Mixed lane dispatch, occupancy, draining, PR-queue backpressure, validation and GPT evidence: PASS');

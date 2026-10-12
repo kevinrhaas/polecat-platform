@@ -334,6 +334,11 @@ HARD RULES:
     endgame as any unit, on a branch already most of the way there. **Skip one
     whose `waits on` ticket is still open** and say so in your summary; it
     cannot go green yet and re-gating it would spend a run proving that.
+  * **A FINISH-ONLY RUN** (the prompt carries `QUEUE: PAUSED`) was sent because
+    the app has too many open PRs (focus.json `prQueue`). Take no ticket and
+    open no PR: your only possible unit is a `resume` PR, finished as above.
+    If none is workable (all wait on open tickets, or their CI is still
+    running), change nothing and end the run with `Outcome: no-pr` and why.
   * **The janitor reads the two the same way**: `resume` is work the loop still
     owes, so it keeps sweeping, gating and merging a resumable PR every 2h;
     `hold` it never touches. So `resume` does NOT keep the janitor away, and
