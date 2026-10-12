@@ -64,6 +64,10 @@ on:
         description: 'Tool-call ceiling for this run (focus.json lane `max_turns`; empty = 200).'
         required: false
         default: ''
+      finish_only:
+        description: 'Set by steward-focus when the lane is paused on its PR queue (focus.json `prQueue`): finish a `resume` PR, take no new ticket.'
+        required: false
+        default: ''
 
 env:
   # The app to work on comes from the dispatch input (focus.json passes it per
@@ -78,6 +82,7 @@ env:
   INPUT_SLICE: ${{ github.event.inputs.slice }}
   INPUT_SLICES: ${{ github.event.inputs.slices }}
   INPUT_MAX_TURNS: ${{ github.event.inputs.max_turns }}
+  FINISH_ONLY: ${{ github.event.inputs.finish_only }}
 
 permissions:
   contents: read
@@ -491,6 +496,13 @@ jobs:
           LANE: ${LANE:-default} (local slot ${SLICE} of ${SLICES})
           Read CLAUDE.md and AGENTS.md in each repository before working, regardless of processor.
           Claim work through the repository protocol; if another lane owns the ticket, choose an unclaimed item."
+          # The lane is paused on its PR queue (focus.json `prQueue`, see
+          # lanes.mjs § queueGate): this slice exists only to finish the loop's
+          # own unfinished work, so it must not open anything new.
+          if [ "$FINISH_ONLY" = 1 ]; then
+            PROMPT="$PROMPT
+          QUEUE: PAUSED. This app has too many open PRs, so this is a FINISH-ONLY run: take NO new ticket and open no new PR. Your unit is an open \`resume\` PR on this app (improve.md § RESUMABLE WORK; slice k takes the k-th workable one). If none is workable, make no change and end the run, saying so in your summary."
+          fi
           # Per-lane model pin (focus.json `model` via the dispatch input);
           # empty falls back to the fleet default: opus.
           if [ "$PROCESSOR" = gpt ]; then MODEL="${MODEL:-gpt-6-astra}"; else MODEL="${MODEL:-claude-opus-5}"; fi

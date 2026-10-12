@@ -102,6 +102,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           FREED_RUN: ${{ github.event.inputs.freed_run }}
+          # Read-only use, plus one repository variable: a lane with `prQueue`
+          # counts its app repo's open PRs (which the built-in token cannot
+          # see) and records its paused state in STEWARD_PAUSED_<APP>.
+          # Dispatching still goes through GH_TOKEN above.
+          PR_TOKEN: ${{ secrets.STEWARD_PAT }}
         run: node .github/steward/dispatch-lanes.mjs
 
       - name: Dispatch focus runs per roster
