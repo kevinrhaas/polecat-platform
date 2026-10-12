@@ -79,10 +79,9 @@ try {
   assert.deepEqual(queueLimits({prQueue:{pauseAt:6}}),{pauseAt:6,resumeAt:3});
   assert.deepEqual(queueLimits({prQueue:{pauseAt:2,resumeAt:9}}),{pauseAt:2,resumeAt:1});
   assert.equal(queueLimits({prQueue:{pauseAt:'x'}}),null);
-  assert.deepEqual([queueGate(qc,{open:2}).paused,queueGate(qc,{open:2}).cap],[false,4]);
-  assert.equal(queueGate(qc,{open:3,busy:3}).cap,3);
-  assert.equal(queueGate(qc,{open:2,busy:5}).cap,1);
-  assert.equal(queueGate(qc,{open:5,busy:1}).cap,1);
+  assert.deepEqual([queueGate(qc,{open:2}).paused,queueGate(qc,{open:2}).cap],[false,Infinity]);
+  assert.equal(queueGate(qc,{open:5,busy:3}).cap,Infinity);
+  assert.equal(queueGate(qc,{open:6,busy:0}).finishOnly,true);
   assert.deepEqual([queueGate(qc,{open:6,resumable:4,busy:1}).paused,queueGate(qc,{open:6,resumable:4,busy:1}).cap,queueGate(qc,{open:6,resumable:4,busy:1}).finishOnly],[true,3,true]);
   // Hysteresis: between the two limits the last tick's state holds.
   assert.equal(queueGate(qc,{open:4,wasPaused:true}).paused,true);
@@ -110,13 +109,13 @@ try {
   result=spawnSync(process.execPath,[path.join(dir,'dispatch-lanes.mjs')],{env:{...qenv,PAUSED:'1',PRS:JSON.stringify(seven.slice(2))},encoding:'utf8'});
   assert.equal(result.status,0,result.stderr); assert.equal(readFileSync(vars,'utf8'),'');
   assert.equal(readFileSync(calls,'utf8'),'');
-  // Down to 3: restarts, deletes the variable, and tops up to pauseAt.
+  // Down to 3: restarts, deletes the variable, and fills every free slot (5).
   writeFileSync(calls,''); writeFileSync(vars,'');
   result=spawnSync(process.execPath,[path.join(dir,'dispatch-lanes.mjs')],{env:{...qenv,PAUSED:'1',PRS:JSON.stringify(seven.slice(3,6))},encoding:'utf8'});
   assert.equal(result.status,0,result.stderr); assert.match(result.stdout,/RESTARTED/);
   assert.match(readFileSync(vars,'utf8'),/^DELETE repos\/.*STEWARD_PAUSED_CHICAGO\n$/);
   sent=readFileSync(calls,'utf8').trim().split('\n').map(l=>JSON.parse(l));
-  assert.equal(sent.length,3); assert.ok(sent.every(c=>!c.includes('finish_only=1')));
+  assert.equal(sent.length,5); assert.ok(sent.every(c=>!c.includes('finish_only=1')));
   // A failed PR count fails OPEN: the lane fills as if it had no limit.
   writeFileSync(calls,'');
   result=spawnSync(process.execPath,[path.join(dir,'dispatch-lanes.mjs')],{env:{...qenv,PRS_BROKEN:'1'},encoding:'utf8'});
