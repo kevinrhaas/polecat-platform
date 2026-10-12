@@ -80,8 +80,9 @@ try {
   assert.deepEqual(queueLimits({prQueue:{pauseAt:2,resumeAt:9}}),{pauseAt:2,resumeAt:1});
   assert.equal(queueLimits({prQueue:{pauseAt:'x'}}),null);
   assert.deepEqual([queueGate(qc,{open:2}).paused,queueGate(qc,{open:2}).cap],[false,4]);
-  assert.equal(queueGate(qc,{open:3,busy:5}).cap,0);
-  assert.equal(queueGate(qc,{open:2,busy:1}).cap,3);
+  assert.equal(queueGate(qc,{open:3,busy:3}).cap,3);
+  assert.equal(queueGate(qc,{open:2,busy:5}).cap,1);
+  assert.equal(queueGate(qc,{open:5,busy:1}).cap,1);
   assert.deepEqual([queueGate(qc,{open:6,resumable:4,busy:1}).paused,queueGate(qc,{open:6,resumable:4,busy:1}).cap,queueGate(qc,{open:6,resumable:4,busy:1}).finishOnly],[true,3,true]);
   // Hysteresis: between the two limits the last tick's state holds.
   assert.equal(queueGate(qc,{open:4,wasPaused:true}).paused,true);

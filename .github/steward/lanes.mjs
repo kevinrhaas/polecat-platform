@@ -81,9 +81,13 @@ export function queueGate(config, { open, resumable = 0, wasPaused = false, busy
     return { paused, finishOnly: true, cap,
       why: `paused: ${open} open PR(s), ${resumable} resumable (pauses at ${pauseAt}, restarts at ${resumeAt}) — ${cap} finish-only slice(s) allowed` };
   }
-  // A running slice will usually open a PR of its own, so it counts against
-  // the limit too: 3 open PRs and 5 busy slices is 8 on the way, not 3.
-  const room = Math.max(0, pauseAt - open - busy);
+  // A running slice either finishes an open PR (already in `open`) or is
+  // headed for a PR of its own, so the work in flight is at least the larger
+  // of the two. Adding them double-counted every slice that was finishing an
+  // open PR: 3 resume PRs with their 3 slices read as 6 and the lane sat at 3
+  // of 5 (2026-10-12).
+  const inFlight = Math.max(open, busy);
+  const room = Math.max(0, pauseAt - inFlight);
   return { paused, finishOnly: false, cap: room,
-    why: `running: ${open} open PR(s), ${busy} slice(s) busy (pauses at ${pauseAt}) — up to ${room} new slice(s)` };
+    why: `running: ${open} open PR(s), ${busy} slice(s) busy (pauses at ${pauseAt} in flight) — up to ${room} new slice(s)` };
 }
