@@ -381,6 +381,11 @@ HARD RULES:
   It merges ONLY the commit whose gate it read (T-2128): a push that lands after
   the read is refused by GitHub (409) and the new head is re-gated in the same
   call, so pushing a fix and calling `pr-automerge` straight away is safe.
+  And the head's own checks are not the whole gate (T-2461): a workflow that
+  ran on an EARLIER commit of the PR but has no run on the head — a content
+  build a lap push's paths did not fire — carries its newest verdict forward.
+  Still running is `pending`; red is `refused`, naming the run, until something
+  re-runs that workflow on the branch.
   `GH_REST_MERGE_BLIND=1` restores the old unconditional merge; use it only when
   you have gated the merge yourself and know the red check is irrelevant, and say
   in the PR why.
