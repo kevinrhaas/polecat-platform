@@ -468,6 +468,99 @@ check "GH_REST_MERGE_BLIND=1 restores the unconditional merge" "$got" "0ldway5"
 check "…and reads no gate to do it" "$(calls)" "3"
 check "…and pins no sha: blind means blind" "$(grep -c '"sha"' "$FAKE_CALLS.input")" "0"
 
+# ── 7b-vi. T-2461: a workflow an earlier head ran is still part of the gate ──
+# Path filters fire on what a PUSH carries, so a lap that merges `dev` into a PR
+# gets a head with only `gate` and `report` on it. #768's lap head 21ef749 was
+# read as "every check green" and merged while its content build (bake + smoke)
+# was still running on the previous head 4d4a994; earlier, c3fffe5 carried no
+# content build one push after 79eaf83's had FAILED. These replay both.
+carried_plan(){   # carried_plan <name> <runs-json> — calls 1-5, up to the runs read
+  newplan "$1"
+  cat > "$FAKE_PLAN/1.txt" <<'EOF'
+HTTP/2.0 200 OK
+
+{"number":768,"node_id":"PR_kwDO","head":{"sha":"21ef749aaaaaa","ref":"steward/t2214-glessner"}}
+EOF
+  cat > "$FAKE_PLAN/2.txt" <<'EOF'
+GraphQL: Auto merge is not allowed for this repository (enablePullRequestAutoMerge)
+EOF
+  cat > "$FAKE_PLAN/3.txt" <<'EOF'
+HTTP/2.0 200 OK
+
+{"total_count":2,"check_runs":[{"name":"gate","status":"completed","conclusion":"success"},
+                               {"name":"report","status":"completed","conclusion":"success"}]}
+EOF
+  cat > "$FAKE_PLAN/4.txt" <<'EOF'
+HTTP/2.0 200 OK
+
+[{"sha":"79eaf83aaaaaa"},{"sha":"c3fffe5aaaaaa"},{"sha":"4d4a994aaaaaa"},{"sha":"21ef749aaaaaa"}]
+EOF
+  printf 'HTTP/2.0 200 OK\n\n{"workflow_runs":%s}\n' "$2" > "$FAKE_PLAN/5.txt"
+  cat > "$FAKE_PLAN/last.txt" <<'EOF'
+HTTP/2.0 200 OK
+
+{}
+EOF
+}
+HEAD_RUNS='{"name":"Chicago 4D — gate","head_sha":"21ef749aaaaaa","status":"completed","conclusion":"success","created_at":"2026-10-13T13:04:53Z"},
+           {"name":"Chicago 4D — stuck PR report","head_sha":"21ef749aaaaaa","status":"completed","conclusion":"success","created_at":"2026-10-13T13:04:48Z"}'
+
+carried_plan carried_running "[$HEAD_RUNS,
+  {\"name\":\"Chicago 4D — content build\",\"head_sha\":\"4d4a994aaaaaa\",\"status\":\"in_progress\",\"conclusion\":null,\"created_at\":\"2026-10-13T12:37:12Z\"}]"
+got=$(GH_REST_GATE_WAIT_SECONDS=0 bash "$SUT" pr-automerge o/r 768 squash "title" 2>"$TMP/err"); rc=$?
+check "#768 replayed: a content build still running on the last head is pending, not merged" "$got" "pending"
+check "…exit 4 — not a verdict" "$rc" "4"
+if grep -q 'pulls/768/merge' "$FAKE_CALLS"; then bad "#768's lap head must not merge on gate + report alone"
+else ok "…and no merge was attempted on gate + report alone"; fi
+if grep -q 'content build on 4d4a994' "$TMP/err"; then ok "…naming the workflow and the head it is running on"
+else bad "the pending carried run was not named: $(tail -3 "$TMP/err")"; fi
+check "…for two REST calls more than the head's own gate: commits, runs" \
+      "$(grep -cE 'pulls/768/commits|actions/runs\?branch=steward%2Ft2214-glessner' "$FAKE_CALLS")" "2"
+
+carried_plan carried_green "[$HEAD_RUNS,
+  {\"name\":\"Chicago 4D — content build\",\"head_sha\":\"4d4a994aaaaaa\",\"status\":\"completed\",\"conclusion\":\"success\",\"created_at\":\"2026-10-13T12:37:12Z\"},
+  {\"name\":\"Chicago 4D — content build\",\"head_sha\":\"79eaf83aaaaaa\",\"status\":\"completed\",\"conclusion\":\"failure\",\"created_at\":\"2026-10-13T10:26:10Z\"}]"
+printf 'HTTP/2.0 200 OK\n\n{"sha":"m768"}\n' > "$FAKE_PLAN/6.txt"
+got=$(GH_REST_GATE_WAIT_SECONDS=0 bash "$SUT" pr-automerge o/r 768 squash "title" 2>/dev/null); rc=$?
+check "the same build green on the last head is carried: merged" "$got" "m768"
+check "…pinned to the head, not to the head the verdict came from" \
+      "$(grep -c '"sha": "21ef749aaaaaa"' "$FAKE_CALLS.input")" "1"
+
+# c3fffe5: the newest content build in the PR FAILED, and nothing re-ran it.
+carried_plan carried_red "[$HEAD_RUNS,
+  {\"name\":\"Chicago 4D — content build\",\"head_sha\":\"79eaf83aaaaaa\",\"status\":\"completed\",\"conclusion\":\"failure\",\"created_at\":\"2026-10-13T10:26:10Z\"},
+  {\"name\":\"Chicago 4D — content build\",\"head_sha\":\"019f272aaaaaa\",\"status\":\"completed\",\"conclusion\":\"cancelled\",\"created_at\":\"2026-10-13T10:24:33Z\"}]"
+got=$(GH_REST_GATE_WAIT_SECONDS=0 bash "$SUT" pr-automerge o/r 768 squash "title" 2>/dev/null); rc=$?
+check "a content build that FAILED on an earlier head and never re-ran is refused" "$got" "refused"
+check "…exit 3" "$rc" "3"
+if grep -q 'pulls/768/merge' "$FAKE_CALLS"; then bad "a carried red must not merge"; else ok "…unmerged"; fi
+if grep -q 'content build on 79eaf83 (failure) never re-ran on 21ef749' "$FAKE_CALLS.input"; then
+  ok "…and the resume reason says which run, where, and that the head never re-ran it"
+else bad "the refusal reason does not name the carried run: $(grep -o 'not merged[^"]*' "$FAKE_CALLS.input" | head -1)"; fi
+
+# A run of the head's OWN overrides anything older, red or not.
+carried_plan carried_rerun "[$HEAD_RUNS,
+  {\"name\":\"Chicago 4D — content build\",\"head_sha\":\"21ef749aaaaaa\",\"status\":\"completed\",\"conclusion\":\"success\",\"created_at\":\"2026-10-13T13:05:00Z\"},
+  {\"name\":\"Chicago 4D — content build\",\"head_sha\":\"79eaf83aaaaaa\",\"status\":\"completed\",\"conclusion\":\"failure\",\"created_at\":\"2026-10-13T10:26:10Z\"}]"
+printf 'HTTP/2.0 200 OK\n\n{"sha":"m768b"}\n' > "$FAKE_PLAN/6.txt"
+got=$(GH_REST_GATE_WAIT_SECONDS=0 bash "$SUT" pr-automerge o/r 768 squash "title" 2>/dev/null)
+check "a workflow that ran on the head itself is read there, not carried from older heads" "$got" "m768b"
+
+# A run on a commit this PR does not list — an older PR on a reused branch
+# name — is not this PR's gate.
+carried_plan carried_foreign "[$HEAD_RUNS,
+  {\"name\":\"Chicago 4D — content build\",\"head_sha\":\"0dd0dd0aaaaaa\",\"status\":\"completed\",\"conclusion\":\"failure\",\"created_at\":\"2026-09-01T10:00:00Z\"}]"
+printf 'HTTP/2.0 200 OK\n\n{"sha":"m768c"}\n' > "$FAKE_PLAN/6.txt"
+got=$(GH_REST_GATE_WAIT_SECONDS=0 bash "$SUT" pr-automerge o/r 768 squash "title" 2>/dev/null)
+check "a red run on a commit outside the PR is not carried" "$got" "m768c"
+
+# Same contract as gate_state: an unreadable answer merges rather than stalls.
+carried_plan carried_unreadable "[]"
+printf 'HTTP/2.0 200 OK\n\nnot json at all\n' > "$FAKE_PLAN/5.txt"
+printf 'HTTP/2.0 200 OK\n\n{"sha":"m768d"}\n' > "$FAKE_PLAN/6.txt"
+got=$(GH_REST_GATE_WAIT_SECONDS=0 bash "$SUT" pr-automerge o/r 768 squash "title" 2>/dev/null)
+check "an unreadable run list merges on the head's own checks" "$got" "m768d"
+
 # ── 7c. pr-state answers, and answers EMPTY rather than failing ────────────
 # The janitor merges on an empty answer, so the failure path is the one that
 # matters: if a 500 came back as a non-zero exit, a transient GitHub blip would

@@ -20,6 +20,9 @@
 #       Every merge it makes is PINNED to the sha whose gate it read (T-2128):
 #       a push after the read gets a 409 from GitHub, and the new head's gate
 #       is read under the same budget before anything merges.
+#       A workflow an EARLIER commit of the PR ran, with no run on the head (a
+#       lap push whose paths did not fire it), is still gate: its newest run's
+#       verdict is carried to the head (T-2461).
 #       GH_REST_MERGE_BLIND=1 restores the old unconditional, unpinned merge.
 #   gh-rest.sh pr-comment  <repo> <number> <body-file>
 #   gh-rest.sh pr-list     <repo> [state] [per-page]                  → number<TAB>head<TAB>base<TAB>title
@@ -227,6 +230,98 @@ for r in runs:
 print("clear")' 2>/dev/null || printf 'unreadable\n'
 }
 
+# carried_state <repo> <number> <branch> <sha> → one line, the same vocabulary as
+# gate_state: clear | unreadable | "red <workflow> on <sha7> (<conclusion>)" |
+# "pending <workflow> on <sha7> (<status>)"
+#
+# A HEAD'S OWN CHECK RUNS ARE NOT THE WHOLE GATE, and T-2461 is why. Path filters
+# fire on what a PUSH carries, not on what the branch owns, so a lap that merges
+# `dev` into a PR — touching nothing under the content build's paths — gets a
+# head with only `gate` and `report` on it. #768's lap head 21ef749 was exactly
+# that: its content build (bake + fourteen smoke legs) was still running on the
+# PREVIOUS head 4d4a994, no run was ever created for 21ef749, and gate_state read
+# two green checks as "every check green" and merged. Earlier in the same PR,
+# c3fffe5 carried no content build either, one push after 79eaf83's had FAILED.
+#
+# So a workflow that ran on an earlier commit of this PR and has no run on the
+# head is still part of the gate, and its newest run is its verdict: running is
+# `pending`, red is `red`, green (including a bake its own `warranted` job
+# declined) is carried as green. TWO REST calls — the PR's commits and the
+# branch's workflow runs — made only once the head's own checks are clear, the
+# moment a merge is about to happen, so a gate still running costs nothing extra.
+#
+# "Of this PR" means a commit the PR lists, not a time window: a run that pushes
+# and then smokes for half an hour opens its PR long after the first push's
+# workflows, and a branch name reused by an older PR must not lend its runs here.
+#
+# A red carried verdict stays red until something re-runs that workflow on the
+# branch (a push under its paths, or a dispatch on the branch); the refusal says
+# which one and where. `unreadable` merges, the contract gate_state states above.
+carried_state() {
+  local repo="$1" number="$2" branch="$3" sha="$4" q ours body
+  # The shas, not the commits: a hundred commit objects is far past the 128 KiB
+  # one argument may carry, and the runs below are read from stdin.
+  ours=$(api GET "repos/${repo}/pulls/${number}/commits?per_page=100" 2>/dev/null \
+    | python3 -c 'import json,sys;print(" ".join(c["sha"] for c in json.load(sys.stdin)))' 2>/dev/null) \
+    || { printf 'unreadable\n'; return 0; }
+  q=$(python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1],safe=""))' "$branch")
+  body=$(api GET "repos/${repo}/actions/runs?branch=${q}&per_page=100" 2>/dev/null) || { printf 'unreadable\n'; return 0; }
+  printf '%s' "$body" | python3 -c '
+import json,sys
+sha=sys.argv[2]
+RED={"failure","timed_out","cancelled","action_required","stale","startup_failure"}
+try:
+    ours=set(sys.argv[1].split())
+    runs=(json.load(sys.stdin) or {}).get("workflow_runs")
+except Exception: print("unreadable"); raise SystemExit
+if not isinstance(runs,list): print("unreadable"); raise SystemExit
+ours.add(sha)
+runs=[r for r in runs if r.get("head_sha") in ours]
+on_head={r.get("name") for r in runs if r.get("head_sha")==sha}
+newest={}
+for r in runs:
+    n=r.get("name")
+    if n in on_head: continue
+    if n not in newest or (r.get("created_at") or "")>(newest[n].get("created_at") or ""): newest[n]=r
+for n,r in sorted(newest.items()):
+    if r.get("status")=="completed" and (r.get("conclusion") or "") in RED:
+        print("red %s on %s (%s)"%(n,(r.get("head_sha") or "?")[:7],r.get("conclusion"))); raise SystemExit
+for n,r in sorted(newest.items()):
+    if r.get("status")!="completed":
+        print("pending %s on %s (%s)"%(n,(r.get("head_sha") or "?")[:7],r.get("status"))); raise SystemExit
+print("clear")' "$ours" "$sha" 2>/dev/null || printf 'unreadable\n'
+}
+
+# merge_carried <repo> <number> <method> <title> — the head's own checks are
+# clear; read what earlier heads of the PR still owe (carried_state) and merge
+# only if that is clear too. Returns to the caller's loop to wait on a pending
+# carried run, under the same deadline as the head's own gate.
+merge_carried() {
+  local repo="$1" number="$2" method="$3" ctitle="$4" cs now nap
+  if [ -z "$branch" ]; then
+    merge_gated "$repo" "$number" "$method" "$ctitle" "$sha"; return 0
+  fi
+  cs=$(carried_state "$repo" "$number" "$branch" "$sha")
+  case "$cs" in
+    clear)
+      log "pr-automerge: nothing an earlier head ran is missing from ${sha:0:7} — merging ${sha:0:7}, pinned"
+      merge_gated "$repo" "$number" "$method" "$ctitle" "$sha" ;;
+    red\ *)
+      refuse_merge "$repo" "$number" "${cs#red } never re-ran on ${sha:0:7} (re-run it on ${branch})" ;;
+    pending\ *)
+      now=$(date -u +%s)
+      if (( now >= deadline )); then
+        defer_merge "$repo" "$number" "" "${cs#pending } is STILL RUNNING after ${GATE_WAIT}s, and ${sha:0:7} has no run of its own"
+      fi
+      nap=$(( deadline - now )); (( nap > GATE_POLL )) && nap=$GATE_POLL
+      log "pr-automerge: ${sha:0:7}'s own checks are green, but ${cs#pending } has no run on it — waiting ${nap}s"
+      sleep "$nap" ;;
+    *)
+      log "pr-automerge: could not read what earlier heads ran (${cs}) — merging ${sha:0:7} on its own checks"
+      merge_gated "$repo" "$number" "$method" "$ctitle" "$sha" ;;
+  esac
+}
+
 # refuse_merge <repo> <number> <why> — leave the PR OPEN, labelled and explained.
 #
 # IT APPLIES `resume`, NOT `hold`, and T-1577 is why: `hold` means THE OWNER IS
@@ -379,6 +474,10 @@ json.dump(d,sys.stdout)' "$method" "$ctitle" "$pin")
     sha=$(printf '%s' "$prbody" | python3 -c 'import json,sys
 try: print(((json.load(sys.stdin) or {}).get("head") or {}).get("sha",""))
 except Exception: print("")' 2>/dev/null)
+    # The branch, for carried_state: what earlier heads of this PR ran (T-2461).
+    branch=$(printf '%s' "$prbody" | python3 -c 'import json,sys
+try: print(((json.load(sys.stdin) or {}).get("head") or {}).get("ref",""))
+except Exception: print("")' 2>/dev/null)
     if [ -z "$node" ]; then
       log "pr-automerge: could not read the PR's node id — merging directly instead"
       bash "$0" pr-merge "$repo" "$number" "${3:-squash}" "${4:-}"; exit $?
@@ -417,8 +516,8 @@ except Exception: print("")' 2>/dev/null)
       verdict=$(gate_state "$repo" "$sha")
       case "$verdict" in
         clear)
-          log "pr-automerge: every check on ${sha:0:7} is green — merging ${sha:0:7}, pinned"
-          merge_gated "$repo" "$number" "${3:-squash}" "${4:-}" "$sha" ;;
+          log "pr-automerge: every check on ${sha:0:7} is green — reading what earlier heads ran"
+          merge_carried "$repo" "$number" "${3:-squash}" "${4:-}" ;;
         red\ *)
           refuse_merge "$repo" "$number" "check ${verdict#red }" ;;
         unreadable)
@@ -430,8 +529,8 @@ except Exception: print("")' 2>/dev/null)
           # is the truth on repos where a bot-opened PR triggers no workflow.
           empties=$(( empties + 1 ))
           if (( empties > 1 )) || (( $(date -u +%s) + GATE_POLL > deadline )); then
-            log "pr-automerge: no check runs on ${sha:0:7} — nothing to gate on, merging it"
-            merge_gated "$repo" "$number" "${3:-squash}" "${4:-}" "$sha"; continue
+            log "pr-automerge: no check runs on ${sha:0:7} — nothing of its own to gate on"
+            merge_carried "$repo" "$number" "${3:-squash}" "${4:-}"; continue
           fi
           log "pr-automerge: no check runs on ${sha:0:7} yet — one more look in ${GATE_POLL}s"
           sleep "$GATE_POLL" ;;
