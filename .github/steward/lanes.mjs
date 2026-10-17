@@ -56,10 +56,12 @@ export function busySlots(runs, lane) {
 // limit. While running, a tick starts no more new tickets than would take the
 // queue to `pauseAt`.
 //
-//   open       non-draft open PRs on the app's repo, `hold` excluded (the
-//              owner's park switch is not load); null = the count failed, and
-//              the gate fails OPEN so a GitHub hiccup never stalls the loop
-//   resumable  how many of those carry `resume`
+//   open       open PRs on the app's repo, drafts included, `hold` excluded
+//              (the owner's park switch is not load); null = the count
+//              failed, and the gate fails OPEN so a GitHub hiccup never
+//              stalls the loop. Drafts count since 2026-10-17: 23 open
+//              drafts on chicago read as 2 and never paused the lane.
+//   resumable  how many non-draft ones carry `resume`
 //   wasPaused  the state the last tick left (see dispatch-lanes.mjs)
 //   busy       slots already running in this lane
 export function queueLimits(config) {

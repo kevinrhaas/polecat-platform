@@ -68,14 +68,16 @@ function queueOf(app) {
   const q = { open: null, resumable: 0, wasPaused: false, used: 0 };
   try {
     const prs = JSON.parse(asPat(['api', '--paginate', '--slurp', `repos/${owner}/${app}/pulls?state=open&per_page=100`])).flat();
-    const live = prs.filter(p => !p.draft && !(p.labels || []).some(l => l.name === 'hold'));
+    // Drafts count (Kevin, 2026-10-17): 23 drafts sat open on chicago while
+    // the lane read 2 and kept filling every slot. `hold` alone is excluded.
+    const live = prs.filter(p => !(p.labels || []).some(l => l.name === 'hold'));
     q.open = live.length;
     // A resume PR touched in the last half hour is skipped: a run or the lap
     // just pushed to it, so its CI is most likely still running, and a
     // finish-only slice sent now would only sit and watch it. Without this a
     // paused lane re-sends a slice at the same PR every time one finishes.
     const cool = now - 30 * 60 * 1000;
-    q.resumable = live.filter(p => (p.labels || []).some(l => l.name === 'resume')
+    q.resumable = live.filter(p => !p.draft && (p.labels || []).some(l => l.name === 'resume')
       && !(Date.parse(p.updated_at) > cool)).length;
   } catch (e) { console.log(`::warning::${app}: could not count open PRs, so the queue limit is skipped this tick`); }
   try { asPat(['api', `repos/${repo}/actions/variables/${pausedVar(app)}`]); q.wasPaused = true; } catch { /* 404 = running */ }

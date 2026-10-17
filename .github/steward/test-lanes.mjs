@@ -99,12 +99,13 @@ try {
   const qenv={...env,RUNS:'[]',VARS:vars,TOKENS:tokens,PR_TOKEN:'pat',PRS:JSON.stringify(seven)};
   result=spawnSync(process.execPath,[path.join(dir,'dispatch-lanes.mjs')],{env:qenv,encoding:'utf8'});
   assert.equal(result.status,0,result.stderr);
-  assert.match(result.stdout,/chicago lane PAUSED: 6 open PRs/);
+  // Seven: the draft counts, `hold` does not.
+  assert.match(result.stdout,/chicago lane PAUSED: 7 open PRs/);
   let sent=readFileSync(calls,'utf8').trim().split('\n').map(l=>JSON.parse(l));
   assert.equal(sent.length,2); assert.ok(sent.every(c=>c.includes('finish_only=1')));
   assert.match(readFileSync(vars,'utf8'),/^POST repos\/.*\/actions\/variables\n$/);
   assert.equal(readFileSync(tokens,'utf8').trim(),'pat');
-  // Still paused at 4 (above resumeAt): finish-only, no state change.
+  // Still paused at 5 (above resumeAt): finish-only, no state change.
   writeFileSync(calls,''); writeFileSync(vars,'');
   result=spawnSync(process.execPath,[path.join(dir,'dispatch-lanes.mjs')],{env:{...qenv,PAUSED:'1',PRS:JSON.stringify(seven.slice(2))},encoding:'utf8'});
   assert.equal(result.status,0,result.stderr); assert.equal(readFileSync(vars,'utf8'),'');
@@ -116,6 +117,14 @@ try {
   assert.match(readFileSync(vars,'utf8'),/^DELETE repos\/.*STEWARD_PAUSED_CHICAGO\n$/);
   sent=readFileSync(calls,'utf8').trim().split('\n').map(l=>JSON.parse(l));
   assert.equal(sent.length,5); assert.ok(sent.every(c=>!c.includes('finish_only=1')));
+  // Drafts alone pause the lane (2026-10-17: 23 drafts read as 2), and a
+  // draft carrying `resume` earns no finish-only slice.
+  writeFileSync(calls,''); writeFileSync(vars,'');
+  const drafts=Array.from({length:6},()=>pr(['resume'],{draft:true}));
+  result=spawnSync(process.execPath,[path.join(dir,'dispatch-lanes.mjs')],{env:{...qenv,PRS:JSON.stringify(drafts)},encoding:'utf8'});
+  assert.equal(result.status,0,result.stderr);
+  assert.match(result.stdout,/chicago lane PAUSED: 6 open PRs/);
+  assert.equal(readFileSync(calls,'utf8'),'');
   // A failed PR count fails OPEN: the lane fills as if it had no limit.
   writeFileSync(calls,'');
   result=spawnSync(process.execPath,[path.join(dir,'dispatch-lanes.mjs')],{env:{...qenv,PRS_BROKEN:'1'},encoding:'utf8'});
