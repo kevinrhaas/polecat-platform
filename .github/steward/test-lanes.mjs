@@ -37,7 +37,7 @@ try {
   // every FILTERED listing, as a just-promoted run is on the real API. The
   // unfiltered page is padded past 1 MB, as real pages are (full commit
   // messages), so a dispatcher using execFileSync's default buffer fails here.
-  writeFileSync(path.join(dir,'bin/gh'), `#!/usr/bin/env node\nconst fs=require('fs');const a=process.argv.slice(2);if(a[0]==='api'&&a.some(x=>x.includes('/pulls'))){if(process.env.PRS_BROKEN)process.exit(1);fs.appendFileSync(process.env.TOKENS,process.env.GH_TOKEN+'\\n');console.log(JSON.stringify([JSON.parse(process.env.PRS||'[]')]));process.exit(0);}if(a[0]==='api'&&a.some(x=>x.includes('actions/variables'))){if(a.includes('--method')){fs.appendFileSync(process.env.VARS,a[a.indexOf('--method')+1]+' '+a.find(x=>x.includes('actions/variables'))+'\\n');process.exit(0);}process.exit(process.env.PAUSED?0:1);}if(a[0]==='api'){if(process.env.BROKEN)process.exit(1);const runs=JSON.parse(process.env.RUNS).map((r,i)=>({...r,id:i}));const url=a.at(-1);const out=rs=>rs.map(r=>({id:r.id,status:r.status,display_title:r.displayTitle}));if(url.includes('status=')){console.log(JSON.stringify([{workflow_runs:out(runs.filter(r=>!r.lagging&&url.includes('status='+r.status+'&')))}]));}else console.log(JSON.stringify({workflow_runs:out(runs),pad:'x'.repeat(2e6)}));}else fs.appendFileSync(process.env.CALLS,JSON.stringify(a)+'\\n');`, {mode:0o755});
+  writeFileSync(path.join(dir,'bin/gh'), `#!/usr/bin/env node\nconst fs=require('fs');const a=process.argv.slice(2);if(a[0]==='api'&&a.some(x=>x.includes('/pulls'))){if(process.env.PRS_BROKEN)process.exit(1);fs.appendFileSync(process.env.TOKENS,process.env.GH_TOKEN+'\\n');console.log(JSON.stringify([JSON.parse(process.env.PRS||'[]')]));process.exit(0);}if(a[0]==='api'&&a.some(x=>x.includes('actions/variables'))){if(a.includes('--method')){fs.appendFileSync(process.env.VARS,a[a.indexOf('--method')+1]+' '+a.find(x=>x.includes('actions/variables'))+'\\n');process.exit(0);}process.exit(process.env.PAUSED?0:1);}if(a[0]==='api'){if(process.env.BROKEN)process.exit(1);const runs=JSON.parse(process.env.RUNS).map((r,i)=>({...r,id:i}));const url=a.at(-1);const out=rs=>rs.map(r=>({id:r.id,status:r.status,display_title:r.displayTitle,created_at:r.createdAt}));if(url.includes('status=')){console.log(JSON.stringify([{workflow_runs:out(runs.filter(r=>!r.lagging&&url.includes('status='+r.status+'&')))}]));}else console.log(JSON.stringify({workflow_runs:out(runs),pad:'x'.repeat(2e6)}));}else fs.appendFileSync(process.env.CALLS,JSON.stringify(a)+'\\n');`, {mode:0o755});
   const calls = path.join(dir,'calls');
   const env = {...process.env, PATH:path.join(dir,'bin')+':'+process.env.PATH, RUNS:JSON.stringify(runs), CALLS:calls};
   let result = spawnSync(process.execPath,[path.join(dir,'dispatch-lanes.mjs')], {env,encoding:'utf8'});
@@ -125,6 +125,30 @@ try {
   assert.equal(result.status,0,result.stderr);
   assert.match(result.stdout,/chicago lane PAUSED: 6 open PRs/);
   assert.equal(readFileSync(calls,'utf8'),'');
+  // Finish-only cool-down (2026-10-18: ~270 no-op finish-only runs, one every
+  // ~2 min at a resume PR still waiting on another ticket). A paused lane that
+  // started a run in the last 30 minutes starts no finish-only work, even when
+  // that run is the one whose kick freed the slot.
+  const recentRun=[{status:'completed',displayTitle:laneTitle({app:'chicago'})+' [1/5]',createdAt:new Date(Date.now()-5*60000).toISOString()}];
+  for (const extra of [{},{FREED_RUN:'0'}]) {
+    writeFileSync(calls,''); writeFileSync(vars,'');
+    result=spawnSync(process.execPath,[path.join(dir,'dispatch-lanes.mjs')],{env:{...qenv,PAUSED:'1',RUNS:JSON.stringify(recentRun),...extra},encoding:'utf8'});
+    assert.equal(result.status,0,result.stderr);
+    assert.match(result.stdout,/finish-only cooling down, last run started 5m ago/);
+    assert.equal(readFileSync(calls,'utf8'),'');
+  }
+  // Past 30 minutes the finish-only slices go out again.
+  writeFileSync(calls,'');
+  const oldRun=[{...recentRun[0],createdAt:new Date(Date.now()-40*60000).toISOString()}];
+  result=spawnSync(process.execPath,[path.join(dir,'dispatch-lanes.mjs')],{env:{...qenv,PAUSED:'1',RUNS:JSON.stringify(oldRun)},encoding:'utf8'});
+  assert.equal(result.status,0,result.stderr);
+  sent=readFileSync(calls,'utf8').trim().split('\n').map(l=>JSON.parse(l));
+  assert.equal(sent.length,2); assert.ok(sent.every(c=>c.includes('finish_only=1')));
+  // A RUNNING lane is never cooled: a recent run does not hold back new tickets.
+  writeFileSync(calls,'');
+  result=spawnSync(process.execPath,[path.join(dir,'dispatch-lanes.mjs')],{env:{...qenv,RUNS:JSON.stringify(recentRun),PRS:'[]'},encoding:'utf8'});
+  assert.equal(result.status,0,result.stderr);
+  assert.equal(readFileSync(calls,'utf8').trim().split('\n').length,5);
   // A failed PR count fails OPEN: the lane fills as if it had no limit.
   writeFileSync(calls,'');
   result=spawnSync(process.execPath,[path.join(dir,'dispatch-lanes.mjs')],{env:{...qenv,PRS_BROKEN:'1'},encoding:'utf8'});
