@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { appLanes, busySlots, processorOf, queueGate, queueLimits } from './lanes.mjs';
+import { appLanes, busySlots, lastStarted, processorOf, queueGate, queueLimits } from './lanes.mjs';
 import { isDueAt, slicesOf } from './schedule.mjs';
 
 const repo = process.env.GITHUB_REPOSITORY || 'kevinrhaas/polecat-platform';
@@ -31,7 +31,7 @@ const lanes = appLanes(roster);
 //
 // Fail closed if GitHub cannot establish occupancy.
 const byId = new Map();
-const add = page => { for (const r of page.workflow_runs) byId.set(r.id, { status: r.status, displayTitle: r.display_title }); };
+const add = page => { for (const r of page.workflow_runs) byId.set(r.id, { status: r.status, displayTitle: r.display_title, createdAt: r.created_at }); };
 for (const status of ['in_progress', 'queued', 'waiting', 'pending', 'requested']) {
   const pages = JSON.parse(gh(['api', '--paginate', '--slurp',
     `repos/${repo}/actions/workflows/steward-improve.yml/runs?status=${status}&per_page=100`]));
@@ -47,6 +47,10 @@ add(JSON.parse(gh(['api', `repos/${repo}/actions/workflows/steward-improve.yml/r
 // dispatched. The run has finished its work, so its slot is free. Only that
 // one run is set aside; any other run in the slot still holds it.
 const freed = process.env.FREED_RUN || '';
+// Every run seen, the freed one included: the finish-only cool-down below
+// needs to know when a lane last STARTED a run, and the freed run is usually
+// that run.
+const seen = [...byId.values()];
 if (/^\d+$/.test(freed) && byId.delete(Number(freed))) console.log(`Run ${freed} kicked this tick, so its slot is free.`);
 const runs = [...byId.values()];
 const now = new Date();
@@ -117,6 +121,20 @@ for (const lane of lanes) {
     console.log(`${lane.app} / ${lane.id || 'default'}: ${gate.why}${q.used ? ` (${q.used} already started this tick)` : ''}`);
     free = Math.min(free, cap);
     finishOnly = gate.finishOnly;
+    // FINISH-ONLY COOL-DOWN. A finish-only slice that finds its resume PR
+    // still blocked (waiting on another ticket) ends in under a minute
+    // without touching the PR, so the PR's own 30-minute quiet rule never
+    // trips, and the slice's refill kick sent another straight back at it.
+    // On 2026-10-17/18 chicago did that every ~2 minutes for 14 hours
+    // (about 270 no-op runs at ~$0.10, all at #992 waiting on T-2737). A
+    // paused lane now starts finish-only work at most once per 30 minutes.
+    if (finishOnly && free > 0) {
+      const last = lastStarted(seen, lane);
+      if (last && now - last < 30 * 60 * 1000) {
+        console.log(`${lane.app} / ${lane.id || 'default'}: finish-only cooling down, last run started ${Math.round((now - last) / 60000)}m ago (waits 30m)`);
+        free = 0;
+      }
+    }
     q.used += Math.max(0, free);
   }
   const settings = processorOf(lane.config);

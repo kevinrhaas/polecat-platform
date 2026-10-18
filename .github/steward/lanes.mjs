@@ -41,6 +41,20 @@ export function busySlots(runs, lane) {
   return slots;
 }
 
+// When the lane last started a run, in ms since the epoch, whatever the run's
+// status; null when none is in view. The finish-only cool-down reads it.
+export function lastStarted(runs, lane) {
+  const title = laneTitle(lane);
+  let last = null;
+  for (const run of runs) {
+    const t = run.displayTitle;
+    if (t !== title && !(t?.startsWith(title + ' [') && /^ \[\d+\/\d+\]$/.test(t.slice(title.length)))) continue;
+    const at = Date.parse(run.createdAt);
+    if (Number.isFinite(at) && (last === null || at > last)) last = at;
+  }
+  return last;
+}
+
 // PR-QUEUE BACKPRESSURE (focus.json lane `prQueue: { pauseAt, resumeAt }`).
 // On 2026-10-12 chicago x5 had seven PRs open at once. Each bake asks for 18
 // smoke legs, so the account's hosted runners were full, legs sat queued for

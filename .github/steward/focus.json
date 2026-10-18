@@ -33,7 +33,7 @@
       "slices": 5,
       "prQueue": {
         "pauseAt": 6,
-        "resumeAt": 3
+        "resumeAt": 5
       },
       "model": "claude-opus-5-5",
       "effort": "high",
