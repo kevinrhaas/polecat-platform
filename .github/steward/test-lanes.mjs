@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { appLanes, busySlots, processorOf, laneTitle, queueGate, queueLimits } from './lanes.mjs';
+import { appLanes, busySlots, isLanePr, processorOf, laneTitle, queueGate, queueLimits } from './lanes.mjs';
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync, readFileSync, cpSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -94,7 +94,7 @@ try {
   writeFileSync(path.join(dir,'focus.json'),JSON.stringify(roster));
   const vars=path.join(dir,'vars'), tokens=path.join(dir,'tokens'); writeFileSync(vars,''); writeFileSync(tokens,''); writeFileSync(calls,'');
   const old='2026-01-01T00:00:00Z', fresh=new Date().toISOString();
-  const pr=(labels,extra={})=>({draft:false,labels:labels.map(name=>({name})),updated_at:old,...extra});
+  const pr=(labels,extra={})=>({draft:false,labels:labels.map(name=>({name})),updated_at:old,head:{ref:'steward/t-x'},...extra});
   const seven=[pr(['resume']),pr(['resume']),pr(['resume'],{updated_at:fresh}),pr([]),pr([]),pr([]),pr(['hold']),pr([],{draft:true})];
   const qenv={...env,RUNS:'[]',VARS:vars,TOKENS:tokens,PR_TOKEN:'pat',PRS:JSON.stringify(seven)};
   result=spawnSync(process.execPath,[path.join(dir,'dispatch-lanes.mjs')],{env:qenv,encoding:'utf8'});
@@ -148,6 +148,18 @@ try {
   writeFileSync(calls,'');
   result=spawnSync(process.execPath,[path.join(dir,'dispatch-lanes.mjs')],{env:{...qenv,RUNS:JSON.stringify(recentRun),PRS:'[]'},encoding:'utf8'});
   assert.equal(result.status,0,result.stderr);
+  assert.equal(readFileSync(calls,'utf8').trim().split('\n').length,5);
+  // Only the lane's own PRs count (2026-10-19): steward/* branches and
+  // salvage's rescued drafts do; another session's claude/* drafts do not.
+  assert.equal(isLanePr({head:{ref:'steward/t2787-k01-tower'}}),true);
+  assert.equal(isLanePr({head:{ref:'lap886'},title:'WIP: lap886 — rescued from run 38931513397'}),true);
+  assert.equal(isLanePr({head:{ref:'claude/t2659-sound'},title:'T-2659: Navigator sound'}),false);
+  assert.equal(isLanePr({head:{ref:'chore/polecat-shell-v1.2.0'}}),false);
+  writeFileSync(calls,''); writeFileSync(vars,'');
+  const others=Array.from({length:6},(_,i)=>pr([],{draft:true,head:{ref:'claude/nav-'+i}}));
+  result=spawnSync(process.execPath,[path.join(dir,'dispatch-lanes.mjs')],{env:{...qenv,PRS:JSON.stringify([...others,pr([])])},encoding:'utf8'});
+  assert.equal(result.status,0,result.stderr);
+  assert.match(result.stdout,/running: 1 open PR\(s\)/);
   assert.equal(readFileSync(calls,'utf8').trim().split('\n').length,5);
   // A failed PR count fails OPEN: the lane fills as if it had no limit.
   writeFileSync(calls,'');

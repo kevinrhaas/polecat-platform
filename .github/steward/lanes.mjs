@@ -41,6 +41,18 @@ export function busySlots(runs, lane) {
   return slots;
 }
 
+// Is this open PR the steward loop's own load? Its runs push `steward/*`
+// branches, and salvage rescues a run's unpushed-PR branch as a draft titled
+// "WIP: <branch> — rescued from run <id>" (lap821, t2713-local, …). Anything
+// else (an interactive session's claude/* drafts, a polecat-shell sync PR)
+// is someone else's queue, and on 2026-10-18/19 the Navigator session's five
+// drafts alone held chicago's lane paused (Kevin, 2026-10-19: "only count
+// steward PRs").
+export function isLanePr(pr) {
+  const ref = pr?.head?.ref || '';
+  return ref.startsWith('steward/') || /— rescued from run \d+/.test(pr?.title || '');
+}
+
 // When the lane last started a run, in ms since the epoch, whatever the run's
 // status; null when none is in view. The finish-only cool-down reads it.
 export function lastStarted(runs, lane) {
@@ -70,11 +82,12 @@ export function lastStarted(runs, lane) {
 // limit. While running, a tick starts no more new tickets than would take the
 // queue to `pauseAt`.
 //
-//   open       open PRs on the app's repo, drafts included, `hold` excluded
-//              (the owner's park switch is not load); null = the count
-//              failed, and the gate fails OPEN so a GitHub hiccup never
-//              stalls the loop. Drafts count since 2026-10-17: 23 open
-//              drafts on chicago read as 2 and never paused the lane.
+//   open       the lane's OWN open PRs on the app's repo (isLanePr),
+//              drafts included, `hold` excluded (the owner's park switch is
+//              not load); null = the count failed, and the gate fails OPEN
+//              so a GitHub hiccup never stalls the loop. Drafts count since
+//              2026-10-17 (23 open drafts on chicago read as 2); other
+//              sessions' PRs stopped counting on 2026-10-19.
 //   resumable  how many non-draft ones carry `resume`
 //   wasPaused  the state the last tick left (see dispatch-lanes.mjs)
 //   busy       slots already running in this lane

@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { appLanes, busySlots, lastStarted, processorOf, queueGate, queueLimits } from './lanes.mjs';
+import { appLanes, busySlots, isLanePr, lastStarted, processorOf, queueGate, queueLimits } from './lanes.mjs';
 import { isDueAt, slicesOf } from './schedule.mjs';
 
 const repo = process.env.GITHUB_REPOSITORY || 'kevinrhaas/polecat-platform';
@@ -72,9 +72,11 @@ function queueOf(app) {
   const q = { open: null, resumable: 0, wasPaused: false, used: 0 };
   try {
     const prs = JSON.parse(asPat(['api', '--paginate', '--slurp', `repos/${owner}/${app}/pulls?state=open&per_page=100`])).flat();
-    // Drafts count (Kevin, 2026-10-17): 23 drafts sat open on chicago while
-    // the lane read 2 and kept filling every slot. `hold` alone is excluded.
-    const live = prs.filter(p => !(p.labels || []).some(l => l.name === 'hold'));
+    // Only the lane's OWN PRs count (Kevin, 2026-10-19): its steward/*
+    // branches and the drafts salvage rescues from its runs, drafts included,
+    // `hold` excluded. Another session's PRs (the Navigator's claude/* drafts)
+    // no longer pause the lane. See lanes.mjs isLanePr.
+    const live = prs.filter(p => isLanePr(p) && !(p.labels || []).some(l => l.name === 'hold'));
     q.open = live.length;
     // A resume PR touched in the last half hour is skipped: a run or the lap
     // just pushed to it, so its CI is most likely still running, and a
