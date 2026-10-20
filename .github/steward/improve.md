@@ -97,7 +97,12 @@ MAY TAKE A GROUP and `tools/ticket.mjs`):
   a missing one.
 - CLAIM THE WHOLE GROUP FIRST, in one command: `node tools/ticket.mjs claim
   T-A T-B T-C`. It claims every member that passes and reports each refusal;
-  your group is what it claimed.
+  your group is what it claimed. CHECK THE TOOL FIRST: if `grep -q "case
+  'release'" tools/ticket.mjs` fails, your checkout predates group support
+  (T-2938) and `claim`/`done` read only their FIRST id — then run one `claim
+  T-NNNN` per member (and later one `done T-NNNN --pr N` per member), and give
+  back a member you won't finish by leaving it out of the PR and saying so in
+  the PR body (its claim ages out in 3 h).
 - WORK ONE BRANCH, ONE COMMIT PER TICKET, each commit message starting with its
   ticket id, and one `changelog.d/<ticket>.json` per ticket. Ship ONE PR titled
   `T-A, T-B, T-C: …` (the tools parse every id in that form), with a section per
