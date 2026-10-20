@@ -16,7 +16,14 @@ going on the lane at all times — yours is one of them, and a replacement start
 the moment it ends (each a separate process with its own PR + verification —
 see PARALLEL SLICES below). So do NOT try to do
 several — one run, one unit. (Chaining multiple units in a single run is what
-exhausts the turn budget and trips the "Reached max turns" failure.) Read
+exhausts the turn budget and trips the "Reached max turns" failure.) A UNIT IS
+ONE PR, and since 2026-10-20 it may carry a GROUP of 1-5 RELATED tickets worked
+together (Kevin: "when claiming a ticket, it can and should evaluate if it can
+claim multiple and handle them as a group in a single PR that way we minimize PR
+churn ... so maybe 3-5 tickets might get picked up and merged together") — see
+TICKET GROUPS below. A group is one unit because its members share files, a
+subsystem or a building, so they are worked, gated and merged once; chaining
+UNRELATED tickets is still the failure above. Read
 docs/AUTOMATION.md, docs/MIGRATION.md and docs/SHELL-API.md in this checkout FIRST
 — they are the authority.
 
@@ -69,6 +76,36 @@ the SAME thing and N-1 get thrown away. So:
   rather than duplicating a sibling.
 - Everything else is unchanged: ONE unit, your own branch + PR, your own green
   gate. `SLICE: 1 of 1` means you are a lone run — just take the top item.
+- **A GROUP NEVER TAKES A SIBLING'S ANCHOR.** Your k-th item is your anchor; the
+  rows 1..N other than k are your siblings' anchors on a cold fill, so never add
+  one of them to your group. Draw group-mates from the rows below N (or from rows
+  you can see are free on a refill), and let `claim` be the referee: a member a
+  sibling already holds is refused, and you carry on with the rest.
+
+TICKET GROUPS (chicago/4d, owner 2026-10-20; the mechanics are AGENTS.md § A RUN
+MAY TAKE A GROUP and `tools/ticket.mjs`):
+- After choosing your anchor, LOOK FOR GROUP-MATES before you claim: up to four
+  more workable tickets that share files, a module, a subsystem or a building
+  with the anchor (`node tools/ticket.mjs list --workable --group T-NNNN` prints
+  a shortlist; it is a hint, read the tickets). 3-5 tickets merged together is
+  the aim when the queue offers related work; a lone ticket is right when it
+  does not.
+- SIZE THE GROUP TO THE RUN: the budget is 400 tool calls and 150 minutes for
+  the WHOLE group, gate and smoke included. Rule of thumb: up to five S, or one
+  M plus up to three S; never an L; a `needs_bake` member only if you are baking
+  anyway. When in doubt, a smaller group — an unfinished member costs more than
+  a missing one.
+- CLAIM THE WHOLE GROUP FIRST, in one command: `node tools/ticket.mjs claim
+  T-A T-B T-C`. It claims every member that passes and reports each refusal;
+  your group is what it claimed.
+- WORK ONE BRANCH, ONE COMMIT PER TICKET, each commit message starting with its
+  ticket id, and one `changelog.d/<ticket>.json` per ticket. Ship ONE PR titled
+  `T-A, T-B, T-C: …` (the tools parse every id in that form), with a section per
+  ticket in the body.
+- A MEMBER YOU CANNOT FINISH is given back before the PR goes up: `node
+  tools/ticket.mjs release T-NNNN --why "…"` (or `split` it and keep the piece
+  you finished). Never leave a member claimed, never ship one half-done.
+- CLOSE THEM TOGETHER: `node tools/ticket.mjs done T-A T-B T-C --pr N`.
 - Expect siblings to be merging while you work. Your rebase-and-retry budget
   (below) is unchanged; a busy `main` is normal here, not a signal to bail early.
 
@@ -118,8 +155,10 @@ HARD RULES:
         question sits in its `## Decision needed` section and on Manager's
         board. `node tools/ticket.mjs list --workable` prints the order and
         leaves those out. WITH `SLICE: k of N` AND N > 1, take the **k-th**
-        ticket in that `--workable` list (see PARALLEL SLICES above).
-      - CLAIM FIRST, before any work: `node tools/ticket.mjs claim T-NNNN`. The
+        ticket in that `--workable` list (see PARALLEL SLICES above). That
+        ticket is your ANCHOR; then look for group-mates (TICKET GROUPS above).
+      - CLAIM FIRST, before any work: `node tools/ticket.mjs claim T-NNNN`
+        (`claim T-A T-B T-C` for a group). The
         claim is a commit pushed to the tickets repo's main, so it is visible
         to every other run THE MOMENT it lands — no waiting on a PR — and two
         runs racing for one ticket cannot both win: the second push conflicts
@@ -139,7 +178,8 @@ HARD RULES:
         --why "…"` (that repo's own verb — see AGENTS.md § the two labels).
         NEVER `hold`: that label is the owner's alone.
       - CLOSE with `node tools/ticket.mjs done T-NNNN --pr N` once the PR is
-        open. That sets the ticket to `review` with its PR; the tickets repo's
+        open (`done T-A T-B T-C --pr N` for a group — every member, on the one
+        PR). That sets the ticket to `review` with its PR; the tickets repo's
         settle workflow flips it to `done` (and takes its QUEUE line) when the PR
         MERGES, or back to `open` if the PR is closed unmerged. So the ticket can
         never read done for work that did not land.
@@ -157,7 +197,8 @@ HARD RULES:
         M one tight or one plus a bake, L more than one). `claim` REFUSES an L.
         If you discover mid-run that your ticket needs more than one
         demonstration, `ticket.mjs split T-NNNN "piece" "piece"` — do NOT ship a
-        self-invented "(1/2)" and leave the ticket claimed.
+        self-invented "(1/2)" and leave the ticket claimed. A GROUP is sized the
+        same way, as a whole: its members' runs add up (TICKET GROUPS above).
       - FOUND SOMETHING NEW? Add it to the ticket that owns the question first;
         otherwise `ticket.mjs new "title" --after T-NNNN --by loop`. An owner
         report becomes a ticket `--by owner` the moment it is made.
@@ -396,7 +437,8 @@ HARD RULES:
   written at the end. With a batch of 8 in flight "which ticket is slice 3 on"
   is the question actually being asked, and only you can answer it. One command,
   best-effort, never fails your run. Do it immediately after `ticket.mjs claim`
-  and before the work, not at the end.
+  and before the work, not at the end. For a GROUP, announce it once with the
+  ids comma-joined (`T-A,T-B,T-C`) and the anchor's title prefixed `group: `.
 - **NEVER `gh pr ...` OR `gh issue ...` — they spend the wrong budget, and it
   runs out.** `gh pr create|merge|comment|view|list` and `gh issue
   create|comment|list` all go through GitHub's **GraphQL** API, which is a
