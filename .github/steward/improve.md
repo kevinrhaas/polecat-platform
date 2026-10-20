@@ -95,21 +95,30 @@ MAY TAKE A GROUP and `tools/ticket.mjs`):
   M plus up to three S; never an L; a `needs_bake` member only if you are baking
   anyway. When in doubt, a smaller group — an unfinished member costs more than
   a missing one.
-- CLAIM THE WHOLE GROUP FIRST, in one command: `node tools/ticket.mjs claim
-  T-A T-B T-C`. It claims every member that passes and reports each refusal;
-  your group is what it claimed. CHECK THE TOOL FIRST: if `grep -q "case
-  'release'" tools/ticket.mjs` fails, your checkout predates group support
+- CLAIM THE ANCHOR FIRST, ALONE, the moment you pick it (`node tools/ticket.mjs
+  claim T-ANCHOR`), so your row is locked before you spend calls choosing mates.
+  Then re-read `list --workable` and claim the mates INTO its group in one
+  command: `node tools/ticket.mjs claim T-B T-C --with T-ANCHOR`. It claims every
+  mate that passes and reports each refusal; your group is what it holds. Never
+  treat a shared run URL as "the same run": slices of one workflow share it, so
+  `--with` is how a group grows, not inference. CHECK THE TOOL FIRST: if `grep -q
+  "case 'release'" tools/ticket.mjs` fails, your checkout predates group support
   (T-2938) and `claim`/`done` read only their FIRST id — then run one `claim
   T-NNNN` per member (and later one `done T-NNNN --pr N` per member), and give
   back a member you won't finish by leaving it out of the PR and saying so in
   the PR body (its claim ages out in 3 h).
-- WORK ONE BRANCH, ONE COMMIT PER TICKET, each commit message starting with its
-  ticket id, and one `changelog.d/<ticket>.json` per ticket. Ship ONE PR titled
-  `T-A, T-B, T-C: …` (the tools parse every id in that form), with a section per
-  ticket in the body.
-- A MEMBER YOU CANNOT FINISH is given back before the PR goes up: `node
+- WORK ONE BRANCH NAMED FOR EVERY MEMBER (`steward/t2931-t2932-t2923-<topic>`):
+  `inflight`, the rival-branch scan and the strand gate read ticket ids off the
+  branch name, so a member missing from it is invisible to them. ONE COMMIT PER
+  TICKET, each message starting with its id. ONE What's-New entry for the PR,
+  `changelog.d/<anchor>.json`, with one item per ticket (the budget's six items
+  hold five; a group is one run for the visible-progress rule, visible if any
+  member changes what a visitor sees). Ship ONE PR titled `T-A, T-B, T-C: …`
+  (the tools parse every id in that form), with a section per ticket in the body.
+- A MEMBER YOU CANNOT FINISH is given back BEFORE THE GATE, not after it: `node
   tools/ticket.mjs release T-NNNN --why "…"` (or `split` it and keep the piece
-  you finished). Never leave a member claimed, never ship one half-done.
+  you finished), then retitle. Never leave a member claimed, never ship one
+  half-done.
 - CLOSE THEM TOGETHER: `node tools/ticket.mjs done T-A T-B T-C --pr N`.
 - Expect siblings to be merging while you work. Your rebase-and-retry budget
   (below) is unchanged; a busy `main` is normal here, not a signal to bail early.
@@ -163,7 +172,7 @@ HARD RULES:
         ticket in that `--workable` list (see PARALLEL SLICES above). That
         ticket is your ANCHOR; then look for group-mates (TICKET GROUPS above).
       - CLAIM FIRST, before any work: `node tools/ticket.mjs claim T-NNNN`
-        (`claim T-A T-B T-C` for a group). The
+        (then `claim T-B T-C --with T-NNNN` to add a group). The
         claim is a commit pushed to the tickets repo's main, so it is visible
         to every other run THE MOMENT it lands — no waiting on a PR — and two
         runs racing for one ticket cannot both win: the second push conflicts
