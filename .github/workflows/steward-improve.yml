@@ -170,13 +170,27 @@ jobs:
 
       - name: Resolve playwright version (browser cache key)
         id: pw
-        run: echo "version=$(npm view playwright version)" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "version=$(npm view playwright version)" >> "$GITHUB_OUTPUT"
+          # WHICH BROWSERS THIS APP'S SMOKE ACTUALLY LAUNCHES. chicago/4d's smoke
+          # is chromium only (nothing under chicago/4d launches webkit), and
+          # webkit's SYSTEM deps are most of the apt download: gstreamer,
+          # libavcodec/libavfilter, libflite (13.6 MB on its own) — 181 packages
+          # and ~120 MB with webkit against a handful of fonts without it. That
+          # download is what a crawling Azure mirror kills (see the install step),
+          # so the lane that runs five slices a day long pays for the engine it
+          # never starts. Every other app keeps both (jobtracker runs the iOS one).
+          if [ "${FOCUS_APP:-}" = chicago ]; then
+            echo "browsers=chromium" >> "$GITHUB_OUTPUT"
+          else
+            echo "browsers=chromium webkit" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Cache Playwright browsers
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: pw-${{ runner.os }}-${{ steps.pw.outputs.version }}-chromium-webkit
+          key: pw-${{ runner.os }}-${{ steps.pw.outputs.version }}-${{ steps.pw.outputs.browsers == 'chromium' && 'chromium' || 'chromium-webkit' }}
 
       - name: Install selected processor + browsers
         # A HUNG INSTALL USED TO EAT THE WHOLE JOB CAP. On 2026-08-19 runs 939 and
@@ -219,6 +233,8 @@ jobs:
         # deps, then the browser download) and still fails far below the
         # 150-minute job cap that runs 939/940 ate.
         timeout-minutes: 45
+        env:
+          BROWSERS: ${{ steps.pw.outputs.browsers }}
         run: |
           set -euo pipefail
           try() {                      # try <minutes> <command...> — thrice, then fail
@@ -295,20 +311,38 @@ jobs:
           # not a stall, and a retry is not wasted: apt keeps every .deb it
           # finished in /var/cache/apt/archives, so attempt 2 resumes. The
           # browser download that follows needs no root and keeps its short cap.
+          #
+          # AND THE SECOND ATTEMPT GOES TO A DIFFERENT MIRROR. Nine chicago runs on
+          # 2026-10-22/23 (e.g. 4376, chicago [4/5]) died here at exactly 24 min,
+          # both attempts spent on azure.archive.ubuntu.com at a few KB/s, with
+          # `Ign:` lines where its own fetches timed out. A crawling mirror is a
+          # property of the runner's region, not of the moment, so attempt 2 on the
+          # same mirror crawls the same way. The runner reads its sources through
+          # `mirror+file:/etc/apt/apt-mirrors.txt` (azure first, archive.ubuntu.com
+          # next), so dropping the azure line sends attempt 2 to Canonical's own
+          # archive; the .debs attempt 1 finished stay in /var/cache/apt/archives.
+          # Degrades safely: no such file, no change.
           wait_for_apt
           deps_ok=0
           for i in 1 2; do
             if sudo env "PATH=$PATH" timeout -k 30s 12m \
-                 npx --no-install playwright install-deps chromium webkit; then
+                 npx --no-install playwright install-deps $BROWSERS; then
               deps_ok=1; break
             fi
             echo "::warning::browser system deps attempt $i of 2 failed or timed out"
             wait_for_apt 120
+            if [ "$i" = 1 ] && [ -f /etc/apt/apt-mirrors.txt ] \
+               && grep -q 'azure\.archive\.ubuntu\.com' /etc/apt/apt-mirrors.txt; then
+              sudo sed -i '/azure\.archive\.ubuntu\.com/d' /etc/apt/apt-mirrors.txt
+              echo "attempt 2 skips the azure mirror; now reading: $(tr '\n' ' ' < /etc/apt/apt-mirrors.txt)"
+            fi
           done
           [ "$deps_ok" = 1 ] || { echo "::error::browser system deps gave up after 2 attempts"; exit 1; }
-          # webkit too: several app smoke tests (jobtracker) run the iOS engine
+          # webkit too where the app needs it: several app smoke tests
+          # (jobtracker) run the iOS engine; the browser list is set per app in
+          # the "Resolve playwright version" step
           # (~215MB of downloads skipped on a warm browser cache)
-          try 4 npx playwright install chromium webkit
+          try 4 npx playwright install $BROWSERS
 
       # ---- the chicago/4d lane can bake geometry ------------------------------
       #
