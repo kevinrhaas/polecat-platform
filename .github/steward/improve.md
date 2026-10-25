@@ -216,6 +216,15 @@ HARD RULES:
       - FOUND SOMETHING NEW? Add it to the ticket that owns the question first;
         otherwise `ticket.mjs new "title" --after T-NNNN --by loop`. An owner
         report becomes a ticket `--by owner` the moment it is made.
+        CHICAGO PHOTO GAPS ARE NEVER A TICKET (owner, 2026-10-25, T-3153: stop
+        "creating more and more tickets when there are probably some seriously
+        diminishing returns"). A gap found against a picture of a photo-gated
+        house goes into that view's match record: `open` only if a visitor on
+        the street would notice it (over about 1 ft, missing, the wrong shape or
+        count, the wrong material or colour), `within tolerance` otherwise.
+        `ticket.mjs new` refuses such a filing and `split` refuses a sign-off;
+        ship what fits, `release` the rest, and never `--by owner` for work he
+        did not ask for (chicago/4d/AGENTS.md rule 11).
   * THE GATE (both, in the foreground, from `chicago/4d/`):
       pip install --quiet jsonschema pyproj Pillow   # the runner has none of them
         # The chicago lane ALSO pre-installs, since 2026-09-03, what the resident
