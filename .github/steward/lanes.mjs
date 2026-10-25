@@ -88,9 +88,19 @@ export function lastStarted(runs, lane) {
 //              so a GitHub hiccup never stalls the loop. Drafts count since
 //              2026-10-17 (23 open drafts on chicago read as 2); other
 //              sessions' PRs stopped counting on 2026-10-19.
-//   resumable  how many non-draft ones carry `resume`
+//   resumable  how many of them a finish-only slice may take (isResumablePr)
 //   wasPaused  the state the last tick left (see dispatch-lanes.mjs)
 //   busy       slots already running in this lane
+// What a finish-only slice may take: a non-draft PR carrying `resume` or
+// `stuck` (callers have already dropped `hold`). `stuck` is the repo's stuck
+// reporter: a red gate or a content conflict on a PR whose run has finished.
+// It repairs nothing and applies no `resume`, so counting `resume` alone let
+// chicago sit paused at 6 open PRs with 0 resumable from 00:41 to 04:55 UTC on
+// 2026-10-25, two of them stuck, and dispatch nothing. A finish-only slice is
+// the run a stuck report asks for. Drafts stay out: GitHub will not merge one.
+export function isResumablePr(pr) {
+  return !!pr && !pr.draft && (pr.labels || []).some(l => l.name === 'resume' || l.name === 'stuck');
+}
 export function queueLimits(config) {
   const q = config && config.prQueue;
   if (!q || typeof q !== 'object') return null;

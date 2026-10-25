@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { appLanes, busySlots, isLanePr, processorOf, laneTitle, queueGate, queueLimits } from './lanes.mjs';
+import { appLanes, busySlots, isLanePr, isResumablePr, processorOf, laneTitle, queueGate, queueLimits } from './lanes.mjs';
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync, readFileSync, cpSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -83,6 +83,8 @@ try {
   assert.equal(queueGate(qc,{open:5,busy:3}).cap,Infinity);
   assert.equal(queueGate(qc,{open:6,busy:0}).finishOnly,true);
   assert.deepEqual([queueGate(qc,{open:6,resumable:4,busy:1}).paused,queueGate(qc,{open:6,resumable:4,busy:1}).cap,queueGate(qc,{open:6,resumable:4,busy:1}).finishOnly],[true,3,true]);
+  // What a finish-only slice may take: non-draft `resume` or `stuck`.
+  assert.deepEqual([{labels:[{name:'resume'}]},{labels:[{name:'stuck'}]},{labels:[{name:'stuck'}],draft:true},{labels:[]},{},null].map(isResumablePr),[true,true,false,false,false,false]);
   // Hysteresis: between the two limits the last tick's state holds.
   assert.equal(queueGate(qc,{open:4,wasPaused:true}).paused,true);
   assert.equal(queueGate(qc,{open:4,wasPaused:false}).paused,false);
@@ -125,6 +127,16 @@ try {
   assert.equal(result.status,0,result.stderr);
   assert.match(result.stdout,/chicago lane PAUSED: 6 open PRs/);
   assert.equal(readFileSync(calls,'utf8'),'');
+  // 2026-10-25: two `stuck` PRs and four drafts held chicago paused with 0
+  // resumable for 4 h. A non-draft `stuck` PR now earns a finish-only slice;
+  // a stuck draft and a held stuck PR still do not.
+  writeFileSync(calls,''); writeFileSync(vars,'');
+  const deadQueue=[pr(['stuck']),pr(['stuck']),pr([],{draft:true}),pr(['resume'],{draft:true}),pr(['stuck'],{draft:true}),pr([],{draft:true}),pr(['stuck','hold'])];
+  result=spawnSync(process.execPath,[path.join(dir,'dispatch-lanes.mjs')],{env:{...qenv,PRS:JSON.stringify(deadQueue)},encoding:'utf8'});
+  assert.equal(result.status,0,result.stderr);
+  assert.match(result.stdout,/paused: 6 open PR\(s\), 2 resumable/);
+  sent=readFileSync(calls,'utf8').trim().split('\n').map(l=>JSON.parse(l));
+  assert.equal(sent.length,2); assert.ok(sent.every(c=>c.includes('finish_only=1')));
   // Finish-only cool-down (2026-10-18: ~270 no-op finish-only runs, one every
   // ~2 min at a resume PR still waiting on another ticket). A paused lane that
   // started a run in the last 30 minutes starts no finish-only work, even when

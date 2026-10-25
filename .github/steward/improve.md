@@ -391,7 +391,14 @@ HARD RULES:
     cannot go green yet and re-gating it would spend a run proving that.
   * **A FINISH-ONLY RUN** (the prompt carries `QUEUE: PAUSED`) was sent because
     the app has too many open PRs (focus.json `prQueue`). Take no ticket and
-    open no PR: your only possible unit is a `resume` PR, finished as above.
+    open no PR: your only possible unit is a `resume` PR, finished as above,
+    or, when no `resume` PR is workable, a non-draft `stuck` one. The repo's
+    stuck reporter puts `stuck` on a PR whose run has finished and that no
+    automation can move (a red gate, or a content conflict the lap left
+    alone), and its comment says what wants doing. Finish it the same way, and
+    take `stuck` off when it merges or when you hand it on with `resume`.
+    (2026-10-25: chicago sat paused 4 h sending nothing, because its two
+    stuck PRs carried no `resume` and no slice was allowed to touch them.)
     If none is workable (all wait on open tickets, or their CI is still
     running), change nothing and end the run with `Outcome: no-pr` and why.
   * **The janitor reads the two the same way**: `resume` is work the loop still
