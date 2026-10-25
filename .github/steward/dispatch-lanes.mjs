@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { appLanes, busySlots, isLanePr, lastStarted, processorOf, queueGate, queueLimits } from './lanes.mjs';
+import { appLanes, busySlots, isLanePr, isResumablePr, lastStarted, processorOf, queueGate, queueLimits } from './lanes.mjs';
 import { isDueAt, slicesOf } from './schedule.mjs';
 
 const repo = process.env.GITHUB_REPOSITORY || 'kevinrhaas/polecat-platform';
@@ -83,8 +83,7 @@ function queueOf(app) {
     // finish-only slice sent now would only sit and watch it. Without this a
     // paused lane re-sends a slice at the same PR every time one finishes.
     const cool = now - 30 * 60 * 1000;
-    q.resumable = live.filter(p => !p.draft && (p.labels || []).some(l => l.name === 'resume')
-      && !(Date.parse(p.updated_at) > cool)).length;
+    q.resumable = live.filter(p => isResumablePr(p) && !(Date.parse(p.updated_at) > cool)).length;
   } catch (e) { console.log(`::warning::${app}: could not count open PRs, so the queue limit is skipped this tick`); }
   try { asPat(['api', `repos/${repo}/actions/variables/${pausedVar(app)}`]); q.wasPaused = true; } catch { /* 404 = running */ }
   queues.set(app, q);
