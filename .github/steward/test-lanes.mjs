@@ -97,11 +97,12 @@ try {
   const vars=path.join(dir,'vars'), tokens=path.join(dir,'tokens'); writeFileSync(vars,''); writeFileSync(tokens,''); writeFileSync(calls,'');
   const old='2026-01-01T00:00:00Z', fresh=new Date().toISOString();
   const pr=(labels,extra={})=>({draft:false,labels:labels.map(name=>({name})),updated_at:old,head:{ref:'steward/t-x'},...extra});
-  const seven=[pr(['resume']),pr(['resume']),pr(['resume'],{updated_at:fresh}),pr([]),pr([]),pr([]),pr(['hold']),pr([],{draft:true})];
+  const rescued=(labels,extra={})=>pr(labels,{draft:true,title:'WIP: steward/t-x — rescued from run 1',...extra});
+  const seven=[pr(['resume']),pr(['resume']),pr(['resume'],{updated_at:fresh}),pr([]),pr([]),pr([]),pr(['hold']),rescued([])];
   const qenv={...env,RUNS:'[]',VARS:vars,TOKENS:tokens,PR_TOKEN:'pat',PRS:JSON.stringify(seven)};
   result=spawnSync(process.execPath,[path.join(dir,'dispatch-lanes.mjs')],{env:qenv,encoding:'utf8'});
   assert.equal(result.status,0,result.stderr);
-  // Seven: the draft counts, `hold` does not.
+  // Seven: salvage's draft counts, `hold` does not.
   assert.match(result.stdout,/chicago lane PAUSED: 7 open PRs/);
   let sent=readFileSync(calls,'utf8').trim().split('\n').map(l=>JSON.parse(l));
   assert.equal(sent.length,2); assert.ok(sent.every(c=>c.includes('finish_only=1')));
@@ -122,7 +123,7 @@ try {
   // Drafts alone pause the lane (2026-10-17: 23 drafts read as 2), and a
   // draft carrying `resume` earns no finish-only slice.
   writeFileSync(calls,''); writeFileSync(vars,'');
-  const drafts=Array.from({length:6},()=>pr(['resume'],{draft:true}));
+  const drafts=Array.from({length:6},()=>rescued(['resume']));
   result=spawnSync(process.execPath,[path.join(dir,'dispatch-lanes.mjs')],{env:{...qenv,PRS:JSON.stringify(drafts)},encoding:'utf8'});
   assert.equal(result.status,0,result.stderr);
   assert.match(result.stdout,/chicago lane PAUSED: 6 open PRs/);
@@ -131,7 +132,7 @@ try {
   // resumable for 4 h. A non-draft `stuck` PR now earns a finish-only slice;
   // a stuck draft and a held stuck PR still do not.
   writeFileSync(calls,''); writeFileSync(vars,'');
-  const deadQueue=[pr(['stuck']),pr(['stuck']),pr([],{draft:true}),pr(['resume'],{draft:true}),pr(['stuck'],{draft:true}),pr([],{draft:true}),pr(['stuck','hold'])];
+  const deadQueue=[pr(['stuck']),pr(['stuck']),rescued([]),rescued(['resume']),rescued(['stuck']),rescued([]),pr(['stuck','hold'])];
   result=spawnSync(process.execPath,[path.join(dir,'dispatch-lanes.mjs')],{env:{...qenv,PRS:JSON.stringify(deadQueue)},encoding:'utf8'});
   assert.equal(result.status,0,result.stderr);
   assert.match(result.stdout,/paused: 6 open PR\(s\), 2 resumable/);
@@ -167,8 +168,14 @@ try {
   assert.equal(isLanePr({head:{ref:'lap886'},title:'WIP: lap886 — rescued from run 38931513397'}),true);
   assert.equal(isLanePr({head:{ref:'claude/t2659-sound'},title:'T-2659: Navigator sound'}),false);
   assert.equal(isLanePr({head:{ref:'chore/polecat-shell-v1.2.0'}}),false);
+  // 2026-10-26: a draft on a steward/* branch that salvage did not open (the
+  // owner's local image-match process keeps its work that way) does not count.
+  assert.equal(isLanePr({head:{ref:'steward/t2385-tremont-gale-a575'},draft:true,title:'T-2385: Reconcile the first Tremont'}),false);
+  assert.equal(isLanePr({head:{ref:'steward/t2385-tremont-gale-a575'},draft:false,title:'T-2385: Reconcile the first Tremont'}),true);
+  assert.equal(isLanePr({head:{ref:'steward/t2713-local'},draft:true,title:'WIP: steward/t2713-local — rescued from run 38931513397'}),true);
   writeFileSync(calls,''); writeFileSync(vars,'');
-  const others=Array.from({length:6},(_,i)=>pr([],{draft:true,head:{ref:'claude/nav-'+i}}));
+  const others=[...Array.from({length:6},(_,i)=>pr([],{draft:true,head:{ref:'claude/nav-'+i}})),
+    ...Array.from({length:7},(_,i)=>pr(['resume'],{draft:true,head:{ref:'steward/t-local-'+i},title:'T-'+i+': local draft'}))];
   result=spawnSync(process.execPath,[path.join(dir,'dispatch-lanes.mjs')],{env:{...qenv,PRS:JSON.stringify([...others,pr([])])},encoding:'utf8'});
   assert.equal(result.status,0,result.stderr);
   assert.match(result.stdout,/running: 1 open PR\(s\)/);

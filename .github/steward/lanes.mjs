@@ -48,9 +48,17 @@ export function busySlots(runs, lane) {
 // is someone else's queue, and on 2026-10-18/19 the Navigator session's five
 // drafts alone held chicago's lane paused (Kevin, 2026-10-19: "only count
 // steward PRs").
+//
+// A DRAFT on a steward/* branch counts only when salvage opened it. The lane's
+// runs open their PRs ready; the only drafts the lane makes are salvage's. On
+// 2026-10-26 the owner's local image-match process, which keeps its own work as
+// drafts on steward/* branches until its own checks pass, held seven drafts
+// open, and the lane read "paused: 7 open, 0 resumable" for hours: it could
+// neither take a ticket nor finish a draft. Kevin chose not to count them.
 export function isLanePr(pr) {
   const ref = pr?.head?.ref || '';
-  return ref.startsWith('steward/') || /— rescued from run \d+/.test(pr?.title || '');
+  if (/— rescued from run \d+/.test(pr?.title || '')) return true;
+  return ref.startsWith('steward/') && !pr?.draft;
 }
 
 // When the lane last started a run, in ms since the epoch, whatever the run's
@@ -83,11 +91,12 @@ export function lastStarted(runs, lane) {
 // queue to `pauseAt`.
 //
 //   open       the lane's OWN open PRs on the app's repo (isLanePr),
-//              drafts included, `hold` excluded (the owner's park switch is
+//              salvage's drafts included, `hold` excluded (the owner's park switch is
 //              not load); null = the count failed, and the gate fails OPEN
 //              so a GitHub hiccup never stalls the loop. Drafts count since
 //              2026-10-17 (23 open drafts on chicago read as 2); other
-//              sessions' PRs stopped counting on 2026-10-19.
+//              sessions' PRs stopped counting on 2026-10-19, and drafts the
+//              lane did not make (not salvage's) on 2026-10-26.
 //   resumable  how many of them a finish-only slice may take (isResumablePr)
 //   wasPaused  the state the last tick left (see dispatch-lanes.mjs)
 //   busy       slots already running in this lane
