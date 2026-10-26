@@ -73,7 +73,8 @@ function queueOf(app) {
   try {
     const prs = JSON.parse(asPat(['api', '--paginate', '--slurp', `repos/${owner}/${app}/pulls?state=open&per_page=100`])).flat();
     // Only the lane's OWN PRs count (Kevin, 2026-10-19): its steward/*
-    // branches and the drafts salvage rescues from its runs, drafts included,
+    // ready branches and the drafts salvage rescues from its runs (a draft on a
+    // steward/* branch that salvage did not open is someone else's, 2026-10-26),
     // `hold` excluded. Another session's PRs (the Navigator's claude/* drafts)
     // no longer pause the lane. See lanes.mjs isLanePr.
     const live = prs.filter(p => isLanePr(p) && !(p.labels || []).some(l => l.name === 'hold'));
