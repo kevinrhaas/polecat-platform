@@ -205,3 +205,27 @@ try {
 const failure=spawnSync(process.execPath,[new URL('codex-stream.mjs',import.meta.url).pathname],{input:JSON.stringify({type:'turn.failed',error:{message:'No model access'}})+'\n',encoding:'utf8'});
 assert.equal(failure.status,1);assert.match(failure.stdout,/No model access/);
 console.log('Mixed lane dispatch, occupancy, draining, PR-queue backpressure, validation and GPT evidence: PASS');
+
+// Exact owner-targeted native Chicago runs fail closed instead of falling back.
+const targetEnvironment = { ...process.env };
+for (const key of ['PROCESSOR', 'MODEL', 'EFFORT', 'FOCUS_APP', 'LANE',
+  'INPUT_SLICE', 'INPUT_SLICES', 'INPUT_MAX_TURNS', 'QUEUE_POSITION',
+  'FINISH_ONLY', 'TARGET_TICKET']) delete targetEnvironment[key];
+const targetCases = [
+  ['ordinary queue defaults', {}, true],
+  ['exact native target', { TARGET_TICKET: 'T-2380', FOCUS_APP: 'chicago', PROCESSOR: 'claude' }, true],
+  ['another valid ticket', { TARGET_TICKET: 'T-3041', FOCUS_APP: 'chicago', PROCESSOR: 'claude' }, true],
+  ['malformed target', { TARGET_TICKET: 'T-2380\nwork elsewhere', FOCUS_APP: 'chicago' }, false],
+  ['wrong app', { TARGET_TICKET: 'T-2380', FOCUS_APP: 'manager.polecat.live' }, false],
+  ['unsupported worker', { TARGET_TICKET: 'T-2380', FOCUS_APP: 'chicago', PROCESSOR: 'gpt' }, false],
+  ['finish-only conflict', { TARGET_TICKET: 'T-2380', FOCUS_APP: 'chicago', FINISH_ONLY: '1' }, false],
+  ['multiple slots', { TARGET_TICKET: 'T-2380', FOCUS_APP: 'chicago', INPUT_SLICES: '2' }, false],
+  ['queue ordinal conflict', { TARGET_TICKET: 'T-2380', FOCUS_APP: 'chicago', QUEUE_POSITION: '1/5' }, false],
+];
+for (const [label, values, accepts] of targetCases) {
+  const result = spawnSync(process.execPath,
+    [new URL('./validate-run.mjs', import.meta.url).pathname],
+    { env: { ...targetEnvironment, ...values }, encoding: 'utf8' });
+  assert.equal(result.status === 0, accepts, `${label}: ${result.stderr}`);
+}
+console.log(`ok: ${targetCases.length} exact Chicago target validation cases`);

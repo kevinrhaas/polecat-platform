@@ -47,6 +47,22 @@ the picking logic. Otherwise pick, in priority order:
    NO LONGER the backlog there; others: ROADMAP.md). Fixing a top finding
    from an open "UX sweep" / "Tech sweep" issue is a first-class unit.
 
+OWNER-TARGETED RUN (only when the appended prompt names OWNER_TARGET_TICKET):
+- Work only that exact existing Chicago ticket. This overrides queue/slice picking,
+  grouping and generic PR selection, not the provenance, build or merge rules.
+- Read its current body and recovery links; claim through the normal protocol.
+  If a live owner or PR already owns it, report that and stop. Never fall back to
+  another ticket, steal a live claim, create a photo follow-up or split a sign-off.
+- This worker supplies pinned Blender on Ubuntu26.04. Build actual affected native
+  outputs before the first source commit; do not push a stale data-only commit.
+  Preserve foreign registries and qualify every affected family default honestly.
+- Run native build/derivative batches and every source-gate part in bounded
+  foreground calls. All four source parts must pass before committing. The full
+  bake.sh includes an embedded whole gate; a timed-out invocation is not a pass.
+- A partial original remains open/released with the remaining image differences.
+  Publish one normal PR into dev, with actual both-viewport checks and current
+  hosted gates, and merge normally only when green. No direct dev/main pushes.
+
 PARALLEL SLICES (from the workflow input, printed below as `SLICE: k of N`):
 N is a standing CONCURRENCY TARGET for this app — the lane keeps N runs going at
 all times — and k is which of those N slots you are filling. You are in one of
