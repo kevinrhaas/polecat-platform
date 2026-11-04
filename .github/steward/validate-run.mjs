@@ -9,3 +9,16 @@ for (const key of ['INPUT_SLICE', 'INPUT_SLICES']) {
 if (Number(e.INPUT_SLICE || 1) > Number(e.INPUT_SLICES || 1)) throw new Error('Slice exceeds lane target');
 if (e.INPUT_MAX_TURNS && !/^[1-9]\d{0,3}$/.test(e.INPUT_MAX_TURNS)) throw new Error('Invalid max_turns');
 if (e.QUEUE_POSITION && !/^[1-9]\d*\/[1-9]\d*$/.test(e.QUEUE_POSITION)) throw new Error('Invalid queue position');
+
+// Owner-requested native Chicago work is an exact, solitary task.
+if (e.RESUME_PR) {
+  if (!/^[1-9][0-9]{0,9}$/.test(e.RESUME_PR)) throw new Error('Invalid resume PR');
+  if (!e.TARGET_TICKET) throw new Error('Resume PR requires a target ticket');
+}
+if (e.TARGET_TICKET) {
+  if (!/^T-[0-9]{4,8}$/.test(e.TARGET_TICKET)) throw new Error('Invalid target ticket');
+  if (e.FOCUS_APP !== 'chicago') throw new Error('Target ticket requires chicago');
+  if ((e.PROCESSOR || 'claude') !== 'claude') throw new Error('Target ticket requires the native public worker');
+  if (e.FINISH_ONLY === '1') throw new Error('Target ticket conflicts with finish-only');
+  if (Number(e.INPUT_SLICE || 1) !== 1 || Number(e.INPUT_SLICES || 1) !== 1 || e.QUEUE_POSITION) throw new Error('Target ticket requires a solitary slot');
+}

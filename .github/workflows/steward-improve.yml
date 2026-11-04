@@ -64,6 +64,14 @@ on:
         description: 'Tool-call ceiling for this run (focus.json lane `max_turns`; empty = 200).'
         required: false
         default: ''
+      target_ticket:
+        description: 'Exact owner-requested Chicago ticket; blank keeps normal queue selection.'
+        required: false
+        default: ''
+      resume_pr:
+        description: 'Existing dev PR to resume for target_ticket after its worker has finished; blank starts the exact ticket normally.'
+        required: false
+        default: ''
       finish_only:
         description: 'Set by steward-focus when the lane is paused on its PR queue (focus.json `prQueue`): finish a `resume` PR, take no new ticket.'
         required: false
@@ -83,6 +91,8 @@ env:
   INPUT_SLICES: ${{ github.event.inputs.slices }}
   INPUT_MAX_TURNS: ${{ github.event.inputs.max_turns }}
   FINISH_ONLY: ${{ github.event.inputs.finish_only }}
+  TARGET_TICKET: ${{ github.event.inputs.target_ticket }}
+  RESUME_PR: ${{ github.event.inputs.resume_pr }}
 
 permissions:
   contents: read
@@ -98,12 +108,12 @@ permissions:
 # Same app + same slice still queues (never overlaps itself), which is what makes
 # a re-dispatch of slice k safe.
 concurrency:
-  group: steward-improve-${{ github.event.inputs.app || 'fleet' }}${{ github.event.inputs.lane && format('-lane-{0}', github.event.inputs.lane) || '' }}-s${{ github.event.inputs.slice || '1' }}
+  group: steward-improve-${{ github.event.inputs.app || 'fleet' }}${{ github.event.inputs.target_ticket && format('-ticket-{0}', github.event.inputs.target_ticket) || '' }}${{ github.event.inputs.lane && format('-lane-{0}', github.event.inputs.lane) || '' }}-s${{ github.event.inputs.slice || '1' }}
   cancel-in-progress: false
 
 jobs:
   improve:
-    if: inputs.processor != 'gpt' || vars.STEWARD_GPT_AUTH != 'chatgpt'
+    if: inputs.target_ticket == '' && (inputs.processor != 'gpt' || vars.STEWARD_GPT_AUTH != 'chatgpt')
     runs-on: ubuntu-latest
     # 150, raised from 90 on 2026-08-14, because 90 had started DISCARDING
     # FINISHED WORK rather than protecting anything.
@@ -131,7 +141,7 @@ jobs:
     # past, and `concurrency` above still queues a re-dispatch of the same slice.
     # It only stops the clock killing work that was about to land.
     timeout-minutes: 150
-    steps:
+    steps: &native_improve_steps
       # The refill step at the end reads this to tell a run cancelled at the
       # cap above from one somebody cancelled by hand (T-1711).
       - name: Stamp the job's start
@@ -537,6 +547,17 @@ jobs:
             PROMPT="$PROMPT
           QUEUE: PAUSED. This app has too many open PRs, so this is a FINISH-ONLY run: take NO new ticket and open no new PR. Your unit is an open \`resume\` PR on this app, or failing that a non-draft \`stuck\` one (improve.md § RESUMABLE WORK; slice k takes the k-th workable one). If none is workable, make no change and end the run, saying so in your summary."
           fi
+          # Exact owner requests override queue selection, never other validation.
+          if [ -n "$TARGET_TICKET" ]; then
+            PROMPT="$PROMPT
+          OWNER_TARGET_TICKET: ${TARGET_TICKET}
+          Apply the owner-targeted run rules in improve.md; take no other ticket."
+          fi
+          if [ -n "$RESUME_PR" ]; then
+            PROMPT="$PROMPT
+          OWNER_RESUME_PR: ${RESUME_PR}
+          Resume only this existing PR for OWNER_TARGET_TICKET, under the exact-resume rules in improve.md."
+          fi
           # Per-lane model pin (focus.json `model` via the dispatch input);
           # empty falls back to the fleet default: opus.
           if [ "$PROCESSOR" = gpt ]; then MODEL="${MODEL:-gpt-6-astra}"; else MODEL="${MODEL:-claude-opus-5}"; fi
@@ -758,7 +779,7 @@ jobs:
         # a fault, and its slot used to wait 20-40 minutes for a cron tick. A
         # FAILED run still does not (tech-sweep issue #106), and neither does a
         # hand cancel; refill-kick.sh tells the cases apart and says why.
-        if: always() && (job.status == 'success' || job.status == 'cancelled') && github.event.inputs.app != '' && github.event.inputs.app != 'fleet'
+        if: inputs.target_ticket == '' && always() && (job.status == 'success' || job.status == 'cancelled') && github.event.inputs.app != '' && github.event.inputs.app != 'fleet'
         continue-on-error: true   # a rate-limited kick must not fail a shipped run; the cron still backstops
         env:
           GH_TOKEN: ${{ github.token }}
@@ -785,8 +806,16 @@ jobs:
           bash .github/steward/refill-kick.sh "${{ job.status }}" "${STEWARD_JOB_T0:-}" "$REFILL_CAP_MINUTES"
 
 
+  # A separate exact image for owner-requested native Chicago authoring.
+  # Reuse the complete existing worker, not a shorter validation path.
+  targeted-chicago:
+    if: inputs.target_ticket != ''
+    runs-on: ubuntu-26.04
+    timeout-minutes: 150
+    steps: *native_improve_steps
+
   chatgpt:
-    if: inputs.processor == 'gpt' && vars.STEWARD_GPT_AUTH == 'chatgpt'
+    if: inputs.target_ticket == '' && inputs.processor == 'gpt' && vars.STEWARD_GPT_AUTH == 'chatgpt'
     runs-on: ubuntu-latest
     timeout-minutes: 180
     steps:

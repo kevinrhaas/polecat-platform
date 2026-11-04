@@ -41,6 +41,10 @@ const VIEWPORTS = [
 
 async function checkPage(browser, vp, url, asserts, label){
   const ctx = await browser.newContext(vp.isMobile ? { viewport: vp.viewport, isMobile: true } : { viewport: vp.viewport });
+  // Exercise the documented offline ingest path without depending on live CORS.
+  const localOrigin = new URL(url).origin;
+  await ctx.route('**/*', route =>
+    new URL(route.request().url()).origin === localOrigin ? route.continue() : route.abort());
   const page = await ctx.newPage();
   const errors = [];
   page.on('console', m => { if(m.type() === 'error') errors.push('console: ' + m.text()); });

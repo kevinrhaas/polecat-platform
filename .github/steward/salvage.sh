@@ -14,9 +14,10 @@
 #   1. Reports the tree: branch, dirty files, commits not on the remote. This
 #      runs on EVERY outcome, including success — a run that shipped but left
 #      something behind is worth seeing too.
-#   2. Pushes any branch holding commits the remote does not have. Safe by
-#      construction: default branches are refused outright, so this can only
-#      ever complete a push the run itself intended to make.
+#   2. Pushes any working branch holding commits the remote does not have,
+#      except owner-targeted Chicago runs: those ONLY archive unpushed work on
+#      an explicitly unqualified salvage ref. A resumed PR may have a different
+#      live owner, and automatic salvage cannot authorize a push to its branch.
 #   3. Opens a DRAFT pull request for any working branch it pushed that has none.
 #      A pushed branch nobody can see is the fault this step exists to prevent and
 #      did not: on 2026-09-17 a run wrote the whole of custom's T-1155, pushed it,
@@ -50,6 +51,11 @@ for d in "$WS"/*/; do
 done
 
 salvaged=0
+failed=0
+archive_only=false
+if [ "${FOCUS_APP:-}" = chicago ] && { [ -n "${TARGET_TICKET:-}" ] || [ -n "${RESUME_PR:-}" ]; }; then
+  archive_only=true
+fi
 
 # run <cmd…> — echo the command's output indented, and return ITS exit code.
 # `cmd | sed` would report sed's status instead, and a push that silently
@@ -129,6 +135,44 @@ EOF
   echo "  draft PR ${slug}#${number} opened for ${branch} → ${base}"
 }
 
+# Owner-targeted work is a checkpoint, never a qualified application PR push.
+# Snapshot dirty files through a separate index so neither the source branch nor
+# the agent's real index changes. Even a successful job can leave private WIP.
+archive_targeted () {
+  local repo="$1" dirty="$2" ahead="$3" sha index tree archive remote_sha d
+  local excludes=()
+  [ "$ahead" -gt 0 ] || [ -n "$dirty" ] || { echo "  no unpushed commits or dirty work to archive"; return 0; }
+  sha=$(git -C "$repo" rev-parse HEAD) || return 1
+  if [ -n "$dirty" ]; then
+    if [ "$repo" = "$WS" ]; then
+      for d in "$WS"/*/; do
+        [ -e "${d}.git" ] && excludes+=(":(exclude)$(basename "${d%/}")")
+      done
+    fi
+    index=$(mktemp) || return 1
+    rm -f "$index"
+    if ! run env GIT_INDEX_FILE="$index" git -C "$repo" read-tree HEAD \
+       || ! run env GIT_INDEX_FILE="$index" git -C "$repo" add -A -- . "${excludes[@]+"${excludes[@]}"}"; then
+      rm -f "$index"; return 1
+    fi
+    tree=$(GIT_INDEX_FILE="$index" git -C "$repo" write-tree); local rc=$?
+    rm -f "$index"
+    [ "$rc" -eq 0 ] || return 1
+    sha=$(git -C "$repo" commit-tree "$tree" -p "$sha" \
+      -m "steward: UNQUALIFIED WIP archive from run ${RUN_ID}" \
+      -m "Recovery checkpoint only. NOT reviewed, NOT gated, NOT ready to merge.") || return 1
+  fi
+  # No ticket number: ticket-branch guards must not confuse this with app work.
+  archive="steward/salvage/unqualified/${RUN_ID}/${sha}"
+  echo "  preserving owner-targeted work as an UNQUALIFIED archive"
+  run git -C "$repo" push origin "${sha}:refs/heads/${archive}" || return 1
+  remote_sha=$(git -C "$repo" ls-remote --exit-code --heads origin "refs/heads/${archive}") || return 1
+  [ "${remote_sha%%[[:space:]]*}" = "$sha" ] || return 1
+  # Journal only this success marker, after exact remote readback.
+  echo "  salvage archived ${archive} at ${sha} (UNQUALIFIED recovery checkpoint)"
+  salvaged=$((salvaged + 1))
+}
+
 for repo in "${repos[@]}"; do
   name=$(basename "$repo")
   branch=$(git -C "$repo" rev-parse --abbrev-ref HEAD 2>/dev/null) || continue
@@ -148,8 +192,12 @@ for repo in "${repos[@]}"; do
 
   case "$branch" in
     main|master|dev|stage|HEAD)
-      echo "  default branch — nothing to push from here"
-      continue
+      if [ "$archive_only" = true ]; then
+        echo "  default or detached branch — UNQUALIFIED checkpoints only"
+      else
+        echo "  default branch — nothing to push from here"
+        continue
+      fi
       ;;
   esac
 
@@ -159,6 +207,16 @@ for repo in "${repos[@]}"; do
   # does not exist and the two-dot form has nothing to subtract — it would
   # report the repo's whole history as unpushed.
   git -C "$repo" fetch origin "$branch" --quiet 2>/dev/null
+  if [ "$archive_only" = true ]; then
+    # An unreadable graph is not proof that HEAD is already durable. Preserve
+    # actual HEAD when the count is unknown, without touching its source ref.
+    ahead=$(git -C "$repo" rev-list --count HEAD --not --remotes 2>/dev/null) || ahead=1
+    if ! archive_targeted "$repo" "$dirty" "${ahead:-0}"; then
+      failed=$((failed + 1))
+      echo "::warning::salvage could not verify an UNQUALIFIED archive for ${name}; recovery is not confirmed"
+    fi
+    continue
+  fi
   ahead=$(git -C "$repo" rev-list --count HEAD --not --remotes 2>/dev/null || echo 0)
   if [ "${ahead:-0}" -gt 0 ]; then
     echo "  ${ahead} commit(s) not on origin — pushing ${branch}"
@@ -209,6 +267,8 @@ done
 echo
 if [ "$salvaged" -gt 0 ]; then
   echo "── salvage pushed ${salvaged} branch(es)"
+elif [ "$failed" -gt 0 ]; then
+  echo "── salvage failed to confirm recovery for ${failed} repo(s)"
 else
   echo "── salvage found nothing unpushed"
 fi

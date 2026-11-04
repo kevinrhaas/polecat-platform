@@ -47,6 +47,47 @@ the picking logic. Otherwise pick, in priority order:
    NO LONGER the backlog there; others: ROADMAP.md). Fixing a top finding
    from an open "UX sweep" / "Tech sweep" issue is a first-class unit.
 
+OWNER-TARGETED RUN (only when the appended prompt names OWNER_TARGET_TICKET):
+- Work only that exact existing Chicago ticket. This overrides queue/slice picking,
+  grouping and generic PR selection, not the provenance, build or merge rules.
+- Read its current body and recovery links; claim through the normal protocol.
+  Without OWNER_RESUME_PR, if a live owner or PR already owns it, report that
+  and stop. Never fall back to
+  another ticket, steal a live claim, create a photo follow-up or split a sign-off.
+- EXACT RESUME (only when OWNER_RESUME_PR is also appended): that one existing PR,
+  not a new ticket or PR, is the unit. Before any write, verify that it is open in
+  kevinrhaas/chicago, targets dev, and actually carries OWNER_TARGET_TICKET. Verify
+  that its previous worker has completed and that no other active run, ticket
+  owner or PR lap is working it. A stopped worker's saved PR is resumable here;
+  an active owner is not. If the evidence is missing or conflicting, stop and
+  report it. Never select a different PR or fall back to queue work.
+  Take the normal PR lap and retain that PR's branch; do not force a live claim,
+  reset its history, create a replacement PR or bypass an ownership refusal.
+  Read the prior run's actual logs, final head and salvage/recovery links first.
+  Reuse a completed check or native output only when its input, code and output
+  hashes prove it applies; do not repeat proven work just to start over. Merge
+  current dev normally and preserve foreign registry rows. A true both-sides
+  model change requires an actual combined native rebuild, never new input
+  hashes on old bytes. Finish the remaining source and both-viewport gates on
+  the final head, then merge ordinarily only when green. Preserve the truth of
+  any earlier WIP checkpoints rather than rewriting or inventing their receipts.
+- The final head needs the actual whole source `gate` check, not only green
+  `report` or `warranted` checks. If that gate was skipped or not requested,
+  request it through the repository's supported full-gate path and wait for its
+  verdict. Complete the actual both-viewport checks before calling the merge.
+  Fix a known, bounded failure and rerun the affected checks while budget remains;
+  do not end an exact resume at the first repairable local red. If it cannot be
+  completed safely, preserve the saved PR and the precise remaining work.
+- This worker supplies pinned Blender on Ubuntu26.04. Build actual affected native
+  outputs before the first source commit; do not push a stale data-only commit.
+  Preserve foreign registries and qualify every affected family default honestly.
+- Run native build/derivative batches and every source-gate part in bounded
+  foreground calls. All four source parts must pass before committing. The full
+  bake.sh includes an embedded whole gate; a timed-out invocation is not a pass.
+- A partial original remains open/released with the remaining image differences.
+  Publish one normal PR into dev, with actual both-viewport checks and current
+  hosted gates, and merge normally only when green. No direct dev/main pushes.
+
 PARALLEL SLICES (from the workflow input, printed below as `SLICE: k of N`):
 N is a standing CONCURRENCY TARGET for this app — the lane keeps N runs going at
 all times — and k is which of those N slots you are filling. You are in one of

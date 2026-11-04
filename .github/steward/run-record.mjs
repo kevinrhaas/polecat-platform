@@ -113,6 +113,7 @@ const rx = {
   api5xx: /API Error: 5\d\d/,
   salvagePush: /pushing (\S+)/g,
   salvagePark: /parking leftovers on (\S+)/g,
+  salvageArchive: /^  salvage archived (steward\/salvage\/unqualified\/\S+) at [0-9a-f]{40} \(UNQUALIFIED recovery checkpoint\)$/gm,
 };
 
 /** A branch a run pushed. Salvage branches are the runner's parking lot, not the
@@ -206,6 +207,7 @@ function salvaged(file) {
   const out = [];
   for (const m of text.matchAll(rx.salvagePush)) if (!out.includes(m[1])) out.push(m[1]);
   for (const m of text.matchAll(rx.salvagePark)) if (!out.includes(m[1])) out.push(m[1]);
+  for (const m of text.matchAll(rx.salvageArchive)) if (!out.includes(m[1])) out.push(m[1]);
   return out;
 }
 
