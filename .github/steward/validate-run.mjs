@@ -11,6 +11,10 @@ if (e.INPUT_MAX_TURNS && !/^[1-9]\d{0,3}$/.test(e.INPUT_MAX_TURNS)) throw new Er
 if (e.QUEUE_POSITION && !/^[1-9]\d*\/[1-9]\d*$/.test(e.QUEUE_POSITION)) throw new Error('Invalid queue position');
 
 // Owner-requested native Chicago work is an exact, solitary task.
+if (e.RESUME_PR) {
+  if (!/^[1-9][0-9]{0,9}$/.test(e.RESUME_PR)) throw new Error('Invalid resume PR');
+  if (!e.TARGET_TICKET) throw new Error('Resume PR requires a target ticket');
+}
 if (e.TARGET_TICKET) {
   if (!/^T-[0-9]{4,8}$/.test(e.TARGET_TICKET)) throw new Error('Invalid target ticket');
   if (e.FOCUS_APP !== 'chicago') throw new Error('Target ticket requires chicago');
