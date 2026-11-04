@@ -59,7 +59,18 @@ newrepo() {
 }
 
 runsalvage() {  # runsalvage <repo-dir> <status>
-  GITHUB_WORKSPACE="$1" GH_REST="$TMP/gh-rest.sh" bash "$SUT" 12345 "$2" 2>&1
+  FOCUS_APP="" TARGET_TICKET="" RESUME_PR="" GITHUB_WORKSPACE="$1" GH_REST="$TMP/gh-rest.sh" bash "$SUT" 12345 "$2" 2>&1
+}
+runnative() {  # the workflow's owner-targeted native Chicago context
+  FOCUS_APP=chicago TARGET_TICKET=T-2420 RESUME_PR=1687 GITHUB_WORKSPACE="$1" GH_REST="$TMP/gh-rest.sh" bash "$SUT" 12345 "$2" 2>&1
+}
+archives() {
+  git -C "$1" for-each-ref --format='%(refname:short)' refs/heads/steward/salvage/unqualified/
+}
+record_archives() {  # Exercise the real journal parser against actual salvage output.
+  printf '%s\n' "$out" > "$TMP/salvage.txt"
+  node "$HERE/run-record.mjs" --salvage "$TMP/salvage.txt" --json "$TMP/record.json" >/dev/null
+  node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1])).salvaged_branches.join("\n"))' "$TMP/record.json"
 }
 
 echo "salvage.sh — nothing on the remote that nobody can see"
@@ -136,6 +147,150 @@ out=$(runsalvage "$TMP/f" cancelled); rc=$?
 check "a PR that cannot be opened still exits 0" "$rc" "0"
 check "…and says so as a warning" "$(grep -c 'could not open a draft PR' <<<"$out")" "1"
 mkstub
+
+# ── 7. Native exact resume must NEVER complete a push to a live PR branch ──
+newrepo g
+source_branch=steward/t-2420-live-owner
+git -C "$TMP/g" checkout -q -b "$source_branch"
+git -C "$TMP/g" push -q -u origin "$source_branch"
+source_sha=$(git -C "$TMP/g.git" rev-parse "refs/heads/$source_branch")
+echo private > "$TMP/g/f.txt"; git -C "$TMP/g" add -A; git -C "$TMP/g" commit -q -m private-one
+echo two >> "$TMP/g/f.txt"; git -C "$TMP/g" commit -qam private-two
+private_sha=$(git -C "$TMP/g" rev-parse HEAD)
+expected_archive="steward/salvage/unqualified/12345/$private_sha"
+out=$(runnative "$TMP/g" success)
+check "native exact leaves the foreign-owned PR source unchanged" "$(git -C "$TMP/g.git" rev-parse "refs/heads/$source_branch")" "$source_sha"
+check "native exact archives the actual private commit SHA" "$(git -C "$TMP/g.git" rev-parse "refs/heads/$expected_archive")" "$private_sha"
+check "archive ref is unique to run and commit, without a ticket ID" "$(archives "$TMP/g.git")" "$expected_archive"
+check "native exact does not open a draft over someone else's work" "$(cat "$TMP/calls.g")" ""
+check "journal records the verified archive, not the application branch" "$(record_archives)" "$expected_archive"
+
+# ── 8. Dirty WIP is durable, explicitly unqualified, and leaves source/index ──
+newrepo h
+git -C "$TMP/h" checkout -q -b "$source_branch"
+echo old > "$TMP/h/deleted.txt"; git -C "$TMP/h" add -A; git -C "$TMP/h" commit -q -m existing
+git -C "$TMP/h" push -q -u origin "$source_branch"
+source_sha=$(git -C "$TMP/h" rev-parse HEAD)
+rm "$TMP/h/deleted.txt"
+echo staged > "$TMP/h/f.txt"; git -C "$TMP/h" add f.txt
+echo final >> "$TMP/h/f.txt"
+echo untracked > "$TMP/h/new.txt"
+before_status=$(git -C "$TMP/h" status --porcelain)
+before_index=$(git -C "$TMP/h" ls-files --stage)
+out=$(runnative "$TMP/h" success)
+archive=$(archives "$TMP/h.git")
+archive_sha=$(git -C "$TMP/h.git" rev-parse "refs/heads/$archive")
+check "dirty native success leaves the PR source unchanged" "$(git -C "$TMP/h.git" rev-parse "refs/heads/$source_branch")" "$source_sha"
+check "dirty checkpoint retains original history" "$(git -C "$TMP/h.git" rev-parse "$archive_sha^")" "$source_sha"
+check "dirty checkpoint contains final tracked content" "$(git -C "$TMP/h.git" show "$archive_sha:f.txt")" $'staged\nfinal'
+check "dirty checkpoint includes untracked content" "$(git -C "$TMP/h.git" show "$archive_sha:new.txt")" "untracked"
+check "dirty checkpoint preserves deletion" "$(git -C "$TMP/h.git" ls-tree --name-only "$archive_sha" deleted.txt)" ""
+check "dirty checkpoint is explicitly UNQUALIFIED" "$(git -C "$TMP/h.git" log -1 --format=%s "$archive_sha")" "steward: UNQUALIFIED WIP archive from run 12345"
+check "source branch remains checked out" "$(git -C "$TMP/h" branch --show-current)" "$source_branch"
+check "agent's staged index remains unchanged" "$(git -C "$TMP/h" ls-files --stage)" "$before_index"
+check "agent's dirty working tree remains unchanged" "$(git -C "$TMP/h" status --porcelain)" "$before_status"
+check "dirty journal names the actual durable checkpoint" "$(record_archives)" "$archive"
+
+# ── 9. Already-pushed work must not invent an archive or a salvage draft ────
+newrepo i
+git -C "$TMP/i" checkout -q -b "$source_branch"
+git -C "$TMP/i" push -q -u origin "$source_branch"
+out=$(runnative "$TMP/i" cancelled)
+check "already-pushed native work creates no archive" "$(archives "$TMP/i.git")" ""
+check "already-pushed native work creates no PR" "$(cat "$TMP/calls.i")" ""
+check "already-pushed native journal claims no archive" "$(record_archives)" ""
+
+# ── 10. A failed archive is warned about, never journalled as successful ────
+newrepo j
+git -C "$TMP/j" checkout -q -b "$source_branch"
+git -C "$TMP/j" push -q -u origin "$source_branch"
+source_sha=$(git -C "$TMP/j" rev-parse HEAD)
+echo private > "$TMP/j/f.txt"; git -C "$TMP/j" add -A; git -C "$TMP/j" commit -q -m private
+cat > "$TMP/j.git/hooks/pre-receive" <<'HOOK'
+#!/usr/bin/env bash
+echo 'fixture archive rejection' >&2
+exit 1
+HOOK
+chmod +x "$TMP/j.git/hooks/pre-receive"
+out=$(runnative "$TMP/j" cancelled); rc=$?
+check "archive failure is best-effort exit 0" "$rc" "0"
+check "archive failure leaves source unchanged" "$(git -C "$TMP/j.git" rev-parse "refs/heads/$source_branch")" "$source_sha"
+check "rejected archive does not exist" "$(archives "$TMP/j.git")" ""
+check "archive failure explicitly says recovery is unconfirmed" "$(grep -c 'recovery is not confirmed' <<<"$out")" "1"
+check "archive failure does not claim nothing was unpushed" "$(grep -c 'salvage found nothing unpushed' <<<"$out")" "0"
+check "journal never claims a rejected archive" "$(record_archives)" ""
+
+# ── 11. Targeted first authoring is archive-only even without RESUME_PR ─────
+newrepo k
+git -C "$TMP/k" checkout -q -b "$source_branch"
+echo private > "$TMP/k/f.txt"; git -C "$TMP/k" add -A; git -C "$TMP/k" commit -q -m private
+private_sha=$(git -C "$TMP/k" rev-parse HEAD)
+out=$(FOCUS_APP=chicago TARGET_TICKET=T-2420 RESUME_PR="" GITHUB_WORKSPACE="$TMP/k" GH_REST="$TMP/gh-rest.sh" bash "$SUT" 12345 cancelled 2>&1)
+check "first authoring also archives the actual SHA" "$(git -C "$TMP/k.git" rev-parse "refs/heads/$(archives "$TMP/k.git")")" "$private_sha"
+check "first authoring does not create an application source ref" "$(git -C "$TMP/k.git" for-each-ref --format='%(refname)' "refs/heads/$source_branch")" ""
+
+# ── 12. Generic Chicago queue still fast-forwards its normal PR branch ─────
+newrepo l
+git -C "$TMP/l" checkout -q -b "$source_branch"
+git -C "$TMP/l" push -q -u origin "$source_branch"
+echo generic > "$TMP/l/f.txt"; git -C "$TMP/l" add -A; git -C "$TMP/l" commit -q -m generic
+generic_sha=$(git -C "$TMP/l" rev-parse HEAD)
+out=$(FOCUS_APP=chicago TARGET_TICKET="" RESUME_PR="" GITHUB_WORKSPACE="$TMP/l" GH_REST="$TMP/gh-rest.sh" bash "$SUT" 12345 cancelled 2>&1)
+check "generic Chicago still fast-forwards the PR source" "$(git -C "$TMP/l.git" rev-parse "refs/heads/$source_branch")" "$generic_sha"
+check "generic Chicago still opens its recovery draft" "$(grep -c '^pr-create .* draft$' "$TMP/calls.l")" "1"
+check "generic Chicago creates no unqualified archive" "$(archives "$TMP/l.git")" ""
+
+# ── 13. A successful push with unreadable remote verification is unconfirmed ──
+newrepo m
+git -C "$TMP/m" checkout -q -b "$source_branch"
+git -C "$TMP/m" push -q -u origin "$source_branch"
+source_sha=$(git -C "$TMP/m" rev-parse HEAD)
+echo private > "$TMP/m/f.txt"; git -C "$TMP/m" add -A; git -C "$TMP/m" commit -q -m private
+mkdir "$TMP/bin"
+export REAL_GIT
+REAL_GIT=$(command -v git)
+cat > "$TMP/bin/git" <<'GIT'
+#!/usr/bin/env bash
+case "$*" in
+  *'ls-remote --exit-code --heads origin refs/heads/steward/salvage/unqualified/'*) exit 1 ;;
+esac
+exec "$REAL_GIT" "$@"
+GIT
+chmod +x "$TMP/bin/git"
+out=$(PATH="$TMP/bin:$PATH" runnative "$TMP/m" cancelled)
+check "readback failure still leaves source unchanged" "$(git -C "$TMP/m.git" rev-parse "refs/heads/$source_branch")" "$source_sha"
+check "readback failure fixture really pushed the checkpoint" "$(git -C "$TMP/m.git" rev-parse "refs/heads/$(archives "$TMP/m.git")")" "$(git -C "$TMP/m" rev-parse HEAD)"
+check "readback failure warns recovery is unconfirmed" "$(grep -c 'recovery is not confirmed' <<<"$out")" "1"
+check "unverified archive is not claimed in the journal" "$(record_archives)" ""
+
+# ── 14. WIP before branch creation is recoverable, even in a partial context ──
+newrepo n
+source_sha=$(git -C "$TMP/n" rev-parse HEAD)
+echo prebranch > "$TMP/n/wip.txt"
+out=$(FOCUS_APP=chicago TARGET_TICKET="" RESUME_PR=1687 GITHUB_WORKSPACE="$TMP/n" GH_REST="$TMP/gh-rest.sh" bash "$SUT" 12345 cancelled 2>&1)
+archive=$(archives "$TMP/n.git")
+check "targeted default branch itself is never advanced" "$(git -C "$TMP/n.git" rev-parse refs/heads/main)" "$source_sha"
+check "pre-branch dirty WIP survives on an unqualified archive" "$(git -C "$TMP/n.git" show "refs/heads/$archive:wip.txt")" "prebranch"
+check "partial resume context fails closed to archive-only" "$(record_archives)" "$archive"
+
+# ── 15. An unreadable commit count must not discard clean private HEAD ──────
+newrepo o
+git -C "$TMP/o" checkout -q -b "$source_branch"
+git -C "$TMP/o" push -q -u origin "$source_branch"
+source_sha=$(git -C "$TMP/o" rev-parse HEAD)
+echo private > "$TMP/o/f.txt"; git -C "$TMP/o" add -A; git -C "$TMP/o" commit -q -m private
+private_sha=$(git -C "$TMP/o" rev-parse HEAD)
+cat > "$TMP/bin/git" <<'GIT'
+#!/usr/bin/env bash
+case "$*" in *'rev-list --count HEAD --not --remotes'*) exit 1 ;; esac
+exec "$REAL_GIT" "$@"
+GIT
+out=$(PATH="$TMP/bin:$PATH" runnative "$TMP/o" cancelled)
+expected_archive="steward/salvage/unqualified/12345/$private_sha"
+check "unreadable commit count leaves the PR source unchanged" "$(git -C "$TMP/o.git" rev-parse "refs/heads/$source_branch")" "$source_sha"
+check "unreadable commit count archives actual clean private HEAD" "$(git -C "$TMP/o.git" rev-parse "refs/heads/$expected_archive")" "$private_sha"
+check "unreadable commit count journals the verified archive" "$(record_archives)" "$expected_archive"
+check "unreadable commit count never claims no private work" "$(grep -c 'no unpushed commits\|salvage found nothing unpushed' <<<"$out")" "0"
 
 echo
 if [ "$fail" -eq 0 ]; then printf '\033[32mSALVAGE SELF-TEST PASS\033[0m — %d checks\n' "$pass"; exit 0
