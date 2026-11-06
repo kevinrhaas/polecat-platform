@@ -149,6 +149,21 @@ jobs:
             *) echo "::error::Unknown processor"; exit 1 ;;
           esac
           [ -n "$P" ] || { echo "::error::STEWARD_PAT secret is missing"; exit 1; }
+          # A PRESENT TOKEN IS NOT A WORKING ONE. 2026-11-05..06 the PAT here was
+          # expired (chicago's own STEWARD_PAT had been renewed, this repo's had
+          # not): every slice cloned the public repos, got 401 on the first API
+          # call and on `ticket.mjs claim`'s push, wrote "no-pr" and ended GREEN,
+          # and its refill kick started the next one. Five slices spun like that
+          # for about 29 hours with nothing to show. Ask GitHub once, here: only
+          # a 401 (GitHub's answer to bad credentials) stops the run, so an API
+          # hiccup or a proxy error never does. A failed run does not kick a
+          # refill, so the lane drops to the 10-minute cron and shows red.
+          CODE=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $P" \
+                   https://api.github.com/repos/kevinrhaas/polecat-platform || echo 000)
+          if [ "$CODE" = 401 ]; then
+            echo "::error::STEWARD_PAT is rejected by GitHub (401 Bad credentials): it has expired or been revoked. Renew it at https://github.com/kevinrhaas/polecat-platform/settings/secrets/actions"
+            exit 1
+          fi
 
       - uses: actions/checkout@v4
 

@@ -85,7 +85,13 @@ function queueOf(app) {
     // paused lane re-sends a slice at the same PR every time one finishes.
     const cool = now - 30 * 60 * 1000;
     q.resumable = live.filter(p => isResumablePr(p) && !(Date.parse(p.updated_at) > cool)).length;
-  } catch (e) { console.log(`::warning::${app}: could not count open PRs, so the queue limit is skipped this tick`); }
+  } catch (e) {
+    // A 401 here is STEWARD_PAT itself gone bad, and every run this tick sends
+    // will hit the same wall: say so in red rather than as a queue warning.
+    const why = String((e && (e.stderr || e.message)) || '');
+    if (/\b401\b|Bad credentials/i.test(why)) console.log(`::error::${app}: STEWARD_PAT is rejected by GitHub (401 Bad credentials), so the lane's runs cannot claim, push or open PRs. Renew it in polecat-platform's Actions secrets.`);
+    else console.log(`::warning::${app}: could not count open PRs, so the queue limit is skipped this tick`);
+  }
   try { asPat(['api', `repos/${repo}/actions/variables/${pausedVar(app)}`]); q.wasPaused = true; } catch { /* 404 = running */ }
   queues.set(app, q);
   return q;
