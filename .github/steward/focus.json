@@ -30,7 +30,6 @@
       "everyHours": 1,
       "max_turns": 400,
       "processor": "claude",
-      "slices": 5,
       "prQueue": {
         "pauseAt": 6,
         "resumeAt": 5
