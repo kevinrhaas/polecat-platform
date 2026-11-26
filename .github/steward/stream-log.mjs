@@ -34,6 +34,7 @@
  */
 import fs from 'node:fs'
 import readline from 'node:readline'
+import { holdFromLimit, writeHold } from './usage-hold.mjs'
 
 const OUT = process.argv[2] || '/tmp/steward-out.txt'
 const RAW = process.argv[3] || ''
@@ -70,6 +71,7 @@ const gist = (name, input) => {
 let tools = 0
 let words = 0
 let lastLimit = ''
+let holdWritten = false
 
 function handle (ev) {
   switch (ev.type) {
@@ -94,6 +96,16 @@ function handle (ev) {
         lastLimit = now
         const resets = r.resetsAt ? new Date(r.resetsAt * 1000).toISOString().slice(11, 19) + 'Z' : '?'
         say('%', `rate limit: ${now} · resets ${resets}`)
+      }
+      // A refusal that stops the agent holds every Claude lane until the
+      // reset (usage-hold.mjs), so the scheduler stops refilling slots that
+      // can only fail. Once per run, and only inside a real Actions run.
+      if (!holdWritten && process.env.GITHUB_ACTIONS === 'true') {
+        const hold = holdFromLimit(r, process.env.GITHUB_RUN_ID || '')
+        if (hold) {
+          holdWritten = true
+          say('%', writeHold(hold) ? `usage hold set: ${hold}` : `usage hold could not be written: ${hold}`)
+        }
       }
       break
     }

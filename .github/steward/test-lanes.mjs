@@ -29,7 +29,7 @@ assert.deepEqual([...busySlots([{status:'waiting',displayTitle:laneTitle(gpt)}],
 // Execute the REAL dispatcher with an isolated roster and fake GitHub endpoint.
 const dir = mkdtempSync(path.join(tmpdir(), 'lanes-'));
 try {
-  for (const file of ['dispatch-lanes.mjs','lanes.mjs','schedule.mjs']) cpSync(new URL(file, import.meta.url), path.join(dir,file));
+  for (const file of ['dispatch-lanes.mjs','lanes.mjs','schedule.mjs','usage-hold.mjs','stream-log.mjs']) cpSync(new URL(file, import.meta.url), path.join(dir,file));
   writeFileSync(path.join(dir,'focus.json'), JSON.stringify(roster));
   mkdirSync(path.join(dir,'bin'));
   // Fake GitHub: a status-filtered query is --slurp'd (array of pages); the
@@ -37,7 +37,7 @@ try {
   // every FILTERED listing, as a just-promoted run is on the real API. The
   // unfiltered page is padded past 1 MB, as real pages are (full commit
   // messages), so a dispatcher using execFileSync's default buffer fails here.
-  writeFileSync(path.join(dir,'bin/gh'), `#!/usr/bin/env node\nconst fs=require('fs');const a=process.argv.slice(2);if(a[0]==='api'&&a.some(x=>x.includes('/pulls'))){if(process.env.PRS_BROKEN)process.exit(1);fs.appendFileSync(process.env.TOKENS,process.env.GH_TOKEN+'\\n');console.log(JSON.stringify([JSON.parse(process.env.PRS||'[]')]));process.exit(0);}if(a[0]==='api'&&a.some(x=>x.includes('actions/variables'))){if(a.includes('--method')){fs.appendFileSync(process.env.VARS,a[a.indexOf('--method')+1]+' '+a.find(x=>x.includes('actions/variables'))+'\\n');process.exit(0);}process.exit(process.env.PAUSED?0:1);}if(a[0]==='api'){if(process.env.BROKEN)process.exit(1);const runs=JSON.parse(process.env.RUNS).map((r,i)=>({...r,id:i}));const url=a.at(-1);const out=rs=>rs.map(r=>({id:r.id,status:r.status,display_title:r.displayTitle,created_at:r.createdAt}));if(url.includes('status=')){console.log(JSON.stringify([{workflow_runs:out(runs.filter(r=>!r.lagging&&url.includes('status='+r.status+'&')))}]));}else console.log(JSON.stringify({workflow_runs:out(runs),pad:'x'.repeat(2e6)}));}else fs.appendFileSync(process.env.CALLS,JSON.stringify(a)+'\\n');`, {mode:0o755});
+  writeFileSync(path.join(dir,'bin/gh'), `#!/usr/bin/env node\nconst fs=require('fs');const a=process.argv.slice(2);if(a[0]==='api'&&a.some(x=>x.includes('/pulls'))){if(process.env.PRS_BROKEN)process.exit(1);fs.appendFileSync(process.env.TOKENS,process.env.GH_TOKEN+'\\n');console.log(JSON.stringify([JSON.parse(process.env.PRS||'[]')]));process.exit(0);}if(a[0]==='api'&&!a.includes('--method')&&a.some(x=>x.includes('STEWARD_HOLD_CLAUDE'))){if(process.env.HOLD){console.log(process.env.HOLD);process.exit(0);}process.exit(1);}if(a[0]==='api'&&a.some(x=>x.includes('actions/variables'))){if(a.includes('--method')){fs.appendFileSync(process.env.VARS,a[a.indexOf('--method')+1]+' '+a.find(x=>x.includes('actions/variables'))+'\\n');process.exit(0);}process.exit(process.env.PAUSED?0:1);}if(a[0]==='api'){if(process.env.BROKEN)process.exit(1);const runs=JSON.parse(process.env.RUNS).map((r,i)=>({...r,id:i}));const url=a.at(-1);const out=rs=>rs.map(r=>({id:r.id,status:r.status,display_title:r.displayTitle,created_at:r.createdAt}));if(url.includes('status=')){console.log(JSON.stringify([{workflow_runs:out(runs.filter(r=>!r.lagging&&url.includes('status='+r.status+'&')))}]));}else console.log(JSON.stringify({workflow_runs:out(runs),pad:'x'.repeat(2e6)}));}else fs.appendFileSync(process.env.CALLS,JSON.stringify(a)+'\\n');`, {mode:0o755});
   const calls = path.join(dir,'calls');
   const env = {...process.env, PATH:path.join(dir,'bin')+':'+process.env.PATH, RUNS:JSON.stringify(runs), CALLS:calls};
   let result = spawnSync(process.execPath,[path.join(dir,'dispatch-lanes.mjs')], {env,encoding:'utf8'});
@@ -184,6 +184,35 @@ try {
   writeFileSync(calls,'');
   result=spawnSync(process.execPath,[path.join(dir,'dispatch-lanes.mjs')],{env:{...qenv,PRS_BROKEN:'1'},encoding:'utf8'});
   assert.equal(result.status,0,result.stderr); assert.equal(readFileSync(calls,'utf8').trim().split('\n').length,5);
+
+  // USAGE HOLD (usage-hold.mjs). 2026-11-25: the Claude account hit its weekly
+  // limit and the cron refilled all five slots every tick, ~120 runs that each
+  // failed inside a minute. While STEWARD_HOLD_CLAUDE names a future reset, no
+  // Claude lane is dispatched; once it has passed, the hold is deleted and the
+  // same tick fills the lane. A garbled hold fails OPEN.
+  const later=new Date(Date.now()+3*3600e3).toISOString(), earlier=new Date(Date.now()-3600e3).toISOString();
+  writeFileSync(calls,''); writeFileSync(vars,'');
+  result=spawnSync(process.execPath,[path.join(dir,'dispatch-lanes.mjs')],{env:{...qenv,PRS:'[]',HOLD:`${later} Claude weekly limit reached (run 9)`},encoding:'utf8'});
+  assert.equal(result.status,0,result.stderr);
+  assert.match(result.stdout,/chicago \/ default: held, Claude weekly limit reached \(run 9\); restarts by itself after/);
+  assert.equal(readFileSync(calls,'utf8'),''); assert.equal(readFileSync(vars,'utf8'),'');
+  writeFileSync(calls,''); writeFileSync(vars,'');
+  result=spawnSync(process.execPath,[path.join(dir,'dispatch-lanes.mjs')],{env:{...qenv,PRS:'[]',HOLD:`${earlier} Claude weekly limit reached (run 9)`},encoding:'utf8'});
+  assert.equal(result.status,0,result.stderr); assert.match(result.stdout,/usage hold lifted/);
+  assert.match(readFileSync(vars,'utf8'),/^DELETE repos\/.*STEWARD_HOLD_CLAUDE\n$/);
+  assert.equal(readFileSync(calls,'utf8').trim().split('\n').length,5);
+  writeFileSync(calls,''); writeFileSync(vars,'');
+  result=spawnSync(process.execPath,[path.join(dir,'dispatch-lanes.mjs')],{env:{...qenv,PRS:'[]',HOLD:'soon, probably'},encoding:'utf8'});
+  assert.equal(result.status,0,result.stderr); assert.equal(readFileSync(calls,'utf8').trim().split('\n').length,5);
+  // The run side: stream-log writes the hold from the refused rate-limit
+  // event, once, and only inside an Actions run.
+  const refusedEv=JSON.stringify({type:'rate_limit_event',rate_limit_info:{status:'rejected',resetsAt:Math.floor(Date.now()/1000)+3600,rateLimitType:'seven_day',overageStatus:'rejected',isUsingOverage:false}});
+  for (const [ga,want] of [['true',/^PATCH repos\/kevinrhaas\/polecat-platform\/actions\/variables\/STEWARD_HOLD_CLAUDE\n$/],['',/^$/]]) {
+    writeFileSync(vars,'');
+    const log=spawnSync(process.execPath,[path.join(dir,'stream-log.mjs'),path.join(dir,'out')],{input:refusedEv+'\n'+refusedEv+'\n',env:{...qenv,GITHUB_ACTIONS:ga,GITHUB_REPOSITORY:'kevinrhaas/polecat-platform',GITHUB_RUN_ID:'9'},encoding:'utf8'});
+    assert.equal(log.status,0,log.stderr); assert.match(readFileSync(vars,'utf8'),want);
+    if (ga) assert.match(log.stdout,/usage hold set: .* Claude weekly limit reached \(run 9\)/);
+  }
 } finally { rmSync(dir,{recursive:true,force:true}); }
 
 const events = [
@@ -204,4 +233,4 @@ try {
 } finally {rmSync(logDir,{recursive:true,force:true});}
 const failure=spawnSync(process.execPath,[new URL('codex-stream.mjs',import.meta.url).pathname],{input:JSON.stringify({type:'turn.failed',error:{message:'No model access'}})+'\n',encoding:'utf8'});
 assert.equal(failure.status,1);assert.match(failure.stdout,/No model access/);
-console.log('Mixed lane dispatch, occupancy, draining, PR-queue backpressure, validation and GPT evidence: PASS');
+console.log('Mixed lane dispatch, occupancy, draining, PR-queue backpressure, usage hold, validation and GPT evidence: PASS');

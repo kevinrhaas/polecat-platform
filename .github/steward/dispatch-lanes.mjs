@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { appLanes, busySlots, isLanePr, isResumablePr, lastStarted, processorOf, queueGate, queueLimits } from './lanes.mjs';
 import { isDueAt, slicesOf } from './schedule.mjs';
+import { HOLD_VAR, readHold } from './usage-hold.mjs';
 
 const repo = process.env.GITHUB_REPOSITORY || 'kevinrhaas/polecat-platform';
 // maxBuffer: each run object carries its full head-commit message, so 100 runs
@@ -112,9 +113,30 @@ function recordPause(app, q, gate, limits) {
   } catch (e) { console.log(`::warning::${app}: could not record the ${gate.paused ? 'pause' : 'restart'} in ${name}`); }
 }
 
+// USAGE HOLD (usage-hold.mjs). A run the Claude account refused for usage
+// wrote STEWARD_HOLD_CLAUDE with the reset time. Until then no Claude lane is
+// topped up: every slot would fail inside a minute (2026-11-25, ~120 red runs
+// in four hours). Once the reset has passed the hold is deleted and this same
+// tick fills the lanes, so the loop restarts on its own. Fails OPEN: if the
+// variable cannot be read, the lanes run as if there were no hold.
+let claudeHold = null;
+try {
+  const value = asPat(['api', `repos/${repo}/actions/variables/${HOLD_VAR}`, '--jq', '.value']).trim();
+  claudeHold = readHold(value, now);
+  if (claudeHold?.expired) {
+    try { asPat(['api', '--method', 'DELETE', `repos/${repo}/actions/variables/${HOLD_VAR}`]); } catch { /* next tick retries */ }
+    console.log(`::notice::Claude usage hold lifted: its reset time ${claudeHold.until.toISOString()} has passed, so the lanes fill again.`);
+    claudeHold = null;
+  }
+} catch { /* 404 = no hold */ }
+
 let count = 0;
 for (const lane of lanes) {
   if (!isDueAt(lane.config, now)) continue;
+  if (claudeHold && processorOf(lane.config).processor === 'claude') {
+    console.log(`::warning::${lane.app} / ${lane.id || 'default'}: held, ${claudeHold.why || 'Claude usage limit reached'}; restarts by itself after ${claudeHold.until.toISOString()}`);
+    continue;
+  }
   const n = slicesOf(lane.config), busy = busySlots(runs, lane);
   let free = n - busy.size;
   const limits = queueLimits(lane.config);
