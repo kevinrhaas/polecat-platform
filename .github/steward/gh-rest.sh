@@ -22,7 +22,9 @@
 #       is read under the same budget before anything merges.
 #       A workflow an EARLIER commit of the PR ran, with no run on the head (a
 #       lap push whose paths did not fire it), is still gate: its newest run's
-#       verdict is carried to the head (T-2461).
+#       verdict is carried to the head (T-2461). A run ON the head that has
+#       not finished — a dispatch still queued, with no check runs yet — is
+#       `pending` too (T-3719).
 #       GH_REST_MERGE_BLIND=1 restores the old unconditional, unpinned merge.
 #   gh-rest.sh pr-comment  <repo> <number> <body-file>
 #   gh-rest.sh pr-list     <repo> [state] [per-page]                  → number<TAB>head<TAB>base<TAB>title
@@ -273,6 +275,21 @@ print("clear")' 2>/dev/null || printf 'unreadable\n'
 # A red carried verdict stays red until something re-runs that workflow on the
 # branch (a push under its paths, or a dispatch on the branch); the refusal says
 # which one and where. `unreadable` merges, the contract gate_state states above.
+#
+# A RUN ON THE HEAD THAT HAS NOT FINISHED IS `pending`, CHECK RUNS OR NOT
+# (T-3719). A workflow's jobs post their check runs only once a runner picks them
+# up, so a run that is still `queued` is invisible to gate_state. #2284 showed
+# the cost: its content build had gone red on an earlier head, the steward
+# dispatched the build on the head bed0d26 (which cancelled the stale run through
+# its concurrency group), and the next pr-automerge merged at once — the new run
+# was on the head, so nothing older was carried, and it had no checks yet, so
+# the head read green. The content build never ran on what merged. So the head's
+# own newest run of each workflow is read here too: not finished is `pending`,
+# whatever its check runs say, and an older run it superseded on the same head
+# (the one the dispatch cancelled) has no say. A head run that HAS finished is
+# still judged by its check runs, in gate_state — this adds a wait, never a
+# refusal. The run list is the one already read for the carried verdicts, so it
+# costs no extra call.
 carried_state() {
   local repo="$1" number="$2" branch="$3" sha="$4" q ours body
   # The shas, not the commits: a hundred commit objects is far past the 128 KiB
@@ -293,16 +310,21 @@ except Exception: print("unreadable"); raise SystemExit
 if not isinstance(runs,list): print("unreadable"); raise SystemExit
 ours.add(sha)
 runs=[r for r in runs if r.get("head_sha") in ours]
-on_head={r.get("name") for r in runs if r.get("head_sha")==sha}
+def newer(r,than): return than is None or (r.get("created_at") or "")>(than.get("created_at") or "")
+# The newest run of each workflow ON THE HEAD (T-3719): a dispatch on the head
+# supersedes the run it cancelled there.
+on_head={}
+for r in runs:
+    if r.get("head_sha")==sha and newer(r,on_head.get(r.get("name"))): on_head[r.get("name")]=r
 newest={}
 for r in runs:
     n=r.get("name")
     if n in on_head: continue
-    if n not in newest or (r.get("created_at") or "")>(newest[n].get("created_at") or ""): newest[n]=r
+    if newer(r,newest.get(n)): newest[n]=r
 for n,r in sorted(newest.items()):
     if r.get("status")=="completed" and (r.get("conclusion") or "") in RED:
         print("red %s on %s (%s)"%(n,(r.get("head_sha") or "?")[:7],r.get("conclusion"))); raise SystemExit
-for n,r in sorted(newest.items()):
+for n,r in sorted(list(on_head.items())+list(newest.items())):
     if r.get("status")!="completed":
         print("pending %s on %s (%s)"%(n,(r.get("head_sha") or "?")[:7],r.get("status"))); raise SystemExit
 print("clear")' "$ours" "$sha" 2>/dev/null || printf 'unreadable\n'
@@ -327,10 +349,16 @@ merge_carried() {
     pending\ *)
       now=$(date -u +%s)
       if (( now >= deadline )); then
-        defer_merge "$repo" "$number" "" "${cs#pending } is STILL RUNNING after ${GATE_WAIT}s, and ${sha:0:7} has no run of its own"
+        case "$cs" in
+          *" on ${sha:0:7} "*) defer_merge "$repo" "$number" "" "${cs#pending } is STILL RUNNING on the head after ${GATE_WAIT}s" ;;
+          *) defer_merge "$repo" "$number" "" "${cs#pending } is STILL RUNNING after ${GATE_WAIT}s, and ${sha:0:7} has no run of its own" ;;
+        esac
       fi
       nap=$(( deadline - now )); (( nap > GATE_POLL )) && nap=$GATE_POLL
-      log "pr-automerge: ${sha:0:7}'s own checks are green, but ${cs#pending } has no run on it — waiting ${nap}s"
+      case "$cs" in
+        *" on ${sha:0:7} "*) log "pr-automerge: ${sha:0:7}'s check runs are green, but ${cs#pending } has not finished on it — waiting ${nap}s" ;;
+        *) log "pr-automerge: ${sha:0:7}'s own checks are green, but ${cs#pending } has no run on it — waiting ${nap}s" ;;
+      esac
       sleep "$nap" ;;
     *)
       log "pr-automerge: could not read what earlier heads ran (${cs}) — merging ${sha:0:7} on its own checks"

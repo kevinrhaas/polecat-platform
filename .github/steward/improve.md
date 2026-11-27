@@ -459,7 +459,11 @@ HARD RULES:
   ran on an EARLIER commit of the PR but has no run on the head — a content
   build a lap push's paths did not fire — carries its newest verdict forward.
   Still running is `pending`; red is `refused`, naming the run, until something
-  re-runs that workflow on the branch.
+  re-runs that workflow on the branch. A run ON the head that has not finished
+  is `pending` too, even before it has posted a check run (T-3719): so a bake
+  you dispatch on the branch to give the head its own run is waited on, not
+  merged past while it sits `queued` (that is how chicago#2284 merged with its
+  content build unread).
   `GH_REST_MERGE_BLIND=1` restores the old unconditional merge; use it only when
   you have gated the merge yourself and know the red check is irrelevant, and say
   in the PR why.

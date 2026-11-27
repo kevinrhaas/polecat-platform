@@ -640,6 +640,50 @@ printf 'HTTP/2.0 200 OK\n\n{"sha":"m768c"}\n' > "$FAKE_PLAN/6.txt"
 got=$(GH_REST_GATE_WAIT_SECONDS=0 bash "$SUT" pr-automerge o/r 768 squash "title" 2>/dev/null)
 check "a red run on a commit outside the PR is not carried" "$got" "m768c"
 
+# ── 7b-vii. T-3719: a run ON the head that has not finished is pending ──────
+# #2284 replayed: the content build had gone red on the earlier head 1444a62,
+# the steward dispatched it on the head bed0d26 (cancelling the stale run through
+# its concurrency group), and the next call merged at once — the new run was on
+# the head, so nothing older was carried, and it was still `queued` with no check
+# runs, so gate + report read as the whole gate.
+carried_plan head_queued "[$HEAD_RUNS,
+  {\"name\":\"Chicago 4D — content build\",\"head_sha\":\"21ef749aaaaaa\",\"status\":\"queued\",\"conclusion\":null,\"created_at\":\"2026-10-13T13:06:00Z\"},
+  {\"name\":\"Chicago 4D — content build\",\"head_sha\":\"4d4a994aaaaaa\",\"status\":\"completed\",\"conclusion\":\"cancelled\",\"created_at\":\"2026-10-13T12:37:12Z\"}]"
+got=$(GH_REST_GATE_WAIT_SECONDS=0 bash "$SUT" pr-automerge o/r 768 squash "title" 2>"$TMP/err"); rc=$?
+check "#2284 replayed: a content build dispatched on the head, still queued, is pending" "$got" "pending"
+check "…exit 4 — not a verdict" "$rc" "4"
+if grep -q 'pulls/768/merge' "$FAKE_CALLS"; then bad "#2284's head must not merge while its own dispatch is queued"
+else ok "…and no merge was attempted while the head's own run is queued"; fi
+if grep -q 'content build on 21ef749 (queued) is STILL RUNNING on the head' "$TMP/err"; then ok "…naming the workflow, the head and its status"
+else bad "the queued head run was not named: $(tail -3 "$TMP/err")"; fi
+check "…for no REST call more than T-2461 already made" \
+      "$(grep -cE 'pulls/768/commits|actions/runs' "$FAKE_CALLS")" "2"
+
+# The run a dispatch cancelled ON THE SAME HEAD defers to the newer one there.
+carried_plan head_superseded_queued "[$HEAD_RUNS,
+  {\"name\":\"Chicago 4D — content build\",\"head_sha\":\"21ef749aaaaaa\",\"status\":\"in_progress\",\"conclusion\":null,\"created_at\":\"2026-10-13T13:06:00Z\"},
+  {\"name\":\"Chicago 4D — content build\",\"head_sha\":\"21ef749aaaaaa\",\"status\":\"completed\",\"conclusion\":\"cancelled\",\"created_at\":\"2026-10-13T13:05:00Z\"}]"
+got=$(GH_REST_GATE_WAIT_SECONDS=0 bash "$SUT" pr-automerge o/r 768 squash "title" 2>/dev/null); rc=$?
+check "a run cancelled on the head by a newer one there waits on the newer one" "$got" "pending"
+check "…exit 4, not a refusal on the cancel" "$rc" "4"
+
+carried_plan head_superseded_green "[$HEAD_RUNS,
+  {\"name\":\"Chicago 4D — content build\",\"head_sha\":\"21ef749aaaaaa\",\"status\":\"completed\",\"conclusion\":\"success\",\"created_at\":\"2026-10-13T13:06:00Z\"},
+  {\"name\":\"Chicago 4D — content build\",\"head_sha\":\"21ef749aaaaaa\",\"status\":\"queued\",\"conclusion\":null,\"created_at\":\"2026-10-13T13:05:00Z\"},
+  {\"name\":\"Chicago 4D — content build\",\"head_sha\":\"79eaf83aaaaaa\",\"status\":\"completed\",\"conclusion\":\"failure\",\"created_at\":\"2026-10-13T10:26:10Z\"}]"
+printf 'HTTP/2.0 200 OK\n\n{"sha":"m768e"}\n' > "$FAKE_PLAN/6.txt"
+got=$(GH_REST_GATE_WAIT_SECONDS=0 bash "$SUT" pr-automerge o/r 768 squash "title" 2>/dev/null)
+check "…and once the newer run on the head is green, the head merges" "$got" "m768e"
+
+# A queued head run is waited on, not merged past, when the wait outlasts it.
+carried_plan head_queued_then_green "[$HEAD_RUNS,
+  {\"name\":\"Chicago 4D — content build\",\"head_sha\":\"21ef749aaaaaa\",\"status\":\"queued\",\"conclusion\":null,\"created_at\":\"2026-10-13T13:06:00Z\"}]"
+cp "$FAKE_PLAN/3.txt" "$FAKE_PLAN/6.txt"; cp "$FAKE_PLAN/4.txt" "$FAKE_PLAN/7.txt"
+printf 'HTTP/2.0 200 OK\n\n{"workflow_runs":[%s,{"name":"Chicago 4D — content build","head_sha":"21ef749aaaaaa","status":"completed","conclusion":"success","created_at":"2026-10-13T13:06:00Z"}]}\n' "$HEAD_RUNS" > "$FAKE_PLAN/8.txt"
+printf 'HTTP/2.0 200 OK\n\n{"sha":"m768f"}\n' > "$FAKE_PLAN/9.txt"
+got=$(GH_REST_GATE_WAIT_SECONDS=5 GH_REST_GATE_POLL_SECONDS=1 bash "$SUT" pr-automerge o/r 768 squash "title" 2>/dev/null)
+check "a queued head run is waited out, then the head merges on its verdict" "$got" "m768f"
+
 # Same contract as gate_state: an unreadable answer merges rather than stalls.
 carried_plan carried_unreadable "[]"
 printf 'HTTP/2.0 200 OK\n\nnot json at all\n' > "$FAKE_PLAN/5.txt"
