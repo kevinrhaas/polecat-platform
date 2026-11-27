@@ -33,6 +33,10 @@ prev=""; for a in "$@"; do
 resp="${FAKE_PLAN}/${n}.txt"
 [ -f "$resp" ] || resp="${FAKE_PLAN}/last.txt"
 cat "$resp"
+# A call's stderr, when the plan has one (T-3784): printed AFTER the response,
+# the way gh prints an exit-time notice, which is where `2>&1` spoiled the body.
+[ -f "${FAKE_PLAN}/${n}.err" ] && cat "${FAKE_PLAN}/${n}.err" >&2
+exit 0
 FAKE
 chmod +x "$TMP/bin/gh"
 export PATH="$TMP/bin:$PATH"
@@ -467,6 +471,88 @@ got=$(GH_REST_MERGE_BLIND=1 bash "$SUT" pr-automerge o/r 12 squash "title" 2>/de
 check "GH_REST_MERGE_BLIND=1 restores the unconditional merge" "$got" "0ldway5"
 check "…and reads no gate to do it" "$(calls)" "3"
 check "…and pins no sha: blind means blind" "$(grep -c '"sha"' "$FAKE_CALLS.input")" "0"
+
+# ── 7b-vi. gh's stderr is never part of the response (T-3784, chicago#2379) ─
+# gh printed a one-line `hint: … gh event listen` notice on stderr; api() ran
+# `2>&1`, so the notice landed after the PR JSON, json.load failed, node id and
+# head sha read empty, and pr-automerge's "could not read" branch merged the PR
+# with no gate read at all. Replayed here with the notice on every call.
+HINT='hint: stream this repository'"'"'s events live with `gh event listen`'
+newplan stderr_hint_create
+cat > "$FAKE_PLAN/1.txt" <<'EOF'
+HTTP/2.0 201 Created
+
+{"number":2379}
+EOF
+printf '%s\n' "$HINT" > "$FAKE_PLAN/1.err"
+got=$(bash "$SUT" pr-create o/r head base "t" "$TMP/b.md" 2>/dev/null)
+check "a stderr notice on a 2xx does not reach the parsed body" "$got" "2379"
+
+newplan stderr_hint_automerge
+cat > "$FAKE_PLAN/1.txt" <<'EOF'
+HTTP/2.0 200 OK
+
+{"number":2379,"node_id":"PR_kwDO","head":{"sha":"2379abc1234567"}}
+EOF
+cat > "$FAKE_PLAN/2.txt" <<'EOF'
+GraphQL: Auto merge is not allowed for this repository (enablePullRequestAutoMerge)
+EOF
+cat > "$FAKE_PLAN/3.txt" <<'EOF'
+HTTP/2.0 200 OK
+
+{"total_count":1,"check_runs":[{"name":"chicago-4d-check","status":"in_progress","conclusion":null}]}
+EOF
+for i in 1 3; do printf '%s\n' "$HINT" > "$FAKE_PLAN/$i.err"; done
+got=$(GH_REST_GATE_WAIT_SECONDS=0 bash "$SUT" pr-automerge o/r 2379 squash "title" 2>"$TMP/err"); rc=$?
+check "#2379 replayed: with the notice on stderr the gate is READ — still running, so pending" "$got" "pending"
+check "…exit 4" "$rc" "4"
+check "…and no merge was attempted" "$(grep -c 'pulls/2379/merge' "$FAKE_CALLS")" "0"
+check "…the node id was read, so it tried to arm first" "$(grep -c '^api graphql' "$FAKE_CALLS")" "1"
+if grep -q 'gh stderr on GET repos/o/r/pulls/2379 (not part of the response): hint:' "$TMP/err"; then
+  ok "…and the notice is still shown, on our stderr, labelled as a side note"
+else bad "the stderr notice was swallowed rather than passed through as a note"; fi
+
+# ── 7b-vii. A PR that cannot be read is not merged — it is pending ─────────
+# Whatever spoils the one GET (a REST failure here), "could not read the node
+# id / head sha" used to mean "merge directly". It now fails closed.
+newplan automerge_unread_pr
+cat > "$FAKE_PLAN/last.txt" <<'EOF'
+HTTP/2.0 404 Not Found
+
+{"message":"Not Found"}
+EOF
+got=$(bash "$SUT" pr-automerge o/r 13 squash "title" 2>/dev/null); rc=$?
+check "an unreadable PR is NOT merged blind: pending" "$got" "pending"
+check "…exit 4, the caller's 'call again'" "$rc" "4"
+check "…after the one GET and nothing else" "$(calls)" "1"
+
+newplan automerge_no_sha
+cat > "$FAKE_PLAN/1.txt" <<'EOF'
+HTTP/2.0 200 OK
+
+{"number":14,"node_id":"PR_kwDO"}
+EOF
+cat > "$FAKE_PLAN/2.txt" <<'EOF'
+GraphQL: Auto merge is not allowed for this repository (enablePullRequestAutoMerge)
+EOF
+got=$(bash "$SUT" pr-automerge o/r 14 squash "title" 2>/dev/null); rc=$?
+check "a PR with no readable head sha cannot be gated, so it is pending, not merged" "$got" "pending"
+check "…exit 4" "$rc" "4"
+check "…and no merge call was made" "$(grep -c 'pulls/14/merge' "$FAKE_CALLS")" "0"
+
+newplan automerge_unread_blind
+cat > "$FAKE_PLAN/1.txt" <<'EOF'
+HTTP/2.0 404 Not Found
+
+{"message":"Not Found"}
+EOF
+cat > "$FAKE_PLAN/2.txt" <<'EOF'
+HTTP/2.0 200 OK
+
+{"sha":"bl1nd15"}
+EOF
+got=$(GH_REST_MERGE_BLIND=1 bash "$SUT" pr-automerge o/r 15 squash "title" 2>/dev/null)
+check "GH_REST_MERGE_BLIND=1 still merges an unreadable PR: blind means blind" "$got" "bl1nd15"
 
 # ── 7b-vi. T-2461: a workflow an earlier head ran is still part of the gate ──
 # Path filters fire on what a PUSH carries, so a lap that merges `dev` into a PR

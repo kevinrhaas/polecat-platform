@@ -7,7 +7,7 @@
 #                                                                     → prints the merge sha
 #       With a sha, GitHub merges ONLY if that is still the PR's head and
 #       answers 409 otherwise — the pin pr-automerge puts on every gated merge.
-#   gh-rest.sh pr-automerge <repo> <number> [method] [commit-title]   → 'armed', 'pending', 'refused', or merges
+#   gh-rest.sh pr-automerge <repo> <number> [method] [commit-title]   → 'armed', 'pending' (also: PR unreadable), 'refused', or merges
 #       Arms GitHub's auto-merge where the repository allows it. Where it does
 #       NOT (kevinrhaas/chicago), it reads the head commit's own check runs,
 #       waits GH_REST_GATE_WAIT_SECONDS (540) for a pending gate to settle, and
@@ -104,25 +104,41 @@ wait_for() {
 # limit, 429, and 5xx. A 403 that is a genuine permission failure, a 404 and a
 # 422 are returned immediately: retrying them burns the very budget this script
 # exists to protect, and hides the real error behind five identical failures.
+#
+# STDOUT IS THE RESPONSE AND NOTHING ELSE (T-3784). gh's stderr is read into
+# its own file and never into the body. Until 2026-11-27 this ran `2>&1`, and
+# when gh printed a one-line `hint: … gh event listen` notice on stderr the
+# notice was folded into the PR JSON: every `json.load` on it failed, the node
+# id and head sha read empty, and pr-automerge took its "could not read" branch
+# — which merged chicago#2379 with no gate read at all. stderr is still
+# consulted where it carries the only evidence there is (gh failing before any
+# HTTP response), and is passed through to our own stderr so nothing is hidden.
 api() {
   local method="$1" path="$2"; shift 2
-  local attempt=1 out status headers body sleep_for
+  local attempt=1 out err status headers body sleep_for errf
+  errf=$(mktemp "${TMPDIR:-/tmp}/gh-rest-err.XXXXXX")
   while :; do
-    out=$(gh api --include -X "$method" "$path" "$@" 2>&1)
+    out=$(gh api --include -X "$method" "$path" "$@" 2>"$errf")
+    err=$(cat "$errf" 2>/dev/null)
     status=$(grep -m1 -oE '^HTTP/[0-9.]+ [0-9]{3}' <<<"$out" | awk '{print $2}')
     if [ -z "$status" ]; then
       # gh failed before it got an HTTP response at all (network, auth, bad args).
-      if grep -qiE 'rate limit|secondary rate' <<<"$out" && (( attempt < MAX_ATTEMPTS )); then
+      if grep -qiE 'rate limit|secondary rate' <<<"$out"$'\n'"$err" && (( attempt < MAX_ATTEMPTS )); then
         sleep_for=$(( 2 ** attempt )); (( sleep_for > CAP_SECONDS )) && sleep_for=$CAP_SECONDS
         log "rate limited (no response headers), attempt ${attempt}/${MAX_ATTEMPTS}, sleeping ${sleep_for}s"
         sleep "$sleep_for"; attempt=$(( attempt + 1 )); continue
       fi
-      log "FAILED ${method} ${path}"; printf '%s\n' "$out" >&2; return 1
+      log "FAILED ${method} ${path}"
+      [ -n "$out" ] && printf '%s\n' "$out" >&2
+      [ -n "$err" ] && printf '%s\n' "$err" >&2
+      rm -f "$errf"; return 1
     fi
+    # A response came back; anything gh said on the side is a note, not data.
+    [ -n "$err" ] && log "gh stderr on ${method} ${path} (not part of the response): ${err//$'\n'/ }"
     headers=$(sed -n '1,/^\r*$/p' <<<"$out")
     body=$(sed '1,/^\r*$/d' <<<"$out")
     case "$status" in
-      2*) printf '%s\n' "$body"; return 0 ;;
+      2*) rm -f "$errf"; printf '%s\n' "$body"; return 0 ;;
       403|429)
         if grep -qiE 'rate limit|secondary rate|abuse' <<<"$body" && (( attempt < MAX_ATTEMPTS )); then
           sleep_for=$(wait_for "$headers" "$attempt")
@@ -130,7 +146,7 @@ api() {
           sleep "$sleep_for"; attempt=$(( attempt + 1 )); continue
         fi
         log "HTTP ${status} (not a rate limit, or attempts exhausted) — ${method} ${path}"
-        printf '%s\n' "$body" >&2; return 1 ;;
+        printf '%s\n' "$body" >&2; rm -f "$errf"; return 1 ;;
       5*)
         if (( attempt < MAX_ATTEMPTS )); then
           sleep_for=$(( 2 ** attempt )); (( sleep_for > CAP_SECONDS )) && sleep_for=$CAP_SECONDS
@@ -138,9 +154,9 @@ api() {
           sleep "$sleep_for"; attempt=$(( attempt + 1 )); continue
         fi
         log "HTTP ${status} after ${MAX_ATTEMPTS} attempts — ${method} ${path}"
-        printf '%s\n' "$body" >&2; return 1 ;;
+        printf '%s\n' "$body" >&2; rm -f "$errf"; return 1 ;;
       *)
-        log "HTTP ${status} — ${method} ${path}"; printf '%s\n' "$body" >&2; return 1 ;;
+        log "HTTP ${status} — ${method} ${path}"; printf '%s\n' "$body" >&2; rm -f "$errf"; return 1 ;;
     esac
   done
 }
@@ -470,7 +486,7 @@ json.dump(d,sys.stdout)' "$method" "$ctitle" "$pin")
     # One REST call for both the node id (to arm with) and the head sha (to read
     # the gate on, if arming fails).
     prbody=$(api GET "repos/${repo}/pulls/${number}")
-    node=$(printf '%s' "$prbody" | jqf node_id)
+    node=$(printf '%s' "$prbody" | jqf node_id 2>/dev/null)
     sha=$(printf '%s' "$prbody" | python3 -c 'import json,sys
 try: print(((json.load(sys.stdin) or {}).get("head") or {}).get("sha",""))
 except Exception: print("")' 2>/dev/null)
@@ -478,10 +494,24 @@ except Exception: print("")' 2>/dev/null)
     branch=$(printf '%s' "$prbody" | python3 -c 'import json,sys
 try: print(((json.load(sys.stdin) or {}).get("head") or {}).get("ref",""))
 except Exception: print("")' 2>/dev/null)
-    if [ -z "$node" ]; then
-      log "pr-automerge: could not read the PR's node id — merging directly instead"
-      bash "$0" pr-merge "$repo" "$number" "${3:-squash}" "${4:-}"; exit $?
-    fi
+    # A PR this call cannot read is NOT a PR with no gate (T-3784). Both
+    # "could not read" branches below used to merge directly, so anything that
+    # spoiled the one GET — a stderr notice folded into the JSON (chicago#2379),
+    # a REST failure, a truncated body — turned into a merge nobody had gated.
+    # Now it fails CLOSED: nothing is decided, the PR is untouched, and the
+    # answer is `pending` / exit 4, the same "call me again" the caller already
+    # handles for a gate still running. GH_REST_MERGE_BLIND=1 still means blind.
+    # unread <what> <the subcommand's own args…>: $3/$4 are method/title again.
+    unread() {
+      local what="$1"; shift
+      if [ "${GH_REST_MERGE_BLIND:-}" = "1" ]; then
+        log "pr-automerge: could not read the PR's ${what}; GH_REST_MERGE_BLIND=1 — merging without reading the gate"
+        bash "$0" pr-merge "$repo" "$number" "${3:-squash}" "${4:-}"; exit $?
+      fi
+      log "pr-automerge: could not read ${repo}#${number}'s ${what} — NOT merging; nothing was decided, call again (pending)"
+      printf 'pending\n'; exit 4
+    }
+    [ -z "$node" ] && unread "node id" "$@"
     # One line on purpose: the test harness logs one line per call, so a query
     # broken over six lines reads as six calls and the "how many requests did
     # this cost" assertion — the whole point of this file — stops meaning anything.
@@ -507,10 +537,7 @@ except Exception: print("")' 2>/dev/null)
       log "pr-automerge: GH_REST_MERGE_BLIND=1 — merging without reading the gate"
       bash "$0" pr-merge "$repo" "$number" "${3:-squash}" "${4:-}"; exit $?
     fi
-    if [ -z "$sha" ]; then
-      log "pr-automerge: could not read the PR's head sha — merging directly instead"
-      bash "$0" pr-merge "$repo" "$number" "${3:-squash}" "${4:-}"; exit $?
-    fi
+    [ -z "$sha" ] && unread "head sha" "$@"
     deadline=$(( $(date -u +%s) + GATE_WAIT )); empties=0
     while :; do
       verdict=$(gate_state "$repo" "$sha")
