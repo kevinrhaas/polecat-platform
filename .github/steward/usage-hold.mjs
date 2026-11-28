@@ -25,6 +25,10 @@ import { execFileSync } from 'node:child_process';
 
 export const HOLD_VAR = 'STEWARD_HOLD_CLAUDE';
 
+// The per-app hold the janitor's batch merge writes (batch-merge.mjs): same value
+// format, read the same way, scoped to one app's lanes.
+export const appHoldVar = app => 'STEWARD_HOLD_' + String(app).toUpperCase().replace(/[^A-Z0-9]/g, '_');
+
 // The hold value for a `rate_limit_event`'s rate_limit_info, or null when the
 // event does not stop the agent.
 export function holdFromLimit(info, runId = '') {

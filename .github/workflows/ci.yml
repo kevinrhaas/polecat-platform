@@ -67,6 +67,11 @@ jobs:
       - name: A roster job is dispatched once, not once per tick
         run: bash .github/steward/test-focus-jobs.sh
 
+      # The janitor's batch merge: which loop PRs it takes, what it does with an
+      # open batch, and which members it stops retrying.
+      - name: The batch merge picks, judges and settles as written
+        run: node .github/steward/batch-merge.mjs --self-test
+
       - name: Mixed processor lanes and GPT stream evidence
         run: node .github/steward/test-lanes.mjs
 

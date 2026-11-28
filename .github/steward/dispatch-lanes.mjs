@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { appLanes, busySlots, isLanePr, isResumablePr, lastStarted, processorOf, queueGate, queueLimits } from './lanes.mjs';
 import { isDueAt, slicesOf } from './schedule.mjs';
-import { HOLD_VAR, readHold } from './usage-hold.mjs';
+import { HOLD_VAR, appHoldVar as holdVar, readHold } from './usage-hold.mjs';
 
 const repo = process.env.GITHUB_REPOSITORY || 'kevinrhaas/polecat-platform';
 // maxBuffer: each run object carries its full head-commit message, so 100 runs
@@ -130,11 +130,37 @@ try {
   }
 } catch { /* 404 = no hold */ }
 
+// APP HOLD (batch-merge.mjs). While the janitor lands a batch of an app's open PRs
+// it writes STEWARD_HOLD_<APP> ("<until ISO> <why>"), so no new slice merges into
+// the app's base under the batch's gate and re-dirties it. Read like the usage
+// hold: until then that app's lanes start nothing; past it the variable is
+// deleted and they fill on this tick. Fails OPEN.
+const appHolds = new Map();
+function appHold(app) {
+  if (appHolds.has(app)) return appHolds.get(app);
+  let hold = null;
+  try {
+    hold = readHold(asPat(['api', `repos/${repo}/actions/variables/${holdVar(app)}`, '--jq', '.value']).trim(), now);
+    if (hold?.expired) {
+      try { asPat(['api', '--method', 'DELETE', `repos/${repo}/actions/variables/${holdVar(app)}`]); } catch { /* next tick retries */ }
+      console.log(`::notice::${app} hold lifted: ${hold.why || 'its time'} ran out at ${hold.until.toISOString()}, so the lane fills again.`);
+      hold = null;
+    }
+  } catch { /* 404 = no hold */ }
+  appHolds.set(app, hold);
+  return hold;
+}
+
 let count = 0;
 for (const lane of lanes) {
   if (!isDueAt(lane.config, now)) continue;
   if (claudeHold && processorOf(lane.config).processor === 'claude') {
     console.log(`::warning::${lane.app} / ${lane.id || 'default'}: held, ${claudeHold.why || 'Claude usage limit reached'}; restarts by itself after ${claudeHold.until.toISOString()}`);
+    continue;
+  }
+  const held = appHold(lane.app);
+  if (held) {
+    console.log(`${lane.app} / ${lane.id || 'default'}: held, ${held.why || 'batch merge'}; restarts when it lands, or by itself after ${held.until.toISOString()}`);
     continue;
   }
   const n = slicesOf(lane.config), busy = busySlots(runs, lane);

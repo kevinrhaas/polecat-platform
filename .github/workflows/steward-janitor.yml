@@ -373,3 +373,90 @@ jobs:
           # with every parallel slice and with Manager.
           GH_TOKEN: ${{ github.token }}
         run: bash .github/steward/journal.sh "${{ github.run_id }}" "Steward janitor" "${{ job.status }}" /tmp/steward-out.txt
+
+  # BATCH MERGE (Kevin, 2026-11-27: "Can you improve the steward janitor loop to do
+  # this automatically periodically?"). Chicago's loop PRs are not in FLEET above —
+  # its gate cannot fit in this job — but they have the opposite problem: they DO
+  # merge, one at a time, and with five slices landing into `dev` every landing
+  # re-dirties the rest, so each is lapped and re-gated (~80 min) again and again.
+  # This job lands them together: see .github/steward/batch-merge.mjs for the moves
+  # and kevinrhaas/chicago .github/steward/pr-batch.sh for the git. Each run makes
+  # one move: look after an open batch (merge it with a MERGE commit when GitHub
+  # calls it clean, close it on a red gate), or pick the next one, hold the chicago
+  # lane (STEWARD_HOLD_CHICAGO, read by dispatch-lanes.mjs; ends by itself) and
+  # build it. It never touches a batch a thread is landing by hand.
+  batch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      BATCH_APP: chicago
+      BATCH_MIN: '3'
+      BATCH_MAX: '8'
+    steps:
+      - name: Check secret
+        env:
+          P: ${{ secrets.STEWARD_PAT }}
+        run: '[ -n "$P" ] || { echo "::error::STEWARD_PAT secret is missing"; exit 1; }'
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Look after the open batch, or pick the next one
+        id: tick
+        env:
+          GH_TOKEN: ${{ secrets.STEWARD_PAT }}
+        run: node .github/steward/batch-merge.mjs tick 2>&1 | tee /tmp/batch-journal.txt; exit "${PIPESTATUS[0]}"
+
+      # Full history without blobs, as the chicago PR lap checks out: the merges
+      # need the members' bases, and the working tree is fetched only for HEAD.
+      - name: Clone chicago
+        if: steps.tick.outputs.action == 'build'
+        env:
+          GH_TOKEN: ${{ secrets.STEWARD_PAT }}
+        run: |
+          git config --global url."https://x-access-token:${GH_TOKEN}@github.com/kevinrhaas/".insteadOf "https://github.com/kevinrhaas/"
+          git clone -q --filter=blob:none --branch dev https://github.com/kevinrhaas/chicago.git "$RUNNER_TEMP/chicago"
+          if [ ! -f "$RUNNER_TEMP/chicago/.github/steward/pr-batch.sh" ]; then
+            echo "::warning::chicago dev has no .github/steward/pr-batch.sh yet — nothing to build with"
+            echo "skipped=no pr-batch.sh on dev" > /tmp/batch-out.txt
+          fi
+
+      - uses: actions/setup-python@v5
+        if: steps.tick.outputs.action == 'build'
+        with:
+          python-version: '3.11'
+
+      - name: Hold the chicago lane, then build the batch
+        if: steps.tick.outputs.action == 'build'
+        env:
+          GH_TOKEN: ${{ secrets.STEWARD_PAT }}
+          BATCH_PRS: ${{ steps.tick.outputs.members }}
+          BATCH_OUT: /tmp/batch-out.txt
+        run: |
+          [ ! -s /tmp/batch-out.txt ] || exit 0   # skipped above
+          pip install --quiet jsonschema pyproj openpyxl pypdf numpy scipy Pillow
+          node .github/steward/batch-merge.mjs hold "batch building from ${BATCH_PRS} (janitor run ${GITHUB_RUN_ID})"
+          set +e
+          bash "$RUNNER_TEMP/chicago/.github/steward/pr-batch.sh" 2>&1 | tee -a /tmp/batch-journal.txt
+          RC=${PIPESTATUS[0]}
+          set -e
+          # exit 3 = too few members merged cleanly: not a failure, just no batch
+          [ "$RC" -eq 0 ] || [ "$RC" -eq 3 ] || exit "$RC"
+
+      # A build that opened nothing (too few members, a failed step, a crash)
+      # gives the lane back at once rather than leaving it to the hold's clock.
+      - name: Give the lane back if no batch opened
+        if: always() && steps.tick.outputs.action == 'build'
+        env:
+          GH_TOKEN: ${{ secrets.STEWARD_PAT }}
+          BATCH_PRS: ${{ steps.tick.outputs.members }}
+        run: node .github/steward/batch-merge.mjs settle /tmp/batch-out.txt | tee -a /tmp/batch-journal.txt
+
+      - name: Journal the run
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash .github/steward/journal.sh "${{ github.run_id }}" "Steward janitor — batch merge" "${{ job.status }}" /tmp/batch-journal.txt
