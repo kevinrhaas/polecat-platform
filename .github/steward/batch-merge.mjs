@@ -96,6 +96,7 @@ export function ownWorkGreen(head, verdictOf, commitOf, depth = 5) {
 
 /** The members to label `no-batch` after a build: a conflicting one, or all of them when the build failed. */
 export function settleLabels(out, members = '') {
+  if (/^skipped=/m.test(out)) return [];
   if (/^failed=/m.test(out) || !/^members=/m.test(out)) return String(members).split(/[\s,]+/).filter(Boolean).map(Number);
   const dropped = /^dropped=(.*)$/m.exec(out)?.[1] || '';
   return [...dropped.matchAll(/(\d+)\(conflict\)/g)].map(m => Number(m[1]));
@@ -284,6 +285,7 @@ else if (cmd === 'settle') {
   assert.deepEqual(settleLabels('members=1,2\ndropped=3(conflict),4(locked)\npr=9\n', '1 2 3 4'), [3], 'only a conflicting member');
   assert.deepEqual(settleLabels('members=1,2\ndropped=\nfailed=regeneration step failed\n', '1,2'), [1, 2], 'a failed build labels every member');
   assert.deepEqual(settleLabels('', '1,2'), [1, 2], 'a build that wrote nothing failed');
+  assert.deepEqual(settleLabels('skipped=no pr-batch.sh on dev\n', '1,2'), [], 'a skipped build labels nobody');
   assert.deepEqual(settleLabels('members=1\ndropped=2(conflict)\n', '1,2'), [2], 'too few: the conflicting one');
   console.log('batch-merge self-test: ok');
 } else {

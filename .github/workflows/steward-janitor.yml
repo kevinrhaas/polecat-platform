@@ -419,8 +419,10 @@ jobs:
         run: |
           git config --global url."https://x-access-token:${GH_TOKEN}@github.com/kevinrhaas/".insteadOf "https://github.com/kevinrhaas/"
           git clone -q --filter=blob:none --branch dev https://github.com/kevinrhaas/chicago.git "$RUNNER_TEMP/chicago"
-          [ -f "$RUNNER_TEMP/chicago/.github/steward/pr-batch.sh" ] || {
-            echo "::warning::chicago dev has no .github/steward/pr-batch.sh yet — nothing to build with"; exit 1; }
+          if [ ! -f "$RUNNER_TEMP/chicago/.github/steward/pr-batch.sh" ]; then
+            echo "::warning::chicago dev has no .github/steward/pr-batch.sh yet — nothing to build with"
+            echo "skipped=no pr-batch.sh on dev" > /tmp/batch-out.txt
+          fi
 
       - uses: actions/setup-python@v5
         if: steps.tick.outputs.action == 'build'
@@ -434,6 +436,7 @@ jobs:
           BATCH_PRS: ${{ steps.tick.outputs.members }}
           BATCH_OUT: /tmp/batch-out.txt
         run: |
+          [ ! -s /tmp/batch-out.txt ] || exit 0   # skipped above
           pip install --quiet jsonschema pyproj openpyxl pypdf numpy scipy Pillow
           node .github/steward/batch-merge.mjs hold "batch building from ${BATCH_PRS} (janitor run ${GITHUB_RUN_ID})"
           set +e
