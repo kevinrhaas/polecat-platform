@@ -4,6 +4,10 @@
 // scripts/stamp-changelog.mjs.
 
 export const CHANGELOG = [
+  { v: 28, title: 'JobTracker is now Tracker, at tracker.polecat.live', kind: 'polish', ts: '2026-11-28T04:17:57Z',
+    items: [
+      'The launcher, the app switcher and every app\'s header now call it Tracker and link to its new address, tracker.polecat.live, and the launcher reads its What\'s New from there again.',
+    ] },
   { v: 27, title: 'The app rail no longer gets stuck closed after a resize', kind: 'fix', ts: '2026-08-01T18:20:54Z',
     items: [
       'Shrinking the window below the mobile breakpoint auto-closes an open rail so it can\'t pop over the content — by design. But widening back past that breakpoint left the rail stuck closed until a full reload instead of reopening, the way the shared shell chrome (used across every Polecat app) was meant to behave. It now reopens on its own.',

@@ -26,7 +26,7 @@ permissions:
 
 env:
   ALL_APPS: >-
-    games.polecat.live relay.polecat.live jobtracker.polecat.live
+    games.polecat.live relay.polecat.live tracker.polecat.live
     manager.polecat.live autoselector.polecat.live analytics.polecat.live
     polecat-app solution-engineering
 

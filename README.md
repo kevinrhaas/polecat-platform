@@ -1,7 +1,7 @@
 # polecat-platform
 
 The platform hub for the **Polecat suite** — the family of joyful, static-first web apps
-living under `*.polecat.live` (Manager, JobTracker, Analytics, AutoSelector, Relay,
+living under `*.polecat.live` (Manager, Tracker, Analytics, AutoSelector, Relay,
 Games, Chat).
 
 This repo holds the three things every app shares:
